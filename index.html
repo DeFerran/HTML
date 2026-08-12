@@ -842,10 +842,15 @@ function hydrate(d){
       {nome:'Fertilidade', servicos:['Fertilidade Grid 2','Fertilidade Grid 3','Fertilidade Grid 5'], metaReceita:_recSeg(['Fertilidade Grid 2','Fertilidade Grid 3','Fertilidade Grid 5']), metaMargem:0.30},
       {nome:'SmartSeed', servicos:['SmartSeed'], metaReceita:_recSeg(['SmartSeed']), metaMargem:0.30},
       {nome:'SoilCheek (Compactação)', servicos:['SoilCheek (Compactação)'], metaReceita:_recSeg(['SoilCheek (Compactação)']), metaMargem:0.30},
-      {nome:'Topografia', servicos:['Curva de Nível','Sistematização Agrícola'], metaReceita:_recSeg(['Curva de Nível','Sistematização Agrícola']), metaMargem:0.30}
+      {nome:'Topografia', servicos:['Curva de Nível','Sistematização Agrícola'], metaReceita:_recSeg(['Curva de Nível','Sistematização Agrícola']), metaMargem:0.30},
+      {nome:'Coleta de Solo', servicos:['Coleta Solo Simples','Coleta Solo AP - Safra+'], metaReceita:_recSeg(['Coleta Solo Simples','Coleta Solo AP - Safra+']), metaMargem:0.30}
     ]};
   }
   if(d.metasServico.margemGeralMeta==null) d.metasServico.margemGeralMeta=0.30;
+  // garante o segmento "Coleta de Solo" (reconcilia os serviços de coleta que ficavam fora dos segmentos)
+  if(!d.metasServico.segmentos.some(sg=>/coleta de solo/i.test(sg.nome||''))){
+    d.metasServico.segmentos.push({nome:'Coleta de Solo', servicos:['Coleta Solo Simples','Coleta Solo AP - Safra+'], metaReceita:0, metaMargem:0.30});
+  }
   d.metasServico.segmentos.forEach(sg=>{ if(!Array.isArray(sg.servicos))sg.servicos=[]; if(sg.metaReceita==null)sg.metaReceita=0; if(sg.metaMargem==null)sg.metaMargem=0.30; if(sg.nome==null)sg.nome=''; });
   // plano de comissão safra 26/27: Anderlírio escalonado + override s/ Bruno; Bruno 6% + bônus
   if(!d.comissaoPlano || typeof d.comissaoPlano!=='object'){
@@ -1040,12 +1045,16 @@ function custoAincorrer(){return D.projGastos?D.projGastos.projetado:0;}
 /* comLab removido: laboratório é despesa, não base de comissão */
 function comBase(){return recBruta();} // laboratório é despesa, não entra na base de comissão
 function comRate(){return (D.comissao&&D.comissao.rate)||0.07;}
+/* vendas por vendedor: puxa automático das vendas marcadas em Clientes; campo manual (>0) sobrepõe */
+function vendasVendedor(chave){ const pat=chave==='anderlirio'?/anderl/i:/bruno/i;
+  return (D.clientes||[]).reduce((a,c)=>a+((c&&pat.test(c.vendedor||''))?(+c.receita||0):0),0); }
+function comVendasEf(chave){ const o=(D.comissaoPlano&&D.comissaoPlano[chave])||{}; const manual=+o.vendas||0; return manual>0?manual:vendasVendedor(chave); }
 function comissaoPlanoTotal(){ const P=D.comissaoPlano; if(!P)return 0; const A=P.anderlirio||{}, B=P.bruno||{};
-  const vA=+A.vendas||0, vB=+B.vendas||0; const rateA=comTierRate(A);
+  const vA=comVendasEf('anderlirio'), vB=comVendasEf('bruno'); const rateA=comTierRate(A,vA);
   const bonus=(B.bonus||[]).reduce((a,bn)=>a+(bn.entregue?(+bn.valor||0):0),0);
   return vA*rateA + vB*(+A.overrideBrunoRate||0) + vB*(+B.rate||0) + bonus; }
-function comissaoPlanoTemDados(){ const P=D.comissaoPlano; return !!(P&&P.anderlirio&&P.bruno&&(((+P.anderlirio.vendas||0)>0)||((+P.bruno.vendas||0)>0))); }
-function comissaoVal(){ return comissaoPlanoTemDados()?comissaoPlanoTotal():comBase()*comRate(); } // usa o plano escalonado quando há vendas lançadas
+function comissaoPlanoTemDados(){ const P=D.comissaoPlano; if(!(P&&P.anderlirio&&P.bruno))return false; return comVendasEf('anderlirio')>0||comVendasEf('bruno')>0; }
+function comissaoVal(){ return comissaoPlanoTemDados()?comissaoPlanoTotal():comBase()*comRate(); } // usa o plano escalonado quando há vendas (marcadas ou lançadas)
 function comMes(){return (D.comissao&&D.comissao.mes)||'Mai/27';}
 /* --- margens: operacional (antes da comissão) e líquida (após) --- */
 function margemOper(){return recLiquida()-custoTotal();}                // antes da comissão
@@ -1365,17 +1374,17 @@ function renderMargemLiq(){
       tooltip:{callbacks:{label:c=>c.dataset.label+': '+(+c.raw).toFixed(1)+'%'}}},
       scales:{y:{ticks:{callback:v=>v+'%'}}}}});
 }
-function comTierRate(A){ const t=(A.tiers||[]).slice().sort((a,b)=>(+a.min||0)-(+b.min||0)); let r=+A.pisoRate||0; const v=+A.vendas||0; t.forEach(x=>{ if(v>=(+x.min||0)) r=+x.rate||0; }); return r; }
-function comProxTier(A){ const t=(A.tiers||[]).slice().sort((a,b)=>(+a.min||0)-(+b.min||0)); const v=+A.vendas||0; for(const x of t){ if(v<(+x.min||0)) return {min:+x.min||0,rate:+x.rate||0,falta:(+x.min||0)-v}; } return null; }
+function comTierRate(A,v){ const t=(A.tiers||[]).slice().sort((a,b)=>(+a.min||0)-(+b.min||0)); let r=+A.pisoRate||0; const vv=(v!=null)?v:(+A.vendas||0); t.forEach(x=>{ if(vv>=(+x.min||0)) r=+x.rate||0; }); return r; }
+function comProxTier(A,v){ const t=(A.tiers||[]).slice().sort((a,b)=>(+a.min||0)-(+b.min||0)); const vv=(v!=null)?v:(+A.vendas||0); for(const x of t){ if(vv<(+x.min||0)) return {min:+x.min||0,rate:+x.rate||0,falta:(+x.min||0)-vv}; } return null; }
 function renderComissaoColab(){
   const P=D.comissaoPlano; if(!P)return; const A=P.anderlirio||{}, B=P.bruno||{};
-  const vA=+A.vendas||0, vB=+B.vendas||0;
-  const rateA=comTierRate(A), comAprop=vA*rateA;
+  const vA=comVendasEf('anderlirio'), vB=comVendasEf('bruno');
+  const rateA=comTierRate(A,vA), comAprop=vA*rateA;
   const overRate=+A.overrideBrunoRate||0, comAover=vB*overRate, comAtot=comAprop+comAover;
   const rateB=+B.rate||0, comBvenda=vB*rateB;
   const bonusList=(B.bonus||[]); const bonusPago=bonusList.reduce((a,bn)=>a+(bn.entregue?(+bn.valor||0):0),0);
   const comBtot=comBvenda+bonusPago, totalPagar=comAtot+comBtot;
-  const prox=comProxTier(A), metaB=+B.metaVendas||0;
+  const prox=comProxTier(A,vA), metaB=+B.metaVendas||0;
   const pctTxt=v=>(v*100).toFixed(1).replace('.',',')+'%';
   if(document.getElementById('kComissao')) kpi('kComissao',[
     {lab:'Comissão total a pagar',val:BRLk(totalPagar),c:'gold',sub:'Anderlírio '+BRLk(comAtot)+' · Bruno '+BRLk(comBtot)},
@@ -2901,13 +2910,15 @@ function renderEditors(){
       {label:'Meta margem — SoilCheek (%)',type:'pct',get:()=>D.metasServico.segmentos[2].metaMargem,set:v=>D.metasServico.segmentos[2].metaMargem=v},
       {label:'Meta faturamento — Topografia (R$)',type:'money',get:()=>D.metasServico.segmentos[3].metaReceita,set:v=>D.metasServico.segmentos[3].metaReceita=v,hint:'Curva de Nível + Sistematização.'},
       {label:'Meta margem — Topografia (%)',type:'pct',get:()=>D.metasServico.segmentos[3].metaMargem,set:v=>D.metasServico.segmentos[3].metaMargem=v},
+      {label:'Meta faturamento — Coleta de Solo (R$)',type:'money',get:()=>(D.metasServico.segmentos[4]||{}).metaReceita||0,set:v=>{if(D.metasServico.segmentos[4])D.metasServico.segmentos[4].metaReceita=v;},hint:'Coleta Solo Simples + Coleta Solo AP - Safra+.'},
+      {label:'Meta margem — Coleta de Solo (%)',type:'pct',get:()=>(D.metasServico.segmentos[4]||{}).metaMargem||0,set:v=>{if(D.metasServico.segmentos[4])D.metasServico.segmentos[4].metaMargem=v;}},
       {section:'Metas de margem líquida (geral)',sub:'4 níveis de ambição — todos os serviços',accent:'#7A3EA6'},
       {label:'Margem líquida — nível 1 (%)',type:'pct',get:()=>D.metasMargemLiq[0],set:v=>D.metasMargemLiq[0]=v},
       {label:'Margem líquida — nível 2 (%)',type:'pct',get:()=>D.metasMargemLiq[1],set:v=>D.metasMargemLiq[1]=v},
       {label:'Margem líquida — nível 3 (%)',type:'pct',get:()=>D.metasMargemLiq[2],set:v=>D.metasMargemLiq[2]=v},
       {label:'Margem líquida — nível 4 (%)',type:'pct',get:()=>D.metasMargemLiq[3],set:v=>D.metasMargemLiq[3]=v},
       {section:'Comissão — Anderlírio (escalonado)',sub:'a taxa sobe conforme o quanto ELE vende',accent:'#B5562A'},
-      {label:'Anderlírio — vendas realizadas (R$)',type:'money',get:()=>D.comissaoPlano.anderlirio.vendas,set:v=>D.comissaoPlano.anderlirio.vendas=v,hint:'Faturamento bruto vendido por ele.'},
+      {label:'Anderlírio — vendas realizadas (R$)',type:'money',get:()=>comVendasEf('anderlirio'),set:v=>D.comissaoPlano.anderlirio.vendas=v,hint:'Puxa automático das vendas marcadas p/ Anderlírio na aba Clientes. Preencha só para sobrepor manualmente (0 = automático).'},
       {label:'Piso de comissão (%)',type:'pct',get:()=>D.comissaoPlano.anderlirio.pisoRate,set:v=>D.comissaoPlano.anderlirio.pisoRate=v,hint:'Taxa abaixo da 1ª faixa.'},
       {label:'Override sobre vendas do Bruno (%)',type:'pct',get:()=>D.comissaoPlano.anderlirio.overrideBrunoRate,set:v=>D.comissaoPlano.anderlirio.overrideBrunoRate=v,hint:'Ele supervisiona as vendas do Bruno.'},
       {label:'Faixa 1 — fatura a partir de (R$)',type:'money',get:()=>D.comissaoPlano.anderlirio.tiers[0].min,set:v=>D.comissaoPlano.anderlirio.tiers[0].min=v},
@@ -2920,7 +2931,7 @@ function renderEditors(){
       {label:'Faixa 4 — taxa (%)',type:'pct',get:()=>D.comissaoPlano.anderlirio.tiers[3].rate,set:v=>D.comissaoPlano.anderlirio.tiers[3].rate=v},
       {section:'Comissão — Bruno',sub:'% sobre vendas + bônus de entregas',accent:'#0E8A8A'},
       {label:'Bruno — meta de vendas (R$)',type:'money',get:()=>D.comissaoPlano.bruno.metaVendas,set:v=>D.comissaoPlano.bruno.metaVendas=v},
-      {label:'Bruno — vendas realizadas (R$)',type:'money',get:()=>D.comissaoPlano.bruno.vendas,set:v=>D.comissaoPlano.bruno.vendas=v},
+      {label:'Bruno — vendas realizadas (R$)',type:'money',get:()=>comVendasEf('bruno'),set:v=>D.comissaoPlano.bruno.vendas=v,hint:'Puxa automático das vendas marcadas p/ Bruno na aba Clientes. Preencha só para sobrepor manualmente (0 = automático).'},
       {label:'Bruno — comissão (%)',type:'pct',get:()=>D.comissaoPlano.bruno.rate,set:v=>D.comissaoPlano.bruno.rate=v},
       {label:'Bônus — relatório de clientes (R$)',type:'money',get:()=>D.comissaoPlano.bruno.bonus[0].valor,set:v=>D.comissaoPlano.bruno.bonus[0].valor=v,hint:'Mín. 4 · OneDrive.'},
       {label:'Bônus relatório — entregue?',type:'bool',on:'Entregue',get:()=>D.comissaoPlano.bruno.bonus[0].entregue,set:v=>D.comissaoPlano.bruno.bonus[0].entregue=v},
@@ -2955,7 +2966,7 @@ function exportarRelatorioExcel(){
       ((D.metasServico&&D.metasServico.segmentos)||[]).map(sg=>{ const rf=segReceita(sg), mf=+sg.metaReceita||0, mc=segMC(sg);
         return [sg.nome, money(mf), money(rf), mf?Math.round(rf/mf*100)+'%':'—', ((+sg.metaMargem||0)*100).toFixed(0)+'%', (mc.pct*100).toFixed(1)+'%', segFonte(sg)||'agregado']; })));
     const P=D.comissaoPlano||{}, A=P.anderlirio||{}, B=P.bruno||{};
-    const vA=+A.vendas||0,vB=+B.vendas||0,rA=(typeof comTierRate==='function')?comTierRate(A):0;
+    const vA=comVendasEf('anderlirio'),vB=comVendasEf('bruno'),rA=(typeof comTierRate==='function')?comTierRate(A,vA):0;
     const bonus=(B.bonus||[]).reduce((a,bn)=>a+(bn.entregue?(+bn.valor||0):0),0);
     add('Comissao',[['Item','Base (vendas)','Taxa','Comissão'],
       ['Anderlírio (escalonado)',money(vA),(rA*100).toFixed(0)+'%',money(vA*rA)],
@@ -3100,7 +3111,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · lab-count-4';
+const APP_VERSION='2026-08-12 · comissao-auto-5';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
