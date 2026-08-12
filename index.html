@@ -650,6 +650,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="edbtns">
         <button class="edbtn primary" id="btnSalvar" onclick="salvarTudo()">💾 Salvar tudo</button>
         <button class="edbtn" onclick="baixarPainel()">⬇ Baixar painel atualizado</button>
+        <button class="edbtn" onclick="exportarRelatorioExcel()">📊 Relatório (Excel)</button>
         <button class="edbtn" onclick="exportJSON()">⬇ Exportar dados (.json)</button>
         <button class="edbtn" onclick="document.getElementById('impJson').click()">⬆ Importar dados</button>
         <button class="edbtn ghost" onclick="recarregarArquivo()">↺ Recarregar do arquivo</button>
@@ -2824,6 +2825,47 @@ function renderEditors(){
 }
 
 /* -- baixar painel com dados embutidos / exportar / importar -- */
+function exportarRelatorioExcel(){
+  if(typeof XLSX==='undefined'){ alert('A biblioteca de planilhas não carregou (verifique a internet e tente de novo).'); return; }
+  try{
+    const wb=XLSX.utils.book_new(); const money=v=>Math.round(+v||0);
+    const add=(nome,aoa)=>XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), nome);
+    const rb=recBruta(), imp=imposto(), rl=recLiquida(), cTot=custoTotal(), mo=margemOper(), comV=comissaoVal(), mg=margemLiq();
+    add('Resumo',[
+      ['DF AGRO — Resumo da safra 26/27',''],
+      ['Receita bruta contratada', money(rb)],
+      ['(-) Imposto NF ('+(taxRate*100).toFixed(0)+'%)', -money(imp)],
+      ['(=) Receita líquida', money(rl)],
+      ['(-) Custo projetado 2026', -money(cTot)],
+      ['(=) Margem operacional', money(mo)],
+      ['(-) Comissão'+(comissaoPlanoTemDados()?' (plano escalonado)':(' ('+(comRate()*100).toFixed(0)+'%)')), -money(comV)],
+      ['(=) Margem líquida', money(mg)],
+      ['Margem líquida %', (margemPct()*100).toFixed(1)+'%'],
+    ]);
+    add('Clientes',[['Cliente','Grupo','Serviço','Vendedor','Mês','Área (ha)','Preço/ha','Receita']].concat(
+      (D.clientes||[]).map(c=>[c.nome,grupoLabel(c.grupo),c.servico||'',c.vendedor||'',c.mes||'',+c.ha||0,+c.precoHa||0,money(c.receita)])));
+    add('Servicos',[['Serviço','ha 25/26','rec 25/26','ha 26/27','rec 26/27']].concat(
+      (D.servicos||[]).map(s=>[s.nome,+s.ha2526||0,money(s.rec2526),+s.ha2627||0,money(s.rec2627)])));
+    add('Metas por segmento',[['Segmento','Meta fat.','Realizado','% meta','Meta margem','Margem realizada','Fonte']].concat(
+      ((D.metasServico&&D.metasServico.segmentos)||[]).map(sg=>{ const rf=segReceita(sg), mf=+sg.metaReceita||0, mc=segMC(sg);
+        return [sg.nome, money(mf), money(rf), mf?Math.round(rf/mf*100)+'%':'—', ((+sg.metaMargem||0)*100).toFixed(0)+'%', (mc.pct*100).toFixed(1)+'%', segFonte(sg)||'agregado']; })));
+    const P=D.comissaoPlano||{}, A=P.anderlirio||{}, B=P.bruno||{};
+    const vA=+A.vendas||0,vB=+B.vendas||0,rA=(typeof comTierRate==='function')?comTierRate(A):0;
+    const bonus=(B.bonus||[]).reduce((a,bn)=>a+(bn.entregue?(+bn.valor||0):0),0);
+    add('Comissao',[['Item','Base (vendas)','Taxa','Comissão'],
+      ['Anderlírio (escalonado)',money(vA),(rA*100).toFixed(0)+'%',money(vA*rA)],
+      ['Override Anderlírio s/ Bruno',money(vB),((+A.overrideBrunoRate||0)*100).toFixed(0)+'%',money(vB*(+A.overrideBrunoRate||0))],
+      ['Bruno (venda)',money(vB),((+B.rate||0)*100).toFixed(0)+'%',money(vB*(+B.rate||0))],
+      ['Bruno (bônus entregues)','','',money(bonus)],
+      ['TOTAL','','',money(comissaoPlanoTotal())]]);
+    const cats=[...new Set([...Object.keys(D.custoCategoria2025||{}),...Object.keys(D.custoCategoria2026||{})])];
+    add('Custos por categoria',[['Categoria','2025','2026']].concat(cats.map(k=>[k,money((D.custoCategoria2025||{})[k]||0),money((D.custoCategoria2026||{})[k]||0)])));
+    const cm=D.caixaMensal||{meses:[]};
+    add('Caixa mensal',[['Mês','Receita','Custo','Margem']].concat((cm.meses||[]).map((m,i)=>[m,money((cm.receita||[])[i]),money((cm.custo||[])[i]),money((cm.margem||[])[i])])));
+    XLSX.writeFile(wb, 'DF AGRO - Relatorio 26-27.xlsx');
+    if(typeof setStatus==='function') setStatus('● Relatório Excel gerado','ok');
+  }catch(e){ alert('Não consegui gerar o Excel: '+(e&&e.message||e)); }
+}
 function baixarPainel(){
   try{
     const seedEl=document.getElementById('seed'); seedEl.textContent=b64e(JSON.stringify(D));
