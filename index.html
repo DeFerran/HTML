@@ -765,6 +765,10 @@ function hydrate(d){
       clientes:(Array.isArray(d.clientes)?d.clientes.filter(c=>c.grupo==='fert').map(c=>({nome:c.nome,tipo:'antigo',am0020:0,am0010:0,am2040:0,receita:+c.receita||0})):[]) };
   }
   if(!d.lab.precos) d.lab.precos={comArgila:44,semArgila:38,adic0010:38,adic2040:34};
+  if(!d.lab.gridHa || typeof d.lab.gridHa!=='object') d.lab.gridHa={'Fertilidade Grid 2':2,'Fertilidade Grid 3':3,'Fertilidade Grid 5':5};
+  if(!d.lab.pctColeta || typeof d.lab.pctColeta!=='object') d.lab.pctColeta={p0020:1,p0010:0.30,p2040:0.20};
+  ['p0020','p0010','p2040'].forEach(k=>{ if(d.lab.pctColeta[k]==null) d.lab.pctColeta[k]=(k==='p0020'?1:(k==='p0010'?0.30:0.20)); });
+  if(!d.lab.tipos || typeof d.lab.tipos!=='object') d.lab.tipos={};
   if(!d.coleta || !Array.isArray(d.coleta.coletores)){
     const _cm=['Jan/26','Fev/26','Mar/26','Abr/26','Mai/26','Jun/26','Jul/26','Ago/26','Set/26','Out/26','Nov/26','Dez/26'];
     const cl=(nome,un,tipo)=>({nome:nome,unidade:un,tipo:tipo,valores:_cm.map(()=>0)});
@@ -2404,9 +2408,21 @@ function renderPrecoMargem(){
 /* ===================== CUSTOS & COLETA ===================== */
 /* -- laboratorio: custo por cliente -- */
 function labP(){ return (D.lab&&D.lab.precos)||{comArgila:44,semArgila:38,adic0010:38,adic2040:34}; }
+function labGridHa(){ return (D.lab&&D.lab.gridHa)||{'Fertilidade Grid 2':2,'Fertilidade Grid 3':3,'Fertilidade Grid 5':5}; }
+function labPct(){ const p=(D.lab&&D.lab.pctColeta)||{}; return {p0020:(p.p0020!=null?+p.p0020:1),p0010:(p.p0010!=null?+p.p0010:0.30),p2040:(p.p2040!=null?+p.p2040:0.20)}; }
+function gridDoServico(servico){ const g=labGridHa(); return (servico&&g[servico]!=null&&+g[servico]>0)?+g[servico]:0; } // ha/ponto; 0 = não é grid
+function labTipo(nome){ const t=(D.lab&&D.lab.tipos)||{}; return t[nome]==='novo'?'novo':'antigo'; }
+function amostrasCliente(cli){ if(!cli)return null; const gha=gridDoServico(cli.servico), ha=+cli.ha||0; if(!gha||ha<=0)return null;
+  const pontos=Math.round(ha/gha), pc=labPct();
+  return {pontos:pontos, am0020:Math.round(pontos*pc.p0020), am0010:Math.round(pontos*pc.p0010), am2040:Math.round(pontos*pc.p2040)}; }
+function labCustoCliente(cli){ const a=amostrasCliente(cli); if(!a)return {a:null,custo:0,tipo:labTipo(cli&&cli.nome)}; const p=labP(), tipo=labTipo(cli.nome);
+  const custo=a.am0020*(tipo==='novo'?+p.comArgila:+p.semArgila)+a.am0010*(+p.adic0010)+a.am2040*(+p.adic2040); return {a:a,custo:custo,tipo:tipo}; }
+function labClientesGrid(){ return (D.clientes||[]).filter(c=>c&&gridDoServico(c.servico)>0&&(+c.ha||0)>0); }
+/* compat (manual, não usado no fluxo automático) */
 function labPrincipal(c){ const p=labP(); return (+c.am0020||0)*(c.tipo==='novo'?p.comArgila:p.semArgila); }
 function labCli(c){ const p=labP(); return labPrincipal(c)+(+c.am0010||0)*p.adic0010+(+c.am2040||0)*p.adic2040; }
-function labTotal(){ return ((D.lab&&D.lab.clientes)||[]).reduce((a,c)=>a+labCli(c),0); }
+/* total do laboratório = automático, a partir dos grids lançados em Clientes */
+function labTotal(){ return labClientesGrid().reduce((s,c)=>s+labCustoCliente(c).custo,0); }
 /* -- coleta: custo e performance -- */
 function colLinha(col,tipo){ return (col.linhas||[]).find(l=>l.tipo===tipo); }
 function colSumTipo(col,tipo){ const l=colLinha(col,tipo); return l?(l.valores||[]).reduce((a,b)=>a+(+b||0),0):0; }
@@ -2525,43 +2541,39 @@ let _custT=null;
 function scheduleCustos(){ clearTimeout(_custT); _custT=setTimeout(()=>{ try{renderCustos();}catch(e){console.warn('custos',e);} },240); }
 
 function renderLabEditor(){
-  // precos
   const hp=document.getElementById('edLabPrecos'); const p=labP();
-  if(hp){ hp.innerHTML='<div class="edhead"><h3>Preços das análises (R$/amostra)</h3><p class="edhelp">Base do custo de laboratório. Altere aqui se a tabela do laboratório mudar.</p></div>'+
+  if(hp){ const gh=labGridHa(), pc=labPct(), gridKeys=Object.keys(gh);
+    hp.innerHTML='<div class="edhead"><h3>Preços das análises (R$/amostra)</h3><p class="edhelp">Base do custo de laboratório. Altere aqui se a tabela do laboratório mudar.</p></div>'+
       '<div class="labprec">'+[['comArgila','00-20 com argila (cliente novo)'],['semArgila','00-20 sem argila (cliente antigo)'],['adic0010','00-10 adicional'],['adic2040','20-40 adicional']]
-        .map(f=>'<label class="lpf"><span>'+f[1]+'</span><input class="edinp num lpinp" data-k="'+f[0]+'" value="'+esc(fmoney(p[f[0]]))+'"></label>').join('')+'</div>';
-    hp.querySelectorAll('input.lpinp').forEach(inp=>{ inp.oninput=()=>{ D.lab.precos[inp.dataset.k]=pnum(inp.value); commit(); scheduleCustos(); renderLabTableTotals(); };
+        .map(f=>'<label class="lpf"><span>'+f[1]+'</span><input class="edinp num lpinp" data-k="'+f[0]+'" value="'+esc(fmoney(p[f[0]]))+'"></label>').join('')+'</div>'+
+      '<div class="edhead" style="margin-top:16px"><h3>Amostragem por grid</h3><p class="edhelp">Hectares por ponto em cada grid e o % de coleta por profundidade. As amostras de cada cliente são calculadas automaticamente a partir do <b>Serviço (grid)</b> e da <b>Área</b> lançados em Clientes.</p></div>'+
+      '<div class="labprec">'+gridKeys.map(k=>'<label class="lpf"><span>'+esc(k)+' — ha/ponto</span><input class="edinp num lgha" data-k="'+esc(k)+'" value="'+esc(fnum(gh[k]))+'"></label>').join('')+'</div>'+
+      '<div class="labprec">'+[['p0020','% coleta 00-20'],['p0010','% coleta 00-10'],['p2040','% coleta 20-40']].map(f=>'<label class="lpf"><span>'+f[1]+'</span><input class="edinp num lpct" data-k="'+f[0]+'" value="'+esc(fnum((pc[f[0]]||0)*100))+'"></label>').join('')+'</div>';
+    hp.querySelectorAll('input.lpinp').forEach(inp=>{ inp.oninput=()=>{ D.lab.precos[inp.dataset.k]=pnum(inp.value); commit(); scheduleCustos(); drawLabClientes(); };
       inp.onblur=()=>{ inp.value=fmoney(D.lab.precos[inp.dataset.k]); }; });
+    hp.querySelectorAll('input.lgha').forEach(inp=>{ inp.oninput=()=>{ D.lab.gridHa=D.lab.gridHa||{}; D.lab.gridHa[inp.dataset.k]=pnum(inp.value); commit(); scheduleCustos(); drawLabClientes(); };
+      inp.onblur=()=>{ inp.value=fnum(D.lab.gridHa[inp.dataset.k]||0); }; });
+    hp.querySelectorAll('input.lpct').forEach(inp=>{ inp.oninput=()=>{ D.lab.pctColeta=D.lab.pctColeta||{}; D.lab.pctColeta[inp.dataset.k]=pnum(inp.value)/100; commit(); scheduleCustos(); drawLabClientes(); };
+      inp.onblur=()=>{ inp.value=fnum((D.lab.pctColeta[inp.dataset.k]||0)*100); }; });
   }
+  drawLabClientes();
+  window.renderLabTableTotals=drawLabClientes;
+}
+function drawLabClientes(){
   const host=document.getElementById('edLab'); if(!host)return;
-  const cls=D.lab.clientes;
-  function draw(){
-    let h='<div class="edhead"><h3>Amostras e custo por cliente</h3><p class="edhelp">Marque <b>Novo</b> (paga argila no 00-20) ou <b>Antigo</b>. Lance o nº de amostras de cada profundidade. Receita é opcional (para ver o lab como % da venda). Custo é calculado.</p></div>';
-    h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Cliente</th><th>Tipo</th><th class="num">Am. 00-20</th><th class="num">Am. 00-10</th><th class="num">Am. 20-40</th><th class="num">Receita (R$)</th><th class="num">Custo lab</th><th></th></tr></thead><tbody>';
-    cls.forEach((c,i)=>{ h+='<tr data-i="'+i+'"><td><input class="edinp lbf" data-i="'+i+'" data-f="nome" value="'+esc(c.nome||'')+'"></td>'+
-      '<td><select class="lbtipo" data-i="'+i+'"><option value="antigo"'+(c.tipo!=='novo'?' selected':'')+'>Antigo</option><option value="novo"'+(c.tipo==='novo'?' selected':'')+'>Novo</option></select></td>'+
-      '<td><input class="edinp num lbn" data-i="'+i+'" data-f="am0020" value="'+esc(fnum(c.am0020||0))+'"></td>'+
-      '<td><input class="edinp num lbn" data-i="'+i+'" data-f="am0010" value="'+esc(fnum(c.am0010||0))+'"></td>'+
-      '<td><input class="edinp num lbn" data-i="'+i+'" data-f="am2040" value="'+esc(fnum(c.am2040||0))+'"></td>'+
-      '<td><input class="edinp num lbm" data-i="'+i+'" data-f="receita" value="'+esc(fmoney(c.receita||0))+'"></td>'+
-      '<td class="mxrowtot lbtot">'+BRL(labCli(c))+'</td><td><button class="edx lbdel" data-i="'+i+'">✕</button></td></tr>'; });
-    h+='</tbody><tfoot><tr><td class="mxcat">Total</td><td></td><td></td><td></td><td></td><td class="num lbrectot">'+fmoney(cls.reduce((a,c)=>a+(+c.receita||0),0))+'</td><td class="mxgrand lbgrand">'+BRL(labTotal())+'</td><td></td></tr></tfoot></table></div>';
-    h+='<button class="edadd lbadd">+ Adicionar cliente</button>';
-    host.innerHTML=h;
-    host.querySelectorAll('input.lbf').forEach(inp=>{ inp.oninput=()=>{ cls[+inp.dataset.i].nome=inp.value; commit(); scheduleCustos(); }; });
-    host.querySelectorAll('input.lbn').forEach(inp=>{ inp.oninput=()=>{ cls[+inp.dataset.i][inp.dataset.f]=pnum(inp.value); rowTot(inp); commit(); scheduleCustos(); };
-      inp.onblur=()=>{ inp.value=fnum(cls[+inp.dataset.i][inp.dataset.f]||0); }; });
-    host.querySelectorAll('input.lbm').forEach(inp=>{ inp.oninput=()=>{ cls[+inp.dataset.i].receita=pnum(inp.value); recTot(); commit(); scheduleCustos(); };
-      inp.onblur=()=>{ inp.value=fmoney(cls[+inp.dataset.i].receita||0); }; });
-    host.querySelectorAll('select.lbtipo').forEach(s=>{ s.onchange=()=>{ cls[+s.dataset.i].tipo=s.value; const tr=s.closest('tr'); tr.querySelector('.lbtot').textContent=BRL(labCli(cls[+s.dataset.i])); grandTot(); commit(); scheduleCustos(); }; });
-    host.querySelectorAll('.lbdel').forEach(b=>{ b.onclick=()=>{ cls.splice(+b.dataset.i,1); commit(); draw(); scheduleCustos(); }; });
-    host.querySelector('.lbadd').onclick=()=>{ cls.push({nome:'',tipo:'antigo',am0020:0,am0010:0,am2040:0,receita:0}); commit(); draw(); scheduleCustos(); };
-    function rowTot(inp){ const tr=inp.closest('tr'); tr.querySelector('.lbtot').textContent=BRL(labCli(cls[+inp.dataset.i])); grandTot(); }
-    function recTot(){ const el=host.querySelector('.lbrectot'); if(el)el.textContent=fmoney(cls.reduce((a,c)=>a+(+c.receita||0),0)); }
-    function grandTot(){ const el=host.querySelector('.lbgrand'); if(el)el.textContent=BRL(labTotal()); }
-  }
-  window.renderLabTableTotals=()=>{ const el=document.getElementById('edLab'); if(!el)return; el.querySelectorAll('tr[data-i]').forEach(tr=>{ const i=+tr.dataset.i; const t=tr.querySelector('.lbtot'); if(t)t.textContent=BRL(labCli(D.lab.clientes[i])); }); const g=el.querySelector('.lbgrand'); if(g)g.textContent=BRL(labTotal()); };
-  draw();
+  const cls=labClientesGrid();
+  let h='<div class="edhead"><h3>Amostras e custo por cliente (automático)</h3><p class="edhelp">Puxado das vendas com grid de Fertilidade. Amostras = Área ÷ (ha/ponto do grid) × % de coleta. Escolha <b>Novo</b> (paga argila no 00-20) ou <b>Antigo</b>. Para mudar as quantidades, ajuste o grid/% acima ou a Área em Clientes.</p></div>';
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Cliente</th><th>Grid</th><th class="num">Área (ha)</th><th>Tipo</th><th class="num">Am. 00-20</th><th class="num">Am. 00-10</th><th class="num">Am. 20-40</th><th class="num">Receita</th><th class="num">Custo lab</th></tr></thead><tbody>';
+  if(!cls.length) h+='<tr><td colspan="9" style="color:var(--muted);padding:14px 6px">Nenhuma venda com grid de Fertilidade lançada. Em <b>Clientes</b>, defina o Serviço (Grid 2/3/5) e a Área.</td></tr>';
+  cls.forEach(c=>{ const r=labCustoCliente(c), a=r.a;
+    h+='<tr><td>'+esc(c.nome||'')+'</td><td>'+esc(c.servico||'')+'</td><td class="num">'+fnum(+c.ha||0)+'</td>'+
+      '<td><select class="lbtipo" data-nome="'+esc(c.nome||'')+'"><option value="antigo"'+(r.tipo!=='novo'?' selected':'')+'>Antigo</option><option value="novo"'+(r.tipo==='novo'?' selected':'')+'>Novo</option></select></td>'+
+      '<td class="num">'+fnum(a.am0020)+'</td><td class="num">'+fnum(a.am0010)+'</td><td class="num">'+fnum(a.am2040)+'</td>'+
+      '<td class="num">'+fmoney(+c.receita||0)+'</td><td class="num mxrowtot">'+BRL(r.custo)+'</td></tr>'; });
+  const totRec=cls.reduce((a,c)=>a+(+c.receita||0),0);
+  h+='</tbody><tfoot><tr><td class="mxcat">Total</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="num">'+fmoney(totRec)+'</td><td class="mxgrand">'+BRL(labTotal())+'</td></tr></tfoot></table></div>';
+  host.innerHTML=h;
+  host.querySelectorAll('select.lbtipo').forEach(s=>{ s.onchange=()=>{ D.lab.tipos=D.lab.tipos||{}; D.lab.tipos[s.dataset.nome]=s.value; commit(); scheduleCustos(); drawLabClientes(); }; });
 }
 
 function renderColetaEditor(){
