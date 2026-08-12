@@ -83,9 +83,32 @@ atualizado automaticamente** — sem código extra no front-end. As funções de
 (`SECURITY DEFINER`) têm o `EXECUTE` revogado da API REST (`anon`/`authenticated`);
 só o gatilho as executa internamente.
 
-### Nota de configuração
+## Segurança
 
-Se o cadastro exigir confirmação de e-mail (opção *Confirm email* do Supabase
-Auth), o novo usuário precisa confirmar pelo link enviado antes do primeiro
-login — o painel já trata esse fluxo. Recomenda-se também ativar a *Leaked
-Password Protection* no Supabase Auth.
+Camadas de proteção da plataforma:
+
+- **Isolamento por usuário (RLS):** todas as 18 tabelas têm Row Level Security;
+  cada conta só lê/grava a própria linha (`auth.uid() = user_id`).
+- **Controle de acesso (RBAC):** acesso ao painel exige ser membro **ativo**;
+  edição exige papel `admin`/`editor`; o painel de administração exige `admin`.
+  A regra é aplicada no **banco** (políticas RLS), não só na interface.
+- **Funções `SECURITY DEFINER` blindadas:** todas com `search_path` fixo e
+  `EXECUTE` restrito ao papel `authenticated` (nenhuma exposta ao `anon`).
+- **Integridade das bibliotecas (SRI):** os scripts de CDN têm versão fixada e
+  hash `integrity` — se o arquivo entregue for adulterado, o navegador recusa
+  executá-lo.
+- **Content Security Policy (CSP):** restringe origens de scripts, estilos,
+  fontes e conexões (só o próprio site, o CDN jsDelivr e o Supabase); bloqueia
+  `object`/plugins e injeção de `<base>`.
+- **Anti-clickjacking:** a página se recusa a rodar dentro de um `iframe`.
+- **Login:** fluxo **PKCE**, senha mínima de 8 caracteres com letras e números.
+
+### Recomendado ativar no painel do Supabase
+
+- **Leaked Password Protection** (Authentication → Policies): recusa senhas que
+  já vazaram (base HaveIBeenPwned).
+- **Minimum password length** ≥ 8 e exigência de caracteres variados
+  (Authentication → Policies) — reforça a validação já feita no front-end.
+- **Confirm email** (Authentication → Providers → Email): se ativado, o novo
+  usuário confirma pelo link antes do primeiro login — o painel já trata esse
+  fluxo.

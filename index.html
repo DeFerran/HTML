@@ -3,11 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; worker-src 'self' blob:; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://pvftibzzqcbpgdihfcmb.supabase.co wss://pvftibzzqcbpgdihfcmb.supabase.co; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>DF AGRO · Painel de Gestão — Agricultura de Precisão</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>/* anti-clickjacking: impede que a plataforma seja embutida em outro site (iframe) */try{if(window.top!==window.self){window.top.location=window.self.location;}}catch(e){document.documentElement.style.display='none';}</script>
+<!-- Bibliotecas externas com versão fixada + verificação de integridade (SRI): se o arquivo entregue pelo CDN não bater exatamente com o hash, o navegador recusa executá-lo. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js" integrity="sha384-y49Zu59jZHJL/PLKgZPv3k2WI9c0Yp3pWB76V8OBVCb0QBKS8l4Ff3YslzHVX76Y" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js" integrity="sha384-qafw21c/iciq0VXsi9FzkfoQv5I/V0iqE4lSNcKXPnW9/UTJLnv5CcN4FHxVLnKg" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -347,7 +351,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <label for="authEmail">E-mail</label>
     <input id="authEmail" type="email" autocomplete="username" placeholder="voce@empresa.com">
     <label for="authPass">Senha</label>
-    <input id="authPass" type="password" autocomplete="current-password" placeholder="mínimo 6 caracteres">
+    <input id="authPass" type="password" autocomplete="current-password" placeholder="mínimo 8 caracteres, com letras e números">
     <div class="authmsg" id="authMsg"></div>
     <button class="btn authbtn" id="authGo" onclick="doAuth()">Entrar</button>
     <div class="authalt"><span id="authSwitchTxt">Ainda não tem conta?</span> <a id="authSwitch" onclick="authToggleMode()">Criar conta</a></div>
@@ -2978,7 +2982,7 @@ function recarregarArquivo(){
 const SB_URL='https://pvftibzzqcbpgdihfcmb.supabase.co';
 const SB_KEY='sb_publishable_Hup4kJP7j2qm4PtCIky47A_eBBqI61o';
 let sb=null, sbUser=null, _cloudT=null, _authMode='login', _lastSync=null, _syncing=false;
-try{ if(window.supabase && window.supabase.createClient){ sb=window.supabase.createClient(SB_URL,SB_KEY); } }catch(e){ sb=null; }
+try{ if(window.supabase && window.supabase.createClient){ sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}); } }catch(e){ sb=null; }
 
 function cloudSet(txt){ const el=document.getElementById('cloudState'); if(el) el.textContent=txt;
   const b=document.getElementById('cloudBtn'); if(b) b.title = sbUser ? ('Conectado: '+(sbUser.email||'')+' — clique para sair') : 'Entrar na nuvem';
@@ -3010,13 +3014,14 @@ function cloudBtnClick(){ if(!sb){ alert('A conexão com a nuvem não carregou (
 function traduzErro(m){ m=String(m||''); if(/Invalid login/i.test(m))return'E-mail ou senha incorretos.';
   if(/already registered|already been registered/i.test(m))return'Este e-mail já tem conta. Use "Entrar".';
   if(/Email not confirmed/i.test(m))return'Confirme seu e-mail antes de entrar (verifique a caixa de entrada).';
-  if(/Password should be at least/i.test(m))return'A senha precisa ter ao menos 6 caracteres.';
+  if(/Password should be at least/i.test(m))return'A senha precisa ter ao menos 8 caracteres.';
   if(/rate limit|too many/i.test(m))return'Muitas tentativas. Aguarde alguns minutos.'; return m; }
 async function doAuth(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return; }
   const email=(document.getElementById('authEmail').value||'').trim();
   const pass=(document.getElementById('authPass').value||'');
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite um e-mail válido.','err'); return; }
-  if(pass.length<6){ authMsg('A senha precisa ter ao menos 6 caracteres.','err'); return; }
+  if(pass.length<8){ authMsg('A senha precisa ter ao menos 8 caracteres.','err'); return; }
+  if(_authMode==='signup' && !(/[A-Za-z]/.test(pass) && /[0-9]/.test(pass))){ authMsg('Senha fraca: use ao menos 8 caracteres com letras e números.','err'); return; }
   const btn=document.getElementById('authGo'); if(btn) btn.disabled=true; authMsg('Processando…');
   try{
     if(_authMode==='signup'){
