@@ -473,7 +473,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Faturamento — meta vs. realizado por segmento</h3><div class="cap">Barra clara = meta; barra colorida = realizado (contratado na 26/27). Rótulo mostra o % da meta.</div><div class="chartbox tall"><canvas id="cSegFat"></canvas></div></div>
       <div class="panel"><h3>Margem de contribuição — meta vs. realizado (%)</h3><div class="cap">Barra = margem realizada; losango = meta. Verde quando o realizado bate ou supera a meta.</div><div class="chartbox tall"><canvas id="cSegMar"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Painel de metas por segmento</h3><div class="cap">Faturamento e margem, meta vs. realizado, com % de atingimento. A linha <b>Geral</b> inclui todos os serviços (inclusive Coleta AP+).</div><div style="overflow-x:auto"><table id="tSeg"></table></div></div>
+    <div class="panel"><h3>Painel de metas por segmento</h3><div class="cap">Faturamento e margem, meta vs. realizado, com % de atingimento. A linha <b>Geral</b> inclui todos os serviços (inclusive Coleta AP+).</div><div style="overflow-x:auto"><table id="tSeg"></table></div><div class="note" id="noteSeg"></div></div>
     <div class="lead" style="margin-top:6px"><h2 style="font-size:19px">Metas de margem líquida</h2>
       <p>Quatro níveis de ambição para a <b>margem líquida geral</b> (todos os serviços, após imposto, custos e comissões). As barras são os níveis de meta — <b>verde</b> quando a margem realizada da safra alcança o nível; a linha tracejada é a margem líquida realizada (a mesma da Visão Geral).</p></div>
     <div class="kpis" id="kMargemLiq"></div>
@@ -1016,7 +1016,11 @@ function custoColeta(){const cc=D.custoCategoria2026||{};return coletaCats().red
 function custoLab(){ const lt=(typeof labTotal==='function')?labTotal():0; if(lt>0)return lt; return (D.custoHa&&D.custoHa.laboratorio!=null)?D.custoHa.laboratorio:0; } // despesa: análises da aba Laboratório, ou valor base
 function custoDemais(){return Math.max(custoTotal()-custoColeta()-custoLab(),0);} // estrutura/overhead restante
 /* --- metas por segmento de serviço: receita e margem de contribuição direta --- */
-function segReceita(seg){ const set=new Set((seg&&seg.servicos)||[]); return (D.servicos||[]).reduce((a,s)=>a+(set.has(s.nome)?(+s.rec2627||0):0),0); }
+function anyClienteServico(){ return (D.clientes||[]).some(c=>c&&(c.servico||'').trim()); }
+function segReceitaClientes(seg){ const set=new Set((seg&&seg.servicos)||[]); return (D.clientes||[]).reduce((a,c)=>a+((c&&set.has(c.servico))?(+c.receita||0):0),0); }
+function segReceitaServicos(seg){ const set=new Set((seg&&seg.servicos)||[]); return (D.servicos||[]).reduce((a,s)=>a+(set.has(s.nome)?(+s.rec2627||0):0),0); }
+function segReceita(seg){ if(anyClienteServico()){ const cl=segReceitaClientes(seg); if(cl>0) return cl; } return segReceitaServicos(seg); }
+function segFonte(seg){ if(!anyClienteServico())return ''; return segReceitaClientes(seg)>0?'vendas':'agregado'; }
 function segTemFert(seg){ return (((seg&&seg.servicos)||[]).some(n=>/Fertilidade/i.test(n))); }
 function segMC(seg){ const rec=segReceita(seg); if(!rec) return {rec:0,imp:0,lab:0,com:0,mc:0,pct:0};
   const imp=rec*taxRate, lab=segTemFert(seg)?custoLab():0, com=rec*comRate();
@@ -1390,10 +1394,14 @@ function renderMetasSegmentos(){
   const pctTxt=v=>v.toFixed(1).replace('.',',')+'%';
   const tag=ok=>ok?'<span class="tag hi">no alvo</span>':'<span class="tag md">abaixo</span>';
   let rows='';
-  segs.forEach(s=>{ const rf=segReceita(s), mf=+s.metaReceita||0, mc=segMC(s), mm=(+s.metaMargem||0);
-    rows+='<tr><td>'+s.nome+'</td><td>'+BRL(mf)+'</td><td>'+BRL(rf)+'</td><td>'+(mf?pctTxt(rf/mf*100):'—')+' '+tag(mf>0&&rf>=mf)+'</td><td>'+pctTxt(mm*100)+'</td><td>'+pctTxt(mc.pct*100)+' '+tag(mc.pct>=mm)+'</td></tr>'; });
+  segs.forEach(s=>{ const rf=segReceita(s), mf=+s.metaReceita||0, mc=segMC(s), mm=(+s.metaMargem||0), fo=segFonte(s);
+    rows+='<tr><td>'+s.nome+'</td><td>'+BRL(mf)+'</td><td>'+BRL(rf)+(fo?' <span style="color:var(--muted);font-size:9.5px">'+fo+'</span>':'')+'</td><td>'+(mf?pctTxt(rf/mf*100):'—')+' '+tag(mf>0&&rf>=mf)+'</td><td>'+pctTxt(mm*100)+'</td><td>'+pctTxt(mc.pct*100)+' '+tag(mc.pct>=mm)+'</td></tr>'; });
   rows+='<tr style="font-weight:700;background:var(--totbg)"><td>Geral (todos os serviços)</td><td>'+BRL(gMeta)+'</td><td>'+BRL(gReal)+'</td><td>'+(gMeta?pctTxt(gReal/gMeta*100):'—')+' '+tag(gMeta>0&&gReal>=gMeta)+'</td><td>'+pctTxt(gMarMetaF*100)+'</td><td>'+pctTxt(gMC.pct*100)+' '+tag(gMC.pct>=gMarMetaF)+'</td></tr>';
   const tel=document.getElementById('tSeg'); if(tel) tel.innerHTML='<thead><tr><th>Segmento</th><th>Meta fat.</th><th>Realizado</th><th>% da meta</th><th>Meta margem</th><th>Margem realizada</th></tr></thead><tbody>'+rows+'</tbody>';
+  const noteEl=document.getElementById('noteSeg');
+  if(noteEl){ if(anyClienteServico()){ const semSrv=(D.clientes||[]).reduce((a,c)=>a+(((c&&!(c.servico||'').trim())&&(+c.receita||0)>0)?(+c.receita||0):0),0);
+      noteEl.innerHTML='Realizado por segmento vindo das <b>vendas lançadas por serviço</b> (rótulo <i>vendas</i>). Onde ainda não há venda marcada, usa o agregado da aba Serviços (<i>agregado</i>).'+(semSrv>0?' <b>'+BRL(semSrv)+'</b> em vendas sem serviço marcado não entram na apuração por segmento.':''); }
+    else { noteEl.textContent='Realizado por segmento vindo do agregado da aba Serviços. Marque o Serviço nas vendas (Lançamentos › Clientes) para apurar pelo que foi realmente vendido.'; } }
 }
 function renderMetas(){
   if(baseGate('metas'))return;
