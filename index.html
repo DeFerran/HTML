@@ -683,7 +683,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="edsec" data-sec="custo" style="display:none"><div class="edcard" id="edCustoMensal"></div><div class="edcard" id="edCat26"></div><div class="edcard" id="edCat25"></div><div class="edcard" id="edCatMes"></div></div>
     <div class="edsec" data-sec="meta" style="display:none"><div class="edcard" id="edMetas"></div></div>
     <div class="edsec" data-sec="equipe" style="display:none"><div id="edEquipe"></div></div>
-    <div class="edsec" data-sec="lab" style="display:none"><div class="edcard" id="edLabPrecos"></div><div class="edcard" id="edLab"></div></div>
+    <div class="edsec" data-sec="lab" style="display:none"><div class="edcard" id="edLabPrecos"></div><div class="edcard" id="edLab"></div><div class="edcard" id="edLabAudit"></div></div>
     <div class="edsec" data-sec="coleta" style="display:none"><div id="edColeta"></div></div>
     <div class="edsec" data-sec="estr" style="display:none"><div class="edcard" id="edEstrutura"></div></div>
     <div class="edsec" data-sec="op" style="display:none"><div class="edcard" id="edOp"></div><div class="edcard" id="edEtapas"></div><div class="edcard" id="edVisitas"></div></div>
@@ -769,6 +769,7 @@ function hydrate(d){
   if(!d.lab.pctColeta || typeof d.lab.pctColeta!=='object') d.lab.pctColeta={p0020:1,p0010:0.30,p2040:0.20};
   ['p0020','p0010','p2040'].forEach(k=>{ if(d.lab.pctColeta[k]==null) d.lab.pctColeta[k]=(k==='p0020'?1:(k==='p0010'?0.30:0.20)); });
   if(!d.lab.tipos || typeof d.lab.tipos!=='object') d.lab.tipos={};
+  if(!d.lab.auditoria || typeof d.lab.auditoria!=='object') d.lab.auditoria={periodo:'',am0020:0,am0010:0,am2040:0,valorCobrado:0};
   if(!d.coleta || !Array.isArray(d.coleta.coletores)){
     const _cm=['Jan/26','Fev/26','Mar/26','Abr/26','Mai/26','Jun/26','Jul/26','Ago/26','Set/26','Out/26','Nov/26','Dez/26'];
     const cl=(nome,un,tipo)=>({nome:nome,unidade:un,tipo:tipo,valores:_cm.map(()=>0)});
@@ -2574,7 +2575,41 @@ function renderLabEditor(){
       inp.onblur=()=>{ inp.value=fnum((D.lab.pctColeta[inp.dataset.k]||0)*100); }; });
   }
   drawLabClientes();
+  renderLabAudit();
   window.renderLabTableTotals=drawLabClientes;
+}
+/* Auditoria da cobrança do laboratório: confronta amostras/valor esperados (dos grids) x o que o lab efetivamente cobrou */
+function labAudit(){ D.lab=D.lab||{}; if(!D.lab.auditoria||typeof D.lab.auditoria!=='object') D.lab.auditoria={periodo:'',am0020:0,am0010:0,am2040:0,valorCobrado:0}; return D.lab.auditoria; }
+function renderLabAudit(){
+  const host=document.getElementById('edLabAudit'); if(!host)return;
+  const A=labAudit();
+  let h='<div class="edhead"><h3>Auditoria da cobrança do laboratório</h3><p class="edhelp">Controle operacional das coletas para conferir a fatura do laboratório. Lance o que o laboratório <b>cobrou</b> (amostras por profundidade e valor total) e o painel confronta com o <b>esperado</b> — calculado dos grids lançados em Clientes. Diferença em <span style="color:#c0392b">vermelho</span> = laboratório cobrou a mais.</p></div>';
+  h+='<div class="labprec">'+
+    '<label class="lpf"><span>Período / nota fiscal</span><input class="edinp adinp" data-k="periodo" value="'+esc(A.periodo||'')+'"></label>'+
+    '<label class="lpf"><span>Amostras 00-20 cobradas</span><input class="edinp num adinp" data-k="am0020" value="'+esc(fnum(+A.am0020||0))+'"></label>'+
+    '<label class="lpf"><span>Amostras 00-10 cobradas</span><input class="edinp num adinp" data-k="am0010" value="'+esc(fnum(+A.am0010||0))+'"></label>'+
+    '<label class="lpf"><span>Amostras 20-40 cobradas</span><input class="edinp num adinp" data-k="am2040" value="'+esc(fnum(+A.am2040||0))+'"></label>'+
+    '<label class="lpf"><span>Valor total cobrado (R$)</span><input class="edinp num adinp" data-k="valorCobrado" value="'+esc(fmoney(+A.valorCobrado||0))+'"></label>'+
+  '</div>';
+  h+='<div class="mxwrap" style="margin-top:12px"><table class="edtab"><thead><tr><th>Item</th><th class="num">Esperado (grids)</th><th class="num">Cobrado (lab)</th><th class="num">Diferença</th></tr></thead><tbody id="auditBody"></tbody></table></div>';
+  h+='<p class="edhelp" style="margin-top:8px">Diferença positiva = o laboratório cobrou mais do que o esperado pelos grids; reveja a fatura antes de pagar.</p>';
+  host.innerHTML=h;
+  host.querySelectorAll('input.adinp').forEach(inp=>{ inp.oninput=()=>{ const k=inp.dataset.k; const A=labAudit(); A[k]=(k==='periodo')?inp.value:pnum(inp.value); commit(); atualizarAudit(); };
+    inp.onblur=()=>{ const k=inp.dataset.k; if(k==='valorCobrado')inp.value=fmoney(+labAudit().valorCobrado||0); else if(k!=='periodo')inp.value=fnum(+labAudit()[k]||0); }; });
+  atualizarAudit();
+}
+function atualizarAudit(){
+  const tb=document.getElementById('auditBody'); if(!tb)return;
+  const R=resumoAmostras(), A=labAudit(), vEsp=labTotal();
+  const dif=(esp,cob,money)=>{ const d=cob-esp; const f=money?BRL:fnum; let cor=''; if(d>0)cor='#c0392b'; else if(d<0)cor='#b8860b'; else cor='#1e8449';
+    const sinal=d>0?'+':''; return '<td class="num">'+f(esp)+'</td><td class="num">'+f(cob)+'</td><td class="num" style="color:'+cor+';font-weight:800">'+sinal+f(d)+'</td>'; };
+  let h='';
+  h+='<tr><td>Amostras 00-20</td>'+dif(R.p0020,+A.am0020||0,false)+'</tr>';
+  h+='<tr><td>Amostras 00-10</td>'+dif(R.p0010,+A.am0010||0,false)+'</tr>';
+  h+='<tr><td>Amostras 20-40</td>'+dif(R.p2040,+A.am2040||0,false)+'</tr>';
+  h+='<tr><td><b>Total de amostras</b></td>'+dif(R.total,(+A.am0020||0)+(+A.am0010||0)+(+A.am2040||0),false)+'</tr>';
+  h+='<tr><td><b>Valor (R$)</b></td>'+dif(vEsp,+A.valorCobrado||0,true)+'</tr>';
+  tb.innerHTML=h;
 }
 function drawLabClientes(){
   const host=document.getElementById('edLab'); if(!host)return;
