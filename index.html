@@ -208,6 +208,12 @@ table.edtab select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 
   font-size:13.5px;font-family:var(--sans);color:var(--ink);font-variant-numeric:tabular-nums}
 .edfield input:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px rgba(30,125,60,.12)}
 .edfield .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4}
+.edsection{grid-column:1/-1;margin:10px 0 -4px;padding:9px 13px;border-radius:10px;border:1px solid var(--line);
+  border-left-width:4px;background:var(--soft);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.edsection:first-child{margin-top:0}
+.edsection b{font-family:var(--serif);font-size:13.5px;color:var(--head);letter-spacing:.1px}
+.edsection small{color:var(--muted);font-size:11px}
+.edfield.acc{border-left:3px solid var(--line);padding-left:11px}
 /* --- matriz de custo mensal (categoria x mês) --- */
 .mxwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin-top:4px}
 table.mxtab{border-collapse:separate;border-spacing:0;font-size:12px;min-width:1100px}
@@ -461,6 +467,14 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Margem de contribuição — meta vs. realizado (%)</h3><div class="cap">Barra = margem realizada; losango = meta. Verde quando o realizado bate ou supera a meta.</div><div class="chartbox tall"><canvas id="cSegMar"></canvas></div></div>
     </div>
     <div class="panel"><h3>Painel de metas por segmento</h3><div class="cap">Faturamento e margem, meta vs. realizado, com % de atingimento. A linha <b>Geral</b> inclui todos os serviços (inclusive Coleta AP+).</div><div style="overflow-x:auto"><table id="tSeg"></table></div></div>
+    <div class="lead" style="margin-top:6px"><h2 style="font-size:19px">Comissão por colaborador</h2>
+      <p>Comissão sobre o faturamento que cada um vende — <b>comissão a pagar = vendas realizadas × taxa</b>. O Anderlírio tem meta separada de <b>cliente novo</b> (vendas que ele traz sem passar por você): mesma taxa, acompanhamento à parte. Defina metas e taxas em <b>Lançamentos › Metas &amp; Parâmetros</b>.</p></div>
+    <div class="kpis" id="kComissao"></div>
+    <div class="grid two">
+      <div class="panel"><h3>Vendas — meta vs. realizado por colaborador</h3><div class="cap">Barra clara = meta; barra colorida = realizado. O Anderlírio soma vendas gerais + cliente novo.</div><div class="chartbox"><canvas id="cComVendas"></canvas></div></div>
+      <div class="panel"><h3>Comissão a pagar</h3><div class="cap">Valor de comissão por colaborador (realizado × taxa).</div><div class="chartbox"><canvas id="cComPagar"></canvas></div></div>
+    </div>
+    <div class="panel"><h3>Detalhe da comissão por colaborador</h3><div class="cap">Meta e realizado de vendas, % de atingimento, taxa e comissão a pagar. A linha <b>cliente novo</b> do Anderlírio é acompanhamento — a comissão dela já está somada no total dele.</div><div style="overflow-x:auto"><table id="tComissao"></table></div></div>
     <div class="lead" style="margin-top:6px"><h2 style="font-size:19px">Margem por hectare</h2>
       <p>A conta da safra dividida pelos <b id="haTot"></b> contratados. É a leitura mais honesta de preço: quanto cada hectare rende e quanto custa.</p></div>
     <div class="kpis" id="kHa"></div>
@@ -781,6 +795,14 @@ function hydrate(d){
   }
   if(d.metasServico.margemGeralMeta==null) d.metasServico.margemGeralMeta=0.30;
   d.metasServico.segmentos.forEach(sg=>{ if(!Array.isArray(sg.servicos))sg.servicos=[]; if(sg.metaReceita==null)sg.metaReceita=0; if(sg.metaMargem==null)sg.metaMargem=0.30; if(sg.nome==null)sg.nome=''; });
+  // comissão por colaborador (base: faturamento vendido pelo colaborador)
+  if(!d.comissaoColab || !Array.isArray(d.comissaoColab.colaboradores) || !d.comissaoColab.colaboradores.length){
+    d.comissaoColab={ colaboradores:[
+      {nome:'Anderlírio', papel:'Vendas e Gestão', rate:((d.metas&&d.metas.anderlirio&&d.metas.anderlirio.base)||0.07), metaGeral:0, realGeral:0, temNovo:true, metaNovo:0, realNovo:0},
+      {nome:'Bruno', papel:'Técnico / Relatórios', rate:0.05, metaGeral:0, realGeral:0, temNovo:false, metaNovo:0, realNovo:0}
+    ]};
+  }
+  d.comissaoColab.colaboradores.forEach(c=>{ ['rate','metaGeral','realGeral','metaNovo','realNovo'].forEach(k=>{ if(c[k]==null)c[k]=0; }); if(c.temNovo==null)c.temNovo=false; if(c.nome==null)c.nome=''; if(c.papel==null)c.papel=''; });
   return d;
 }
 let SEED={}; try{ SEED=JSON.parse(b64d(document.getElementById('seed').textContent.trim())); }catch(e){ console.warn('seed',e); }
@@ -1225,6 +1247,43 @@ function renderOp(){
     {label:'Pendente',data:et.map(e=>e.pendente),backgroundColor:'#cfcabb',borderRadius:3,stack:'s'}]},
     options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true},y:{stacked:true}}}});
 }
+function renderComissaoColab(){
+  const CC=D.comissaoColab||{colaboradores:[]}; const cs=CC.colaboradores||[];
+  const nome=cs.map(c=>c.nome||'—');
+  const vendReal=cs.map(c=>(+c.realGeral||0)+(c.temNovo?(+c.realNovo||0):0));
+  const vendMeta=cs.map(c=>(+c.metaGeral||0)+(c.temNovo?(+c.metaNovo||0):0));
+  const comPagar=cs.map((c,i)=>vendReal[i]*(+c.rate||0));
+  const totalPagar=comPagar.reduce((a,b)=>a+b,0), totalVend=vendReal.reduce((a,b)=>a+b,0);
+  const a=cs[0]||{}, br=cs[1]||{};
+  if(document.getElementById('kComissao')) kpi('kComissao',[
+    {lab:'Comissão total a pagar',val:BRLk(totalPagar),c:'gold',sub:'sobre '+BRLk(totalVend)+' em vendas'},
+    {lab:(a.nome||'—')+' — comissão',val:BRLk(comPagar[0]||0),sub:PCT(+a.rate||0)+' · vendas '+BRLk(vendReal[0]||0)},
+    {lab:'Cliente novo — '+(a.nome||'—'),val:BRLk(+a.realNovo||0),sub:'meta '+BRLk(+a.metaNovo||0)+((+a.metaNovo)?' · '+PCT((+a.realNovo||0)/(+a.metaNovo)):'')},
+    {lab:(br.nome||'—')+' — comissão',val:BRLk(comPagar[1]||0),sub:PCT(+br.rate||0)+' · vendas '+BRLk(vendReal[1]||0)},
+  ]);
+  mk('cComVendas',{type:'bar',data:{labels:nome,datasets:[
+    {label:'Meta',data:vendMeta,backgroundColor:'#d7d2c4',borderRadius:5},
+    {label:'Realizado',data:vendReal,backgroundColor:nome.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:true,labels:{boxWidth:12,font:{size:10}}},
+      datalabels:{display:c=>c.datasetIndex===1,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:(v,c)=>{const m=vendMeta[c.dataIndex];return m?Math.round(v/m*100)+'%':BRLk(v);}},
+      tooltip:{callbacks:{label:c=>c.dataset.label+': '+BRL(c.raw)}}},
+      scales:{y:{beginAtZero:true,ticks:{callback:v=>BRLk(v)}}}}});
+  mk('cComPagar',{type:'bar',data:{labels:nome,datasets:[{label:'Comissão',data:comPagar,backgroundColor:nome.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:false},
+      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10.5},formatter:v=>BRLk(v)},
+      tooltip:{callbacks:{label:c=>BRL(c.raw)}}},
+      scales:{y:{beginAtZero:true,ticks:{callback:v=>BRLk(v)}}}}});
+  const pctTxt=v=>v.toFixed(1).replace('.',',')+'%';
+  const tag=ok=>ok?'<span class="tag hi">no alvo</span>':'<span class="tag md">abaixo</span>';
+  let rows='';
+  cs.forEach((c,i)=>{ const mt=vendMeta[i], rl=vendReal[i], com=comPagar[i];
+    rows+='<tr><td>'+(c.nome||'—')+'<br><span style="color:var(--muted);font-size:10.5px">'+(c.papel||'')+'</span></td><td>'+BRL(mt)+'</td><td>'+BRL(rl)+'</td><td>'+(mt?pctTxt(rl/mt*100):'—')+' '+tag(mt>0&&rl>=mt)+'</td><td>'+pctTxt((+c.rate||0)*100)+'</td><td>'+BRL(com)+'</td></tr>';
+    if(c.temNovo){ const mn=+c.metaNovo||0, rn=+c.realNovo||0;
+      rows+='<tr style="background:var(--soft)"><td style="padding-left:22px;color:var(--muted)">↳ cliente novo</td><td>'+BRL(mn)+'</td><td>'+BRL(rn)+'</td><td>'+(mn?pctTxt(rn/mn*100):'—')+' '+tag(mn>0&&rn>=mn)+'</td><td>'+pctTxt((+c.rate||0)*100)+'</td><td>'+BRL(rn*(+c.rate||0))+'</td></tr>'; }
+  });
+  rows+='<tr style="font-weight:700;background:var(--totbg)"><td>Total</td><td>'+BRL(vendMeta.reduce((x,y)=>x+y,0))+'</td><td>'+BRL(totalVend)+'</td><td>—</td><td>—</td><td>'+BRL(totalPagar)+'</td></tr>';
+  const tel=document.getElementById('tComissao'); if(tel) tel.innerHTML='<thead><tr><th>Colaborador</th><th>Meta vendas</th><th>Realizado</th><th>% da meta</th><th>Taxa</th><th>Comissão a pagar</th></tr></thead><tbody>'+rows+'</tbody>';
+}
 function renderMetasSegmentos(){
   const MS=D.metasServico||{segmentos:[]}; const segs=MS.segmentos||[];
   const names=segs.map(s=>s.nome);
@@ -1266,6 +1325,7 @@ function renderMetasSegmentos(){
 function renderMetas(){
   if(baseGate('metas'))return;
   try{ renderMetasSegmentos(); }catch(e){ console.warn('metasSeg',e); }
+  try{ renderComissaoColab(); }catch(e){ console.warn('comColab',e); }
   const M=D.metas||{};
   const rb=recBruta(), imp=imposto(), rl=recLiquida(), cTot=custoTotal();
   const sv=D.servicos.filter(s=>s.ha2627>0);
@@ -1710,8 +1770,13 @@ function edTable(host,cfg){
 function edForm(host,cfg){
   const el=document.getElementById(host); if(!el)return;
   let h='<div class="edhead"><h3>'+cfg.title+'</h3>'+(cfg.help?'<p class="edhelp">'+cfg.help+'</p>':'')+'</div><div class="edform">';
-  cfg.fields.forEach((f,idx)=>{ const g=f.get(); const val=f.type==='money'?fmoney(g):(f.type==='pct'?fnum(g*100):(f.type==='num'?fnum(g):g));
-    h+='<div class="edfield"><label>'+f.label+'</label><input data-idx="'+idx+'" value="'+esc(val)+'">'+(f.hint?'<div class="hint">'+f.hint+'</div>':'')+'</div>'; });
+  let acc='';
+  cfg.fields.forEach((f,idx)=>{
+    if(f.section){ acc=f.accent||'var(--leaf)';
+      h+='<div class="edsection" style="border-left-color:'+acc+'"><span style="width:9px;height:9px;border-radius:3px;background:'+acc+';flex:0 0 auto"></span><b>'+f.section+'</b>'+(f.sub?'<small>— '+f.sub+'</small>':'')+'</div>';
+      return; }
+    const g=f.get(); const val=f.type==='money'?fmoney(g):(f.type==='pct'?fnum(g*100):(f.type==='num'?fnum(g):g));
+    h+='<div class="edfield'+(acc?' acc':'')+'"'+(acc?' style="border-left-color:'+acc+'"':'')+'><label>'+f.label+'</label><input data-idx="'+idx+'" value="'+esc(val)+'">'+(f.hint?'<div class="hint">'+f.hint+'</div>':'')+'</div>'; });
   h+='</div>'; el.innerHTML=h;
   el.querySelectorAll('input').forEach(inp=>{ const f=cfg.fields[+inp.dataset.idx];
     inp.oninput=()=>{ let v=inp.value; if(f.type==='money'||f.type==='num')v=pnum(v); else if(f.type==='pct')v=pnum(v)/100; f.set(v); commit(); };
@@ -2612,14 +2677,17 @@ function renderEditors(){
   edForm('edMetas',{title:'Metas e parâmetros',
     help:'Metas de venda e as premissas financeiras que movem a margem em todo o painel. Alterar o imposto aqui também muda o seletor da Visão Geral.',
     fields:[
+      {section:'Metas gerais de venda',sub:'safra 26/27',accent:'#1E7D3C'},
       {label:'Meta de receita (R$)',type:'money',get:()=>D.metas.receitaMeta,set:v=>D.metas.receitaMeta=v,hint:'Suba conforme fechar novas vendas.'},
       {label:'Meta de área (ha)',type:'num',get:()=>D.metas.hectaresMeta,set:v=>D.metas.hectaresMeta=v},
       {label:'Realizado — receita (R$)',type:'money',get:()=>D.metas.receitaReal,set:v=>D.metas.receitaReal=v,hint:'Total contratado na safra.'},
       {label:'Realizado — área (ha)',type:'num',get:()=>D.metas.hectaresReal,set:v=>D.metas.hectaresReal=v},
+      {section:'Premissas financeiras',sub:'movem a margem de todo o painel',accent:'#C08A2C'},
       {label:'Imposto sobre NF (%)',type:'pct',get:()=>D.impostoNF.rate,set:v=>{D.impostoNF.rate=v;taxRate=v;document.querySelectorAll('#taxseg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.t)-v)<1e-9));},hint:'Reflete na margem de todo o painel.'},
       {label:'Comissão (%)',type:'pct',get:()=>D.comissao.rate,set:v=>D.comissao.rate=v,hint:'Base do vendedor.'},
       {label:'Base de comissão — laboratório (R$)',type:'money',get:()=>D.comissao.labBase,set:v=>D.comissao.labBase=v,hint:'Descontado da receita antes da comissão.'},
       {label:'Laboratório total (R$)',type:'money',get:()=>D.custoHa.laboratorio,set:v=>D.custoHa.laboratorio=v},
+      {section:'Metas por segmento de serviço',sub:'faturamento e margem por linha',accent:'#2F6FB0'},
       {label:'» Meta de MARGEM geral (%)',type:'pct',get:()=>D.metasServico.margemGeralMeta,set:v=>D.metasServico.margemGeralMeta=v,hint:'Margem-alvo da empresa (base: contribuição direta).'},
       {label:'Meta faturamento — Fertilidade (R$)',type:'money',get:()=>D.metasServico.segmentos[0].metaReceita,set:v=>D.metasServico.segmentos[0].metaReceita=v,hint:'Grid 2/3/5.'},
       {label:'Meta margem — Fertilidade (%)',type:'pct',get:()=>D.metasServico.segmentos[0].metaMargem,set:v=>D.metasServico.segmentos[0].metaMargem=v},
@@ -2628,7 +2696,16 @@ function renderEditors(){
       {label:'Meta faturamento — SoilCheek (R$)',type:'money',get:()=>D.metasServico.segmentos[2].metaReceita,set:v=>D.metasServico.segmentos[2].metaReceita=v,hint:'Compactação.'},
       {label:'Meta margem — SoilCheek (%)',type:'pct',get:()=>D.metasServico.segmentos[2].metaMargem,set:v=>D.metasServico.segmentos[2].metaMargem=v},
       {label:'Meta faturamento — Topografia (R$)',type:'money',get:()=>D.metasServico.segmentos[3].metaReceita,set:v=>D.metasServico.segmentos[3].metaReceita=v,hint:'Curva de Nível + Sistematização.'},
-      {label:'Meta margem — Topografia (%)',type:'pct',get:()=>D.metasServico.segmentos[3].metaMargem,set:v=>D.metasServico.segmentos[3].metaMargem=v}
+      {label:'Meta margem — Topografia (%)',type:'pct',get:()=>D.metasServico.segmentos[3].metaMargem,set:v=>D.metasServico.segmentos[3].metaMargem=v},
+      {section:'Comissão por colaborador',sub:'comissão a pagar = vendas realizadas × taxa',accent:'#B5562A'},
+      {label:'Anderlírio — comissão (%)',type:'pct',get:()=>D.comissaoColab.colaboradores[0].rate,set:v=>D.comissaoColab.colaboradores[0].rate=v,hint:'Mesma taxa p/ vendas gerais e cliente novo.'},
+      {label:'Anderlírio — meta vendas gerais (R$)',type:'money',get:()=>D.comissaoColab.colaboradores[0].metaGeral,set:v=>D.comissaoColab.colaboradores[0].metaGeral=v},
+      {label:'Anderlírio — vendas gerais realizadas (R$)',type:'money',get:()=>D.comissaoColab.colaboradores[0].realGeral,set:v=>D.comissaoColab.colaboradores[0].realGeral=v},
+      {label:'Anderlírio — meta cliente novo (R$)',type:'money',get:()=>D.comissaoColab.colaboradores[0].metaNovo,set:v=>D.comissaoColab.colaboradores[0].metaNovo=v,hint:'Vendas que ele traz sem passar por você.'},
+      {label:'Anderlírio — cliente novo realizado (R$)',type:'money',get:()=>D.comissaoColab.colaboradores[0].realNovo,set:v=>D.comissaoColab.colaboradores[0].realNovo=v},
+      {label:'Bruno — comissão (%)',type:'pct',get:()=>D.comissaoColab.colaboradores[1].rate,set:v=>D.comissaoColab.colaboradores[1].rate=v},
+      {label:'Bruno — meta de vendas (R$)',type:'money',get:()=>D.comissaoColab.colaboradores[1].metaGeral,set:v=>D.comissaoColab.colaboradores[1].metaGeral=v},
+      {label:'Bruno — vendas realizadas (R$)',type:'money',get:()=>D.comissaoColab.colaboradores[1].realGeral,set:v=>D.comissaoColab.colaboradores[1].realGeral=v}
     ]});
 }
 
