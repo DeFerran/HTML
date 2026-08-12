@@ -418,6 +418,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <span class="hint">17% = cenário conservador (maior nº de NFs). Alterna para ver a margem mudar ao vivo.</span>
     </div>
     <div class="kpis" id="kGeral"></div>
+    <div class="panel"><h3>Detalhe por serviço — sem mistura</h3><div class="cap">A média geral mistura ticket alto (Fertilidade Grid) com ticket baixo (SmartSeed, Coleta) e mascara o quadro. Aqui cada serviço aparece isolado: hectares, receita, <b>receita/ha</b>, <b>ticket médio por cliente</b> e a margem — de <b>contribuição</b> (antes da estrutura) e <b>líquida</b> (após ratear a estrutura por receita). A última linha é a média geral, para comparar.</div><div style="overflow-x:auto"><table id="tServGeral"></table></div><div id="servGeralNote"></div></div>
     <div class="toggle" id="tgOutros" onclick="toggleOutros()"><span class="sw"></span>
       <span>Tirar o <b>"Outros" (R$&nbsp;200k)</b> do custo da safra — lançamento pontual de maio, sem categoria <span class="badge">P1 · rastrear</span></span></div>
     <div class="grid g32">
@@ -1133,6 +1134,31 @@ function mk(id,cfg){const el=document.getElementById(id);if(!el)return;
     charts[id]=null;}}
 
 /* ---------- renders ---------- */
+function renderServGeral(){
+  const tel=document.getElementById('tServGeral'); if(!tel)return;
+  const S=SAFRA_BASE;
+  const poolPct=recBruta()>0?custoDemais()/recBruta():0; // estrutura como % da receita (rateio uniforme)
+  const rows=(D.servicos||[]).filter(s=>s&&((+s.rec2627||0)>0||(+s.ha2627||0)>0)).map(s=>{
+    const rec=+s.rec2627||0, ha=+s.ha2627||0, nCli=+s.cli2627||0;
+    const ps=precoServ(S,s.nome), custoHa=+ps.custo||0;         // custo de execução por ha (Lançamentos → Preços por safra)
+    let mcPct=null, liqPct=null;
+    if(custoHa>0){ const m=vendaMargem({safra:S,servico:s.nome,area:ha,valor:rec}); mcPct=m.mcPct; liqPct=m.mcPct-poolPct; }
+    return {nome:s.nome, ha, rec, recHa:ha>0?rec/ha:0, ticket:nCli>0?rec/nCli:0, nCli, custoHa, mcPct, liqPct};
+  }).sort((a,b)=>b.rec-a.rec);
+  const semCusto=rows.some(r=>r.custoHa<=0);
+  const corPct=p=>p>=0.25?'var(--green)':(p>=0.10?'var(--gold,#B8801F)':'var(--red)');
+  const cell=p=>(p==null)?'<td class="num" style="color:var(--muted)">—</td>':'<td class="num" style="color:'+corPct(p)+';font-weight:700">'+(p<0?'−':'')+Math.abs(p*100).toFixed(1)+'%</td>';
+  let h='<thead><tr><th>Serviço</th><th class="num">Hectares</th><th class="num">Receita</th><th class="num">% receita</th><th class="num">Receita/ha</th><th class="num">Ticket médio</th><th class="num">Clientes</th><th class="num">Contrib. %</th><th class="num">Líquida %</th></tr></thead><tbody>';
+  const tRec=rows.reduce((a,r)=>a+r.rec,0);
+  rows.forEach(r=>{ h+='<tr><td>'+esc(r.nome)+'</td><td class="num">'+fnum(Math.round(r.ha))+'</td><td class="num">'+BRLk(r.rec)+'</td>'+
+    '<td class="num">'+(tRec?Math.round(r.rec/tRec*100):0)+'%</td>'+
+    '<td class="num"><b>'+BRL(r.recHa)+'</b></td><td class="num">'+BRLk(r.ticket)+'</td><td class="num">'+fnum(r.nCli)+'</td>'+cell(r.mcPct)+cell(r.liqPct)+'</tr>'; });
+  const tHa=rows.reduce((a,r)=>a+r.ha,0), tCli=(D.clientesCount&&D.clientesCount['26/27'])||rows.reduce((a,r)=>a+r.nCli,0);
+  h+='</tbody><tfoot><tr><td class="mxcat"><b>Média geral (blend)</b></td><td class="num">'+fnum(Math.round(tHa))+'</td><td class="num">'+BRLk(tRec)+'</td><td class="num">100%</td><td class="num"><b>'+BRL(tHa?tRec/tHa:0)+'</b></td><td class="num">'+BRLk(tCli?tRec/tCli:0)+'</td><td class="num">'+fnum(tCli)+'</td><td class="num" colspan="2" style="color:var(--muted)">líquida geral: '+PCT(recBruta()?margemLiq()/recBruta():0)+'</td></tr></tfoot>';
+  tel.innerHTML=h;
+  const nt=document.getElementById('servGeralNote');
+  if(nt) nt.innerHTML=semCusto?('<div class="note" style="margin-top:10px"><b>Margem por serviço ainda indefinida:</b> o <b>custo de execução (R$/ha)</b> de cada serviço está zerado. Preencha em <b>Lançamentos → Preços por safra</b> (coluna Custo) — aí a margem de contribuição e a líquida aparecem por serviço, e você vê quais linhas de ticket baixo dão ou não resultado.</div>'):'';
+}
 function renderGeral(){
   if(baseGate('geral'))return;
   const rb=recBruta(), imp=imposto(), rl=recLiquida();
@@ -1152,8 +1178,9 @@ function renderGeral(){
     {lab:'Clientes 26/27',val:fnum(clv),c:'',sub:'base 25/26: '+fnum(D.clientesCount['25/26']||0)+' clientes'},
     {lab:'Ticket médio / cliente',val:BRLk(ticket),c:'',sub:'receita bruta ÷ clientes'},
     {lab:'Hectares 26/27',val:fnum(Math.round(ha))+' ha',c:'',sub:'área contratada nos serviços'},
-    {lab:'Receita por hectare',val:BRL(recHa),c:'g',sub:'custo/ha: '+BRL(cHa)},
+    {lab:'Receita por hectare',val:BRL(recHa),c:'g',sub:'custo/ha: '+BRL(cHa)+' · média geral (ver detalhe por serviço)'},
   ]);
+  try{ renderServGeral(); }catch(e){ console.warn('servGeral',e); }
   // waterfall 26/27: base(transparent)+valor
   const steps=[
     {n:'Receita bruta',v:rb,t:'abs'},
@@ -3257,7 +3284,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · sim-preco-10';
+const APP_VERSION='2026-08-12 · serv-detalhe-11';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
