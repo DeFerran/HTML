@@ -437,6 +437,10 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Serviços por cliente</h3><div class="cap">Distribuição da carteira 26/27. Quanto mais à esquerda, mais subatendido.</div><div class="chartbox"><canvas id="cServCli"></canvas></div></div>
       <div class="panel"><h3>Top clientes por deslocamento (km)</h3><div class="cap">Km rodado pesa no custo. Cliente longe e pouco atendido merece revisão de preço.</div><div class="chartbox"><canvas id="cKm"></canvas></div></div>
     </div>
+    <div class="grid two">
+      <div class="panel"><h3>Pedidos por mês — sazonalidade 26/27</h3><div class="cap">Nº de pedidos (barras) e receita (linha) por mês do pedido. Informe o <b>Mês do pedido</b> de cada venda em Lançamentos › Clientes.</div><div class="chartbox"><canvas id="cPedMes"></canvas></div><div class="note" id="notePedMes"></div></div>
+      <div class="panel"><h3>Receita lançada por serviço</h3><div class="cap">Receita dos clientes somada pelo <b>Serviço</b> marcado em cada venda. Preencha a coluna Serviço em Lançamentos › Clientes.</div><div class="chartbox"><canvas id="cRecServCli"></canvas></div><div class="note" id="noteRecServ"></div></div>
+    </div>
     <div class="panel"><h3>Matriz de cross-sell — serviços contratados por cliente</h3><div class="cap">Verde = já contrata. Vazio = oportunidade de venda.</div><div class="hm" id="heat"></div></div>
   </section>
 
@@ -695,7 +699,7 @@ function hydrate(d){
   if(!d.custoHa) d.custoHa={coletaCategorias:['Salário','Combustíveis','Manutenção de Veículos','Manutenção de Motos','Materiais Aplicados na Prestação de Serviços','Hospedagem','Pedágios e Balsa'],laboratorio:188000};
   if(!d.safras||!Array.isArray(d.safras.receita)) d.safras={labels:['24/25','25/26','26/27','27/28'],custoCompetencia:[0,0,0,0],receita:[0,0,0,0]};
   if(!Array.isArray(d.clientes)) d.clientes=[];
-  d.clientes.forEach(c=>{ if(c && (c.vendedor===undefined||c.vendedor===null||c.vendedor==='')) c.vendedor='A definir'; });
+  d.clientes.forEach(c=>{ if(!c)return; if(c.vendedor===undefined||c.vendedor===null||c.vendedor==='') c.vendedor='A definir'; if(c.servico==null)c.servico=''; if(c.mes==null)c.mes=''; });
   if(!Array.isArray(d.grupos)||!d.grupos.length) d.grupos=[
     {nome:'Fertilidade',servicos:['Fertilidade Grid 3','Fertilidade Grid 5','Fertilidade Grid 2'],custoDiretoLab:188000,custoDiretoCampo:null,custoDiretoCampoHa:null},
     {nome:'Coleta AP+',servicos:['Coleta Solo AP - Safra+'],custoDiretoLab:0,custoDiretoCampo:null,custoDiretoCampoHa:null},
@@ -1184,8 +1188,32 @@ function renderFin(){
       datalabels:{display:true,color:'#fff',font:{weight:'800',size:10.5},formatter:(v,c)=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);const p=v/t*100;return p>=6?Math.round(p)+'%':'';}},
       tooltip:{callbacks:{label:c=>c.label+': '+BRL(c.raw)}}}}});
 }
+function renderSazonalidade(){
+  const MES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const cnt=MES.map(()=>0), rec=MES.map(()=>0); let semMes=0;
+  (D.clientes||[]).forEach(c=>{ const m=MES.indexOf(c.mes); if(m>=0){ cnt[m]++; rec[m]+=(+c.receita||0); } else if((+c.receita||0)>0||(+c.ha||0)>0) semMes++; });
+  mk('cPedMes',{data:{labels:MES,datasets:[
+    {type:'bar',label:'Nº de pedidos',data:cnt,backgroundColor:C.navy,borderRadius:5,yAxisID:'y',order:2},
+    {type:'line',label:'Receita',data:rec,borderColor:C.gold,backgroundColor:C.gold,borderWidth:2,pointRadius:3,tension:.3,yAxisID:'y1',order:1}]},
+    options:{maintainAspectRatio:false,layout:{padding:{top:16}},plugins:{legend:{display:true,labels:{boxWidth:11,font:{size:10}}},
+      datalabels:{display:c=>c.datasetIndex===0&&c.raw>0,anchor:'end',align:'end',offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>v},
+      tooltip:{callbacks:{label:c=>c.datasetIndex===0?(c.raw+' pedido(s)'):BRL(c.raw)}}},
+      scales:{y:{beginAtZero:true,position:'left',ticks:{precision:0,stepSize:1},title:{display:true,text:'pedidos',font:{size:10}}},
+        y1:{beginAtZero:true,position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>BRLk(v)}}}}});
+  const n1=document.getElementById('notePedMes'); if(n1) n1.textContent = semMes?(semMes+' venda(s) ainda sem mês definido.'):'';
+  const bysrv={}; let semSrv=0;
+  (D.clientes||[]).forEach(c=>{ const r=+c.receita||0; if(r<=0)return; const s=(c.servico||'').trim(); if(!s){semSrv+=r;return;} bysrv[s]=(bysrv[s]||0)+r; });
+  const ent=Object.entries(bysrv).sort((a,b)=>b[1]-a[1]);
+  mk('cRecServCli',{type:'bar',data:{labels:ent.map(e=>e[0]),datasets:[{label:'Receita',data:ent.map(e=>e[1]),backgroundColor:ent.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:52}},plugins:{legend:{display:false},
+      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+      tooltip:{callbacks:{label:c=>BRL(c.raw)}}},
+      scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
+  const n2=document.getElementById('noteRecServ'); if(n2) n2.textContent = semSrv>0?(BRLk(semSrv)+' sem serviço marcado.'):'';
+}
 function renderCli(){
   if(baseGate('cli'))return;
+  try{ renderSazonalidade(); }catch(e){ console.warn('sazonalidade',e); }
   const cl=D.crossSell.clientes, servN=D.crossSell.servicos;
   const nSub=cl.filter(c=>c.total<=1).length, avg=cl.reduce((s,c)=>s+c.total,0)/cl.length;
   const km=D.visitas.reduce((s,v)=>s+v.km,0), vis=D.visitas.reduce((s,v)=>s+v.visitas,0);
@@ -2604,16 +2632,21 @@ function renderCliEditor(){
   }
   /* migração: define Preço/ha a partir da receita já lançada (uma vez) */
   D.clientes.forEach(r=>{ if(r.precoHa==null){ r.precoHa=(+r.ha>0)?((+r.receita||0)/(+r.ha)):0; } });
+  const MESES_PED=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const servOpts=[{v:'',t:'— serviço —'}].concat((D.servicos||[]).map(s=>({v:s.nome,t:s.nome})));
+  const mesOpts=[{v:'',t:'— mês —'}].concat(MESES_PED.map(m=>({v:m,t:m})));
   edTable('edCli',{title:'Clientes e vendas — safra '+S,
-    help:'Cada linha é um cliente. Informe a Área (ha) e o Preço/ha — a Receita é calculada sozinha (Área × Preço/ha). O Grupo define o custeio: Fertilidade (com laboratório), Coleta AP+ (linha de entrada) e Outros. Use Pendência para área mapeada sem receita lançada.',
+    help:'Cada linha é um cliente. Informe a Área (ha) e o Preço/ha — a Receita é calculada sozinha (Área × Preço/ha). O Grupo define o custeio; o Serviço registra o que foi vendido; o Mês do pedido alimenta o gráfico de sazonalidade na aba Clientes.',
     rows:D.clientes,
     cols:[{k:'nome',label:'Cliente',type:'text'},
       {k:'grupo',label:'Grupo',type:'select',opts:[{v:'fert',t:'Fertilidade'},{v:'coleta',t:'Coleta AP+'},{v:'outros',t:'Outros'},{v:'pend',t:'Pendência'}]},
+      {k:'servico',label:'Serviço',type:'select',opts:servOpts},
       {k:'vendedor',label:'Vendedor',type:'select',opts:[{v:'A definir',t:'A definir'},{v:'De Ferran',t:'De Ferran'},{v:'Anderlirio',t:'Anderlirio'},{v:'Bruno',t:'Bruno'}]},
+      {k:'mes',label:'Mês do pedido',type:'select',opts:mesOpts},
       {k:'ha',label:'Área (ha)',type:'num',num:true},
       {k:'precoHa',label:'Preço/ha (R$)',type:'money',num:true},
       {label:'Receita (R$)',type:'calc',num:true,calc:r=>fmoney((+r.ha||0)*(+r.precoHa||0))}],
-    newRow:()=>({nome:'',grupo:'fert',vendedor:'A definir',ha:0,precoHa:0,receita:0}),
+    newRow:()=>({nome:'',grupo:'fert',servico:'',vendedor:'A definir',mes:'',ha:0,precoHa:0,receita:0}),
     onchange:()=>{ D.clientes.forEach(r=>{ r.receita=(+r.ha||0)*(+r.precoHa||0); }); }});
 }
 function renderEditors(){
