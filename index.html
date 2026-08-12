@@ -397,6 +397,10 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Margem % por safra</h3><div class="cap">A 26/27 já está líquida de imposto. O gatilho de comissão cheia é 30%.</div><div class="chartbox"><canvas id="cMargem"></canvas></div></div>
       <div class="panel"><h3>Sensibilidade da margem ao imposto</h3><div class="cap">Como a margem 26/27 responde a 12% / 15% / 17% de NF.</div><div class="chartbox"><canvas id="cSens"></canvas></div></div>
     </div>
+    <div class="grid two">
+      <div class="panel"><h3>Top clientes por receita — 26/27</h3><div class="cap">Concentração da carteira: quanto os maiores clientes representam do faturamento contratado.</div><div class="chartbox"><canvas id="cTopCli"></canvas></div></div>
+      <div class="panel"><h3>Receita por serviço — 26/27</h3><div class="cap">De onde vem o faturamento contratado, por linha de serviço.</div><div class="chartbox"><canvas id="cTopServ"></canvas></div></div>
+    </div>
     <div class="callrow" id="callGeral"></div>
   </section>
 
@@ -965,11 +969,18 @@ function renderGeral(){
   const mo=margemOper(), mop=margemOperPct();
   const mg=margemLiq(), mp=margemPct();
   const clv=D.clientesCount['26/27'];
+  const ha=haTotal(), ticket=clv?rb/clv:0, recHa=ha?rb/ha:0, cHa=ha?cTot/ha:0;
   kpi('kGeral',[
     {lab:'Receita bruta 26/27',val:BRLk(rb),c:'',sub:'faturamento contratado · a receber em 2027'},
     {lab:'Imposto NF ('+(taxRate*100).toFixed(0)+'%)',val:BRLk(imp),c:'gold',sub:'receita líquida: '+BRLk(rl)},
     {lab:'Custo projetado 2026',val:BRLk(cTot),c:'gold',sub:outrosOff?'sem "Outros" R$200k':'Real jan–jul '+BRLk(cReal)+' + ago–dez '+BRLk(cInc)},
-    {lab:'Margem líquida 26/27',val:BRLk(mg),c:mp>=0.30?'g':(mg>0?'gold':'r'),sub:PCT(mp)+' após comissão · oper. '+PCT(mop)},
+    {lab:'Margem operacional',val:BRLk(mo),c:mop>=0.30?'g':(mo>0?'gold':'r'),sub:PCT(mop)+' · antes da comissão'},
+    {lab:'Comissão 30/05/27',val:BRLk(comV),c:'gold',sub:'base − laboratório · '+(comRate()*100).toFixed(0)+'%'},
+    {lab:'Margem líquida 26/27',val:BRLk(mg),c:mp>=0.30?'g':(mg>0?'gold':'r'),sub:PCT(mp)+' após comissão'},
+    {lab:'Clientes 26/27',val:fnum(clv),c:'',sub:'base 25/26: '+fnum(D.clientesCount['25/26']||0)+' clientes'},
+    {lab:'Ticket médio / cliente',val:BRLk(ticket),c:'',sub:'receita bruta ÷ clientes'},
+    {lab:'Hectares 26/27',val:fnum(Math.round(ha))+' ha',c:'',sub:'área contratada nos serviços'},
+    {lab:'Receita por hectare',val:BRL(recHa),c:'g',sub:'custo/ha: '+BRL(cHa)},
   ]);
   // waterfall 26/27: base(transparent)+valor
   const steps=[
@@ -1022,6 +1033,23 @@ function renderGeral(){
     options:{maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:false},
       datalabels:{display:true,anchor:c=>sv[c.dataIndex]>=0?'end':'start',align:c=>sv[c.dataIndex]>=0?'end':'start',clamp:true,clip:false,offset:2,color:c=>sv[c.dataIndex]>=0?C.moss:C.red,font:{weight:'800',size:10.5},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/rb)+')'}}},scales:{y:{ticks:{callback:v=>BRLk(v)}}}}});
+  // top clientes por receita (26/27) — concentração da carteira
+  const recCliTot=sum((D.clientes||[]).map(x=>+x.receita||0))||1;
+  const topCli=(D.clientes||[]).slice().filter(c=>(+c.receita||0)>0).sort((a,b)=>(+b.receita||0)-(+a.receita||0)).slice(0,6);
+  mk('cTopCli',{type:'bar',data:{labels:topCli.map(c=>c.nome),datasets:[{label:'Receita',data:topCli.map(c=>+c.receita||0),
+    backgroundColor:topCli.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:52}},plugins:{legend:{display:false},
+      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+      tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/recCliTot)+' da carteira)'}}},
+      scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
+  // receita por serviço (26/27)
+  const topServ=(D.servicos||[]).slice().filter(s=>(+s.rec2627||0)>0).sort((a,b)=>(+b.rec2627||0)-(+a.rec2627||0)).slice(0,6);
+  mk('cTopServ',{type:'bar',data:{labels:topServ.map(s=>s.nome),datasets:[{label:'Receita',data:topServ.map(s=>+s.rec2627||0),
+    backgroundColor:topServ.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:52}},plugins:{legend:{display:false},
+      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+      tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/rb)+' da receita)'}}},
+      scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
   const nSub=D.crossSell.clientes.filter(c=>c.total<=1).length;
   const fert=D.servicos.filter(x=>x.nome.includes('Fertilidade')).reduce((a,b)=>a+b.rec2627,0);
   call('callGeral',[
