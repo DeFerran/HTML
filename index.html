@@ -3000,6 +3000,7 @@ function abaLiberada(v){ if(ehAdmin)return true; if(!minhasAbas.length)return tr
 async function carregarPermissoes(){
   meuPapel=null; minhasAbas=[]; ehAdmin=false; ehMembro=false;
   if(sb&&sbUser){ try{
+    try{ await sb.rpc('vincular_meu_usuario'); }catch(e){}
     const email=(sbUser.email||'').toLowerCase();
     const {data}=await sb.from('membros').select('papel,abas,ativo').eq('email',email).maybeSingle();
     if(data&&data.ativo){ ehMembro=true; meuPapel=data.papel; ehAdmin=(data.papel==='admin'); minhasAbas=Array.isArray(data.abas)?data.abas:[]; }
