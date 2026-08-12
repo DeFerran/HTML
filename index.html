@@ -2556,30 +2556,30 @@ function renderCustos(){
       tooltip:{callbacks:{label:c=>c.dataset.label+': '+BRL(c.parsed.y)}}},
       scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{callback:v=>BRLk(v)}}}}});
   // ---- LAB KPIs ----
-  const cls=(D.lab&&D.lab.clientes)||[];
-  const novos=cls.filter(c=>c.tipo==='novo'), antigos=cls.filter(c=>c.tipo==='antigo');
-  const recLab=cls.reduce((a,c)=>a+(+c.receita||0),0);
+  const labRows=labClientesGrid().map(c=>{ const r=labCustoCliente(c), a=r.a||{am0020:0,am0010:0,am2040:0}; return {nome:c.nome||'—',tipo:r.tipo,am0020:+a.am0020||0,am0010:+a.am0010||0,am2040:+a.am2040||0,custo:r.custo,receita:+c.receita||0}; });
+  const novos=labRows.filter(c=>c.tipo==='novo'), antigos=labRows.filter(c=>c.tipo!=='novo');
+  const recLab=labRows.reduce((a,c)=>a+c.receita,0);
   kpi('kLab',[
-    {lab:'Custo lab total',val:BRLk(labTotal()),c:'',sub:cls.length+' clientes lançados'},
-    {lab:'Clientes novos (c/ argila)',val:String(novos.length),c:'gold',sub:'lab: '+BRLk(novos.reduce((a,c)=>a+labCli(c),0))},
-    {lab:'Clientes antigos (s/ argila)',val:String(antigos.length),c:'',sub:'lab: '+BRLk(antigos.reduce((a,c)=>a+labCli(c),0))},
+    {lab:'Custo lab total',val:BRLk(labTotal()),c:'',sub:labRows.length+' clientes com grid de Fertilidade'},
+    {lab:'Clientes novos (c/ argila)',val:String(novos.length),c:'gold',sub:'lab: '+BRLk(novos.reduce((a,c)=>a+c.custo,0))},
+    {lab:'Clientes antigos (s/ argila)',val:String(antigos.length),c:'',sub:'lab: '+BRLk(antigos.reduce((a,c)=>a+c.custo,0))},
     {lab:'Lab % da receita',val:recLab?Math.round(labTotal()/recLab*100)+'%':'—',c:recLab&&labTotal()/recLab>0.15?'r':(recLab?'g':''),sub:recLab?'receita lançada: '+BRLk(recLab):'lance a receita p/ ver o %'},
   ]);
   // ---- lab por cliente (top custo) ----
-  const clsSort=cls.slice().map(c=>({nome:c.nome,custo:labCli(c),receita:+c.receita||0,tipo:c.tipo})).filter(c=>c.custo>0).sort((a,b)=>b.custo-a.custo).slice(0,15);
+  const clsSort=labRows.slice().filter(c=>c.custo>0).sort((a,b)=>b.custo-a.custo).slice(0,15);
   mk('cLabCli',{type:'bar',data:{labels:clsSort.map(c=>c.nome),datasets:[{label:'Custo lab',data:clsSort.map(c=>c.custo),backgroundColor:clsSort.map(c=>c.tipo==='novo'?C.gold:C.moss),borderRadius:3}]},
     options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{anchor:'end',align:'end',clamp:true,clip:false,color:C.navy,font:{weight:'700',size:9.5},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>'Custo lab: '+BRL(c.parsed.x)}}},scales:{x:{beginAtZero:true,ticks:{callback:v=>BRLk(v)}}}}});
-  const clsPct=cls.slice().map(c=>({nome:c.nome,pct:(+c.receita>0)?labCli(c)/c.receita*100:0})).filter(c=>c.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,15);
+  const clsPct=labRows.slice().map(c=>({nome:c.nome,pct:(c.receita>0)?c.custo/c.receita*100:0})).filter(c=>c.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,15);
   mk('cLabPct',{type:'bar',data:{labels:clsPct.map(c=>c.nome),datasets:[{label:'Lab % receita',data:clsPct.map(c=>c.pct),backgroundColor:clsPct.map(c=>c.pct>=15?C.red:(c.pct>=10?C.gold:C.moss)),borderRadius:3}]},
     options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{anchor:'end',align:'end',clamp:true,clip:false,color:C.navy,font:{weight:'700',size:9.5},formatter:v=>Math.round(v)+'%'},
       tooltip:{callbacks:{label:c=>'Lab: '+c.parsed.x.toFixed(1)+'% da receita'}}},scales:{x:{beginAtZero:true,ticks:{callback:v=>v+'%'}}}}});
   // ---- tabela lab ----
   const tL=document.getElementById('tLab');
   if(tL){ let h='<thead><tr><th>Cliente</th><th>Tipo</th><th class="num">Am. 00-20</th><th class="num">Am. 00-10</th><th class="num">Am. 20-40</th><th class="num">Custo lab</th><th class="num">Receita</th><th class="num">Lab %</th></tr></thead><tbody>';
-    cls.slice().sort((a,b)=>labCli(b)-labCli(a)).forEach(c=>{ const cu=labCli(c),rc=+c.receita||0,pc=rc?cu/rc*100:null;
+    labRows.slice().sort((a,b)=>b.custo-a.custo).forEach(c=>{ const cu=c.custo,rc=c.receita,pc=rc?cu/rc*100:null;
       h+='<tr><td>'+esc(c.nome||'—')+'</td><td>'+(c.tipo==='novo'?'<span class="badge bnovo">Novo</span>':'<span class="badge">Antigo</span>')+'</td>'+
-        '<td class="num">'+fnum(+c.am0020||0)+'</td><td class="num">'+fnum(+c.am0010||0)+'</td><td class="num">'+fnum(+c.am2040||0)+'</td>'+
+        '<td class="num">'+fnum(c.am0020)+'</td><td class="num">'+fnum(c.am0010)+'</td><td class="num">'+fnum(c.am2040)+'</td>'+
         '<td class="num"><b>'+BRL(cu)+'</b></td><td class="num">'+(rc?BRL(rc):'—')+'</td>'+
         '<td class="num '+(pc==null?'':(pc>=15?'eqating atr':(pc>=10?'eqating ata':'eqating atg')))+'">'+(pc==null?'—':Math.round(pc)+'%')+'</td></tr>'; });
     h+='</tbody>'; tL.innerHTML=h;
@@ -3157,7 +3157,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · recompra-breakeven-6';
+const APP_VERSION='2026-08-12 · lab-custos-auto-7';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
