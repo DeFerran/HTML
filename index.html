@@ -837,9 +837,9 @@ catch(e){ D = JSON.parse(JSON.stringify(SEED)); }
 D = hydrate(D);
 let outrosOff = false, charts = {};
 /* data labels sempre visíveis nos gráficos (não precisa passar o cursor) */
-if(window.ChartDataLabels){Chart.register(ChartDataLabels);}
-Chart.defaults.set('plugins.datalabels',{display:false});
-Chart.defaults.font.family="'Manrope','Segoe UI',system-ui,sans-serif";
+if(window.Chart){ try{ if(window.ChartDataLabels)Chart.register(ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels',{display:false});
+  Chart.defaults.font.family="'Manrope','Segoe UI',system-ui,sans-serif"; }catch(e){ console.warn('Chart init',e); } }
 /* cor dos rótulos externos (varia com o tema) */
 let _labInk='#1b2a1f';
 /* rótulos: dinheiro (abreviado), % e número simples */
@@ -964,8 +964,8 @@ function margVendasSafra(S){
   if(S===SAFRA_BASE){ const car=margVendasCarteira(); if(car.rows.length) return car; }
   return margVendasFunil(S);
 }
-Chart.defaults.font.family="'Manrope',-apple-system,Segoe UI,Roboto,sans-serif";
-Chart.defaults.font.size=11.5;Chart.defaults.color='#707d73';
+if(window.Chart){ try{ Chart.defaults.font.family="'Manrope',-apple-system,Segoe UI,Roboto,sans-serif";
+  Chart.defaults.font.size=11.5;Chart.defaults.color='#707d73'; }catch(e){} }
 /* ---------- tema claro / escuro ---------- */
 const THKEY='dfagro_theme';
 function applyTheme(t,skipRender){
@@ -996,10 +996,15 @@ function custoTotal(){let c=(D.projGastos?D.projGastos.total:sum(D.caixaMensal.c
 function custoReal(){let c=(D.projGastos?D.projGastos.real:sum(D.caixaMensal.custo)); if(outrosOff)c-=outrosVal(); return c;} // "Outros" está em maio (Real)
 function custoAincorrer(){return D.projGastos?D.projGastos.projetado:0;}
 /* --- comissão paga em 30/05/2027 (base = receita bruta − laboratório) --- */
-function comLab(){return (D.comissao&&D.comissao.labBase)||0;}
+/* comLab removido: laboratório é despesa, não base de comissão */
 function comBase(){return recBruta();} // laboratório é despesa, não entra na base de comissão
 function comRate(){return (D.comissao&&D.comissao.rate)||0.07;}
-function comissaoVal(){return comBase()*comRate();}
+function comissaoPlanoTotal(){ const P=D.comissaoPlano; if(!P)return 0; const A=P.anderlirio||{}, B=P.bruno||{};
+  const vA=+A.vendas||0, vB=+B.vendas||0; const rateA=comTierRate(A);
+  const bonus=(B.bonus||[]).reduce((a,bn)=>a+(bn.entregue?(+bn.valor||0):0),0);
+  return vA*rateA + vB*(+A.overrideBrunoRate||0) + vB*(+B.rate||0) + bonus; }
+function comissaoPlanoTemDados(){ const P=D.comissaoPlano; return !!(P&&P.anderlirio&&P.bruno&&(((+P.anderlirio.vendas||0)>0)||((+P.bruno.vendas||0)>0))); }
+function comissaoVal(){ return comissaoPlanoTemDados()?comissaoPlanoTotal():comBase()*comRate(); } // usa o plano escalonado quando há vendas lançadas
 function comMes(){return (D.comissao&&D.comissao.mes)||'Mai/27';}
 /* --- margens: operacional (antes da comissão) e líquida (após) --- */
 function margemOper(){return recLiquida()-custoTotal();}                // antes da comissão
@@ -1092,7 +1097,7 @@ function renderGeral(){
     rowsp('(−) Custo Real (jan–jul 2026)',-cReal,'out','já desembolsado')+
     rowsp('(−) Custo a incorrer (ago–dez 2026)',-cInc,'out','ainda vai sair')+
     `<tr class="tot"><td class="lbl">(=) Margem operacional</td><td class="${mo>=0?'pos':'neg'}">${(mo<0?'−':'')+BRL(Math.abs(mo))} · ${PCT(mop)}</td></tr>`+
-    rowsp('(−) Comissão Bruno+Anderlírio ('+(comRate()*100).toFixed(0)+'%)',-comV,'out','paga em 30/05/2027')+
+    rowsp('(−) Comissão Bruno+Anderlírio '+(comissaoPlanoTemDados()?'(plano escalonado)':('('+(comRate()*100).toFixed(0)+'%)')),-comV,'out','paga em 30/05/2027')+
     `<tr class="tot"><td class="lbl">Margem líquida da safra</td><td class="${mg>=0?'pos':'neg'}">${(mg<0?'−':'')+BRL(Math.abs(mg))} · ${PCT(mp)}</td></tr>`;
   // margem % por safra (26/27 líquida)
   const s=D.safras;
@@ -1399,9 +1404,12 @@ function renderMetasSegmentos(){
   rows+='<tr style="font-weight:700;background:var(--totbg)"><td>Geral (todos os serviços)</td><td>'+BRL(gMeta)+'</td><td>'+BRL(gReal)+'</td><td>'+(gMeta?pctTxt(gReal/gMeta*100):'—')+' '+tag(gMeta>0&&gReal>=gMeta)+'</td><td>'+pctTxt(gMarMetaF*100)+'</td><td>'+pctTxt(gMC.pct*100)+' '+tag(gMC.pct>=gMarMetaF)+'</td></tr>';
   const tel=document.getElementById('tSeg'); if(tel) tel.innerHTML='<thead><tr><th>Segmento</th><th>Meta fat.</th><th>Realizado</th><th>% da meta</th><th>Meta margem</th><th>Margem realizada</th></tr></thead><tbody>'+rows+'</tbody>';
   const noteEl=document.getElementById('noteSeg');
-  if(noteEl){ if(anyClienteServico()){ const semSrv=(D.clientes||[]).reduce((a,c)=>a+(((c&&!(c.servico||'').trim())&&(+c.receita||0)>0)?(+c.receita||0):0),0);
-      noteEl.innerHTML='Realizado por segmento vindo das <b>vendas lançadas por serviço</b> (rótulo <i>vendas</i>). Onde ainda não há venda marcada, usa o agregado da aba Serviços (<i>agregado</i>).'+(semSrv>0?' <b>'+BRL(semSrv)+'</b> em vendas sem serviço marcado não entram na apuração por segmento.':''); }
-    else { noteEl.textContent='Realizado por segmento vindo do agregado da aba Serviços. Marque o Serviço nas vendas (Lançamentos › Clientes) para apurar pelo que foi realmente vendido.'; } }
+  if(noteEl){ const totCli=(D.clientes||[]).reduce((a,c)=>a+(+c.receita||0),0);
+    const comSrv=(D.clientes||[]).reduce((a,c)=>a+((c&&(c.servico||'').trim())?(+c.receita||0):0),0);
+    const prog=totCli?Math.round(comSrv/totCli*100):0;
+    if(anyClienteServico()){ const semSrv=totCli-comSrv;
+      noteEl.innerHTML='<b>'+prog+'%</b> da receita de clientes já tem serviço marcado. O realizado vem das <b>vendas por serviço</b> (rótulo <i>vendas</i>); onde falta, usa o agregado da aba Serviços (<i>agregado</i>).'+(semSrv>0?' Faltam <b>'+BRL(semSrv)+'</b> sem serviço.':' Apuração 100% pelas vendas.'); }
+    else { noteEl.textContent='Realizado por segmento vindo do agregado da aba Serviços. Marque o Serviço nas vendas (Lançamentos › Clientes) para apurar pelo que foi realmente vendido (0% marcado).'; } }
 }
 function renderMetas(){
   if(baseGate('metas'))return;
@@ -2925,6 +2933,13 @@ function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); return; }
 (function(){ let _t='claro'; try{ _t=localStorage.getItem(THKEY)||'claro'; }catch(e){} applyTheme(_t,true); })();
 renderAll();
 try{ authInit(); }catch(e){ console.warn('authInit',e); }
+/* aviso se a biblioteca de gráficos não carregou (sem internet/CDN) — o resto do painel continua funcionando */
+(function(){ if(window.Chart)return; try{
+  const bar=document.createElement('div');
+  bar.style.cssText='background:#8C6A1E;color:#fff;padding:9px 16px;font:600 12.5px/1.4 var(--sans);text-align:center';
+  bar.textContent='⚠ Os gráficos não carregaram (sem conexão com a internet). Os números, tabelas e lançamentos continuam funcionando normalmente.';
+  const h=document.querySelector('header'); if(h&&h.parentNode) h.parentNode.insertBefore(bar,h.nextSibling);
+}catch(e){} })();
 </script>
 </body>
 </html>
