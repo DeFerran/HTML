@@ -219,6 +219,7 @@ table.edtab select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 
 .edbool input{width:auto;height:17px;margin:0;accent-color:var(--leaf);cursor:pointer}
 body.somente-leitura .edbtn,body.somente-leitura #btnSalvar{display:none!important}
 .acessobar{background:#8C6A1E;color:#fff;padding:10px 16px;font:600 12.5px/1.4 var(--sans);text-align:center}
+body.pre-login header,body.pre-login nav.tabs,body.pre-login main,body.pre-login .foot,body.pre-login #acessoBar{display:none!important}
 .admrole{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:capitalize}
 .admrole.admin{background:var(--tintR);color:var(--red)}.admrole.editor{background:var(--tintG);color:var(--leaf)}.admrole.leitor{background:var(--tintGold);color:var(--goldT)}
 /* --- matriz de custo mensal (categoria x mês) --- */
@@ -336,7 +337,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
 </style>
 <script>try{if((localStorage.getItem('dfagro_theme')||'claro')==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}</script>
 </head>
-<body>
+<body class="pre-login">
 <div id="drop"><div class="box"><h2>Solte a planilha GESTÃO_AP aqui</h2><p>O painel lê o arquivo e redesenha tudo automaticamente</p></div></div>
 <div id="authOverlay" class="authov">
   <div class="authbox">
@@ -350,7 +351,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="authmsg" id="authMsg"></div>
     <button class="btn authbtn" id="authGo" onclick="doAuth()">Entrar</button>
     <div class="authalt"><span id="authSwitchTxt">Ainda não tem conta?</span> <a id="authSwitch" onclick="authToggleMode()">Criar conta</a></div>
-    <div class="authalt"><a onclick="authSkip()">Usar offline por enquanto</a></div>
+    <div class="authalt" style="font-size:11px;color:var(--muted);line-height:1.5">Acesso restrito. Se ainda não tem acesso, peça ao administrador para liberar seu e-mail.</div>
   </div>
 </div>
 
@@ -2965,9 +2966,9 @@ async function doAuth(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return;
     }
   }catch(e){ authMsg(traduzErro(e.message||e),'err'); }
   finally{ if(btn) btn.disabled=false; } }
-async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); try{ carregarPermissoes(); }catch(e){} }
+async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); try{ carregarPermissoes(); }catch(e){} document.body.classList.add('pre-login'); showAuth(true); }
 function authSkip(){ showAuth(false); cloudSet('Nuvem: offline'); }
-function onLogin(user){ if(!user)return; sbUser=user; showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); try{ carregarPermissoes(); }catch(e){} }
+function onLogin(user){ if(!user)return; sbUser=user; document.body.classList.remove('pre-login'); showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); try{ carregarPermissoes(); }catch(e){} }
 async function cloudLoad(){ if(!sb||!sbUser)return;
   try{ const {data,error}=await sb.from('painel_estado').select('dados,atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle();
     if(error) throw error;
@@ -2986,10 +2987,11 @@ async function cloudSave(silent){ if(!sb||!sbUser)return;
     if(!silent){ setStatus('● Sincronizado com a nuvem · '+t,'ok'); }
   }catch(e){ syncStamp('pend','Sincronização: pendente (sem conexão)'); setStatus('● Sem sincronizar (erro nuvem): '+(e.message||e),'saving'); } }
 function scheduleCloud(){ if(!sb||!sbUser)return; syncStamp('pend','Sincronização: pendente…'); clearTimeout(_cloudT); _cloudT=setTimeout(()=>{ cloudSave(false); },900); }
-function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); return; }
+function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); document.body.classList.remove('pre-login'); return; } // sem nuvem: libera offline
   cloudSet('Nuvem: entrar');
-  sb.auth.getSession().then(({data})=>{ if(data && data.session && data.session.user){ onLogin(data.session.user); } });
-  sb.auth.onAuthStateChange((_ev,session)=>{ if(session && session.user){ if(!sbUser){ sbUser=session.user; cloudSet('Nuvem: '+(session.user.email||'conectado')); } } else { sbUser=null; cloudSet('Nuvem: entrar'); } }); }
+  sb.auth.getSession().then(({data})=>{ if(data && data.session && data.session.user){ onLogin(data.session.user); } else { showAuth(true); } });
+  sb.auth.onAuthStateChange((_ev,session)=>{ if(session && session.user){ if(!sbUser) onLogin(session.user); }
+    else { sbUser=null; cloudSet('Nuvem: entrar'); meuPapel=null;minhasAbas=[];ehAdmin=false;ehMembro=false; document.body.classList.add('pre-login'); showAuth(true); try{aplicarPermissoes();}catch(e){} } }); }
 
 (function(){ let _t='claro'; try{ _t=localStorage.getItem(THKEY)||'claro'; }catch(e){} applyTheme(_t,true); })();
 renderAll();
