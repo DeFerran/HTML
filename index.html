@@ -931,7 +931,16 @@ function funilServicoLista(){ const s=[];
   (D.funil||[]).forEach(o=>{ const n=String(o&&o.servico||'').trim(); if(n&&s.indexOf(n)<0)s.push(n); });
   if(s.indexOf('Outros')<0)s.push('Outros'); return s; }
 function funilServicoOpts(){ return [{v:'',t:'— selecione —'}].concat(funilServicoLista().map(n=>({v:n,t:n}))); }
-function funilOps(s){ return (D.funil||[]).filter(o=>o&&o.safra===s); }
+function funilOps(s){
+  const manual=(D.funil||[]).filter(o=>o&&o.safra===s);
+  // safra-base: as vendas já FECHADAS vêm automático da carteira real (aba Clientes);
+  // o funil manual entra só com as negociações em aberto, para não duplicar o fechado.
+  if(s===SAFRA_BASE){
+    const cart=(D.clientes||[]).filter(c=>c&&(+c.receita||0)>0).map(c=>({cliente:c.nome||'—',safra:s,servico:c.servico||'',estagio:'Fechado',vendedor:c.vendedor||'A definir',mes:c.mes||'',area:+c.ha||0,precoHa:(+c.ha>0)?((+c.receita||0)/(+c.ha)):0,valor:+c.receita||0,_fonte:'carteira'}));
+    return cart.concat(manual.filter(o=>o.estagio!=='Fechado'));
+  }
+  return manual;
+}
 function funilAgg(ops){ let cheio=0,pond=0,fech=0,area=0,areaFech=0;
   ops.forEach(o=>{ const v=+o.valor||0,p=funilProb(o),a=+o.area||0; cheio+=v; pond+=v*p; area+=a; if(o.estagio==='Fechado'){fech+=v;areaFech+=a;} });
   return {cheio:cheio,pond:pond,fech:fech,area:area,areaFech:areaFech,n:ops.length}; }
@@ -2917,7 +2926,7 @@ function renderEditors(){
   /* migração: Preço/ha a partir do valor já lançado */
   D.funil.forEach(r=>{ if(r.precoHa==null){ r.precoHa=(+r.area>0)?((+r.valor||0)/(+r.area)):0; } });
   edTable('edFunil',{title:'Funil de vendas — oportunidades por safra',
-    help:'Registre cada venda fechada e cada oportunidade em negociação. Informe a Área (ha) e o Preço/ha — o Valor é calculado sozinho (Área × Preço/ha). Estágio define a chance de fechar (Fechado 100% · Provável 70% · Possível 40% · Prospecção 15%), usada na projeção ponderada. Mês previsto no formato Mês/Ano (ex.: Abr/27). A coluna “Ponderado” é calculada sozinha.',
+    help:'As vendas já FECHADAS da safra 26/27 entram automático da aba Clientes — aqui você lança as OPORTUNIDADES em negociação (26/27) e a projeção das próximas safras (27/28). Informe a Área (ha) e o Preço/ha — o Valor é calculado sozinho. Estágio define a chance de fechar (Fechado 100% · Provável 70% · Possível 40% · Prospecção 15%), usada na projeção ponderada. Mês previsto no formato Mês/Ano (ex.: Abr/27).',
     rows:D.funil,
     cols:[
       {k:'cliente',label:'Cliente',type:'text'},
@@ -3204,7 +3213,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · reconciliacao-8';
+const APP_VERSION='2026-08-12 · funil-carteira-9';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
