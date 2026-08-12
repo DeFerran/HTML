@@ -1160,7 +1160,7 @@ function renderServGeral(){
   tel.innerHTML=h;
   const nt=document.getElementById('servGeralNote');
   const faltam=rows.filter(r=>r.custoHa<=0).map(r=>r.nome);
-  let msg='<div class="note" style="margin-top:10px"><b>Custo por serviço:</b> laboratório é calculado <b>por grid</b> (Grid 3 ≈ R$ 19/ha, Grid 5 ≈ R$ 11/ha, Grid 2 ≈ R$ 28/ha — quanto mais denso o grid, mais amostras/ha) e a coleta de campo é rateada por hectare coletado — tudo automático.';
+  let msg='<div class="note" style="margin-top:10px"><b>Custo por serviço:</b> laboratório <b>e coleta</b> são calculados <b>por grid</b> — quanto mais denso o grid, mais pontos e amostras por hectare, mais caro o ha (Grid 2 &gt; Grid 3 &gt; Grid 5). Coleta é alocada por ponto (cada ponto custa o mesmo; cobre 2, 3 ou 5 ha conforme o grid). Tudo automático a partir dos custos reais.';
   if(faltam.length) msg+=' Faltam apenas <b>'+faltam.map(esc).join(', ')+'</b> (não usam coleta/lab): informe o custo/ha em <b>Lançamentos → Preços por safra</b> para ver a margem dessas linhas.';
   nt.innerHTML=(nt?msg+'</div>':'');
 }
@@ -2629,10 +2629,19 @@ function labCustoHa(servico,tipo){ const gha=gridDoServico(servico); if(!(gha>0)
   return ptHa*((pc.p0020!=null?pc.p0020:1)*(tipo==='novo'?(+p.comArgila||0):(+p.semArgila||0)) + (+pc.p0010||0)*(+p.adic0010||0) + (+pc.p2040||0)*(+p.adic2040||0)); }
 /* serviços que consomem a equipe de coleta de campo (grids de fertilidade + coleta de solo) */
 function usaColeta(servico){ return gridDoServico(servico)>0 || /coleta\s*solo/i.test(servico||''); }
-function haColeta(){ const h=(D.servicos||[]).filter(s=>s&&usaColeta(s.nome)).reduce((a,s)=>a+(+s.ha2627||0),0); return h>0?h:1; }
-function coletaHaRate(){ return custoColeta()/haColeta(); }   // custo de coleta de campo por hectare coletado
-/* custo direto de execução por hectare de um serviço: lab (por grid) + coleta de campo + custo manual da tabela de preços (outros serviços) */
-function custoExecHa(servico,tipo){ return labCustoHa(servico,tipo) + (usaColeta(servico)?coletaHaRate():0) + (+(((D.precosSafra&&D.precosSafra[SAFRA_BASE]&&D.precosSafra[SAFRA_BASE][servico])||{}).custo)||0); }
+/* custo de coleta de campo por HECTARE — alocado por PONTO: grid mais denso = mais pontos/ha = mais coleta/ha.
+   Cada ponto custa o mesmo (custoColeta ÷ total de pontos); um ponto de Grid 3 cobre 3 ha, de Grid 5 cobre 5 ha. */
+function coletaCustoHa(servico){ const cc=custoColeta(); if(cc<=0)return 0;
+  const svs=(D.servicos||[]).filter(s=>s&&usaColeta(s.nome));
+  let gPontos=0, gHa=0; svs.forEach(s=>{ const g=gridDoServico(s.nome); if(g>0){ gPontos+=(+s.ha2627||0)/g; gHa+=(+s.ha2627||0); } });
+  const densMedia=gHa>0?gPontos/gHa:0;                                   // densidade média dos grids (p/ coleta de solo sem grid)
+  let totPontos=0; svs.forEach(s=>{ const g=gridDoServico(s.nome); const d=(g>0)?1/g:densMedia; totPontos+=(+s.ha2627||0)*d; });
+  if(totPontos<=0)return 0;
+  const custoPorPonto=cc/totPontos;
+  const g=gridDoServico(servico); const dens=(g>0)?1/g:(usaColeta(servico)?densMedia:0);
+  return dens*custoPorPonto; }
+/* custo direto de execução por hectare de um serviço: lab (por grid) + coleta (por ponto/grid) + custo manual da tabela de preços (outros serviços) */
+function custoExecHa(servico,tipo){ return labCustoHa(servico,tipo) + coletaCustoHa(servico) + (+(((D.precosSafra&&D.precosSafra[SAFRA_BASE]&&D.precosSafra[SAFRA_BASE][servico])||{}).custo)||0); }
 /* resumo de amostras a coletar (planejamento de campo) */
 function resumoAmostras(){ let p0020=0,p0010=0,p2040=0,ha=0,custo=0,n=0;
   labClientesGrid().forEach(c=>{ const r=labCustoCliente(c); if(r.a){ p0020+=r.a.am0020; p0010+=r.a.am0010; p2040+=r.a.am2040; ha+=(+c.ha||0); custo+=r.custo; n++; } });
@@ -3299,7 +3308,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · lab-por-grid-12';
+const APP_VERSION='2026-08-12 · coleta-por-ponto-13';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
