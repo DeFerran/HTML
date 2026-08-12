@@ -1011,7 +1011,8 @@ function margVendasCarteira(){
   const labHa=(typeof custoLab==='function'?custoLab():0)/haFert;   // R$/ha de laboratório (só Fertilidade)
   const rateC=comRate();
   const rows=CL.map(c=>{ const area=(+c.ha>0)?+c.ha:0; const receita=+c.receita||0;
-    const labc=(c.grupo==='fert')?labHa*area:0;                     // custo direto rastreável por cliente
+    const lc=(typeof labCustoCliente==='function')?labCustoCliente(c):null;   // custo real de lab por grid do cliente (exato)
+    const labc=(lc&&lc.custo>0)?lc.custo:((c.grupo==='fert')?labHa*area:0);    // exato quando há grid; senão rateio p/ fert
     const imp=receita*taxRate; const com=Math.max(receita-labc,0)*rateC;
     const mc=receita-imp-labc-com;                                  // = margem de contribuição da aba Clientes
     const precoReal=area>0?receita/area:0;
@@ -1140,9 +1141,10 @@ function renderServGeral(){
   const poolPct=recBruta()>0?custoDemais()/recBruta():0; // estrutura como % da receita (rateio uniforme)
   const rows=(D.servicos||[]).filter(s=>s&&((+s.rec2627||0)>0||(+s.ha2627||0)>0)).map(s=>{
     const rec=+s.rec2627||0, ha=+s.ha2627||0, nCli=+s.cli2627||0;
-    const ps=precoServ(S,s.nome), custoHa=+ps.custo||0;         // custo de execução por ha (Lançamentos → Preços por safra)
+    const custoHa=custoExecHa(s.nome,'antigo');                 // lab por grid + coleta de campo + custo manual (auto)
     let mcPct=null, liqPct=null;
-    if(custoHa>0){ const m=vendaMargem({safra:S,servico:s.nome,area:ha,valor:rec}); mcPct=m.mcPct; liqPct=m.mcPct-poolPct; }
+    if(custoHa>0){ const custoDir=custoHa*ha, imp=rec*taxRate, com=Math.max(rec-custoDir,0)*comRate(); const mc=rec-imp-custoDir-com;
+      mcPct=rec?mc/rec:0; liqPct=mcPct-poolPct; }
     return {nome:s.nome, ha, rec, recHa:ha>0?rec/ha:0, ticket:nCli>0?rec/nCli:0, nCli, custoHa, mcPct, liqPct};
   }).sort((a,b)=>b.rec-a.rec);
   const semCusto=rows.some(r=>r.custoHa<=0);
@@ -1157,7 +1159,10 @@ function renderServGeral(){
   h+='</tbody><tfoot><tr><td class="mxcat"><b>Média geral (blend)</b></td><td class="num">'+fnum(Math.round(tHa))+'</td><td class="num">'+BRLk(tRec)+'</td><td class="num">100%</td><td class="num"><b>'+BRL(tHa?tRec/tHa:0)+'</b></td><td class="num">'+BRLk(tCli?tRec/tCli:0)+'</td><td class="num">'+fnum(tCli)+'</td><td class="num" colspan="2" style="color:var(--muted)">líquida geral: '+PCT(recBruta()?margemLiq()/recBruta():0)+'</td></tr></tfoot>';
   tel.innerHTML=h;
   const nt=document.getElementById('servGeralNote');
-  if(nt) nt.innerHTML=semCusto?('<div class="note" style="margin-top:10px"><b>Margem por serviço ainda indefinida:</b> o <b>custo de execução (R$/ha)</b> de cada serviço está zerado. Preencha em <b>Lançamentos → Preços por safra</b> (coluna Custo) — aí a margem de contribuição e a líquida aparecem por serviço, e você vê quais linhas de ticket baixo dão ou não resultado.</div>'):'';
+  const faltam=rows.filter(r=>r.custoHa<=0).map(r=>r.nome);
+  let msg='<div class="note" style="margin-top:10px"><b>Custo por serviço:</b> laboratório é calculado <b>por grid</b> (Grid 3 ≈ R$ 19/ha, Grid 5 ≈ R$ 11/ha, Grid 2 ≈ R$ 28/ha — quanto mais denso o grid, mais amostras/ha) e a coleta de campo é rateada por hectare coletado — tudo automático.';
+  if(faltam.length) msg+=' Faltam apenas <b>'+faltam.map(esc).join(', ')+'</b> (não usam coleta/lab): informe o custo/ha em <b>Lançamentos → Preços por safra</b> para ver a margem dessas linhas.';
+  nt.innerHTML=(nt?msg+'</div>':'');
 }
 function renderGeral(){
   if(baseGate('geral'))return;
@@ -2618,6 +2623,16 @@ function labPrincipal(c){ const p=labP(); return (+c.am0020||0)*(c.tipo==='novo'
 function labCli(c){ const p=labP(); return labPrincipal(c)+(+c.am0010||0)*p.adic0010+(+c.am2040||0)*p.adic2040; }
 /* total do laboratório = automático, a partir dos grids lançados em Clientes */
 function labTotal(){ return labClientesGrid().reduce((s,c)=>s+labCustoCliente(c).custo,0); }
+/* custo de laboratório por HECTARE de um serviço de grid — varia com a densidade do grid (ha/ponto) e o tipo (novo paga argila).
+   Ex.: Grid 3 antigo = (1/3)·38 + (1/3)·0,30·38 + (1/3)·0,20·34 = R$18,73/ha (bate com o Edras: 66.502 ÷ 3.550). */
+function labCustoHa(servico,tipo){ const gha=gridDoServico(servico); if(!(gha>0))return 0; const p=labP(),pc=labPct(); const ptHa=1/gha;
+  return ptHa*((pc.p0020!=null?pc.p0020:1)*(tipo==='novo'?(+p.comArgila||0):(+p.semArgila||0)) + (+pc.p0010||0)*(+p.adic0010||0) + (+pc.p2040||0)*(+p.adic2040||0)); }
+/* serviços que consomem a equipe de coleta de campo (grids de fertilidade + coleta de solo) */
+function usaColeta(servico){ return gridDoServico(servico)>0 || /coleta\s*solo/i.test(servico||''); }
+function haColeta(){ const h=(D.servicos||[]).filter(s=>s&&usaColeta(s.nome)).reduce((a,s)=>a+(+s.ha2627||0),0); return h>0?h:1; }
+function coletaHaRate(){ return custoColeta()/haColeta(); }   // custo de coleta de campo por hectare coletado
+/* custo direto de execução por hectare de um serviço: lab (por grid) + coleta de campo + custo manual da tabela de preços (outros serviços) */
+function custoExecHa(servico,tipo){ return labCustoHa(servico,tipo) + (usaColeta(servico)?coletaHaRate():0) + (+(((D.precosSafra&&D.precosSafra[SAFRA_BASE]&&D.precosSafra[SAFRA_BASE][servico])||{}).custo)||0); }
 /* resumo de amostras a coletar (planejamento de campo) */
 function resumoAmostras(){ let p0020=0,p0010=0,p2040=0,ha=0,custo=0,n=0;
   labClientesGrid().forEach(c=>{ const r=labCustoCliente(c); if(r.a){ p0020+=r.a.am0020; p0010+=r.a.am0010; p2040+=r.a.am2040; ha+=(+c.ha||0); custo+=r.custo; n++; } });
@@ -3284,7 +3299,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · serv-detalhe-11';
+const APP_VERSION='2026-08-12 · lab-por-grid-12';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
