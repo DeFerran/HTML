@@ -464,6 +464,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Receita lançada por serviço</h3><div class="cap">Receita dos clientes somada pelo <b>Serviço</b> marcado em cada venda. Preencha a coluna Serviço em Lançamentos › Clientes.</div><div class="chartbox"><canvas id="cRecServCli"></canvas></div><div class="note" id="noteRecServ"></div></div>
     </div>
     <div class="panel"><h3>Matriz de cross-sell — serviços contratados por cliente</h3><div class="cap">Verde = já contrata. Vazio = oportunidade de venda.</div><div class="hm" id="heat"></div></div>
+    <div class="panel"><h3>Pipeline de recompra — reamostragem prevista</h3><div class="cap">Quando cada cliente deve <b>reamostrar</b> (Última coleta + Ciclo, definidos em Lançamentos › Clientes). É a receita <b>recorrente</b> da sua carteira: planeje a venda antes do concorrente. Clientes de Fertilidade Grid já vêm com ciclo de 2 anos.</div><div class="kpis" id="kRecompra" style="margin-bottom:14px"></div><div style="overflow-x:auto"><table id="tRecompra"></table></div></div>
   </section>
 
   <!-- SERVIÇOS -->
@@ -528,6 +529,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Cascata da margem por hectare (empresa)</h3><div class="cap">Do preço de venda/ha médio até a margem líquida/ha. Mostra quanto cada bloco de custo consome de cada hectare vendido.</div><div class="chartbox tall"><canvas id="cCascataHa"></canvas></div></div>
       <div class="panel"><h3>% da receita consumida por custo</h3><div class="cap">Peso de cada categoria sobre a receita bruta. Imposto, salário e laboratório são os três maiores drenos.</div><div class="chartbox tall"><canvas id="cCatPct"></canvas></div></div>
     </div>
+    <div class="panel"><h3>Ponto de equilíbrio — em hectares</h3><div class="cap">Quantos hectares você precisa vender para cobrir o custo fixo de estrutura. Cada hectare acima disso vira lucro; a <b>margem de segurança</b> é a sua folga na safra atual.</div><div class="kpis" id="kBreakeven"></div></div>
 
     <div class="lead" style="margin-top:6px"><h2 style="font-size:19px">Ranking de clientes</h2>
       <p>Quem fatura mais, quem contribui mais e quem está subprecificado. <b>Margem de contribuição = receita − imposto − laboratório − comissão</b> — ainda <b>não</b> inclui custo de campo (a definir) nem rateio de estrutura. Serve para priorizar reajuste e cross-sell, não como lucro líquido final.</p></div>
@@ -735,7 +737,12 @@ function hydrate(d){
   if(!d.custoHa) d.custoHa={coletaCategorias:['Salário','Combustíveis','Manutenção de Veículos','Manutenção de Motos','Materiais Aplicados na Prestação de Serviços','Hospedagem','Pedágios e Balsa'],laboratorio:188000};
   if(!d.safras||!Array.isArray(d.safras.receita)) d.safras={labels:['24/25','25/26','26/27','27/28'],custoCompetencia:[0,0,0,0],receita:[0,0,0,0]};
   if(!Array.isArray(d.clientes)) d.clientes=[];
-  d.clientes.forEach(c=>{ if(!c)return; if(c.vendedor===undefined||c.vendedor===null||c.vendedor==='') c.vendedor='A definir'; if(c.servico==null)c.servico=''; if(c.mes==null)c.mes=''; });
+  const _safraBaseHy=(d.safras&&d.safras.labels&&d.safras.labels[2])||'26/27';
+  d.clientes.forEach(c=>{ if(!c)return; if(c.vendedor===undefined||c.vendedor===null||c.vendedor==='') c.vendedor='A definir'; if(c.servico==null)c.servico=''; if(c.mes==null)c.mes='';
+    // ciclo de reamostragem (recompra): última coleta (safra) + ciclo em anos
+    if(c.ultimaColeta==null)c.ultimaColeta=''; if(c.cicloColeta==null)c.cicloColeta=0;
+    // pré-preenche clientes de Fertilidade Grid já vendidos nesta safra: última = safra-base, ciclo padrão 2 anos
+    if(!c.ultimaColeta && /Fertilidade Grid/i.test(c.servico||'') && (+c.ha||0)>0){ c.ultimaColeta=_safraBaseHy; if(!(+c.cicloColeta>0))c.cicloColeta=2; } });
   if(!Array.isArray(d.grupos)||!d.grupos.length) d.grupos=[
     {nome:'Fertilidade',servicos:['Fertilidade Grid 3','Fertilidade Grid 5','Fertilidade Grid 2'],custoDiretoLab:188000,custoDiretoCampo:null,custoDiretoCampoHa:null},
     {nome:'Coleta AP+',servicos:['Coleta Solo AP - Safra+'],custoDiretoLab:0,custoDiretoCampo:null,custoDiretoCampoHa:null},
@@ -1070,6 +1077,16 @@ function coletaCats(){return (D.custoHa&&D.custoHa.coletaCategorias)||[];}
 function custoColeta(){const cc=D.custoCategoria2026||{};return coletaCats().reduce((a,k)=>a+(cc[k]||0),0);}
 function custoLab(){ const lt=(typeof labTotal==='function')?labTotal():0; if(lt>0)return lt; return (D.custoHa&&D.custoHa.laboratorio!=null)?D.custoHa.laboratorio:0; } // despesa: análises da aba Laboratório, ou valor base
 function custoDemais(){return Math.max(custoTotal()-custoColeta()-custoLab(),0);} // estrutura/overhead restante
+/* --- ponto de equilíbrio em hectares --- contribuição/ha cobre o custo fixo de estrutura */
+function contribHa(){ const ha=haTotal(); const varc=custoLab()+custoColeta(); return ha>0?(recBruta()-varc)/ha:0; } // margem de contribuição por hectare (após custos variáveis)
+function breakevenHa(){ const c=contribHa(); return c>0?custoDemais()/c:0; }                                        // ha necessários p/ cobrir a estrutura
+function breakevenRec(){ const ha=haTotal(); return ha>0?breakevenHa()*(recBruta()/ha):0; }                          // receita de equilíbrio
+function margemSeguranca(){ const ha=haTotal(); const be=breakevenHa(); return ha>0?(ha-be)/ha:0; }                   // folga acima do equilíbrio (pode ser negativa)
+/* --- ciclo de reamostragem (recompra) --- */
+function safraMais(label,n){ const m=String(label||'').match(/(\d{2})\s*\/\s*(\d{2})/); if(!m)return ''; const pad=x=>String(((x%100)+100)%100).padStart(2,'0'); return pad(+m[1]+(+n||0))+'/'+pad(+m[2]+(+n||0)); }
+function proximaColeta(c){ if(!c||!c.ultimaColeta||!((+c.cicloColeta)>0))return ''; return safraMais(c.ultimaColeta,+c.cicloColeta); }
+function recompraLista(){ return (D.clientes||[]).filter(c=>c&&proximaColeta(c)).map(c=>({nome:c.nome||'',servico:c.servico||'',ha:+c.ha||0,ultima:c.ultimaColeta,ciclo:+c.cicloColeta||0,proxima:proximaColeta(c),estimativa:+c.receita||0}))
+  .sort((a,b)=>a.proxima<b.proxima?-1:a.proxima>b.proxima?1:b.estimativa-a.estimativa); }
 /* --- metas por segmento de serviço: receita e margem de contribuição direta --- */
 function anyClienteServico(){ return (D.clientes||[]).some(c=>c&&(c.servico||'').trim()); }
 function segReceitaClientes(seg){ const set=new Set((seg&&seg.servicos)||[]); return (D.clientes||[]).reduce((a,c)=>a+((c&&set.has(c.servico))?(+c.receita||0):0),0); }
@@ -1270,9 +1287,26 @@ function renderSazonalidade(){
       scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
   const n2=document.getElementById('noteRecServ'); if(n2) n2.textContent = semSrv>0?(BRLk(semSrv)+' sem serviço marcado.'):'';
 }
+function renderRecompra(){
+  const lista=recompraLista(), proxSafra=safraMais(SAFRA_BASE,1);
+  const totReceita=lista.reduce((a,x)=>a+x.estimativa,0), totHa=lista.reduce((a,x)=>a+x.ha,0);
+  const naProx=lista.filter(x=>x.proxima===proxSafra), recProx=naProx.reduce((a,x)=>a+x.estimativa,0);
+  if(document.getElementById('kRecompra')) kpi('kRecompra',[
+    {lab:'Recompra mapeada',val:lista.length+' clientes',sub:fnum(Math.round(totHa))+' ha com ciclo definido'},
+    {lab:'Receita potencial de recompra',val:BRLk(totReceita),c:'gold',sub:'repetindo o ticket atual de cada cliente'},
+    {lab:'Próxima safra '+proxSafra,val:BRLk(recProx),c:naProx.length?'g':'',sub:naProx.length+' cliente(s) reamostram em '+proxSafra},
+  ]);
+  const tel=document.getElementById('tRecompra'); if(!tel)return;
+  if(!lista.length){ tel.innerHTML='<tbody><tr><td style="padding:14px 6px;color:var(--muted);line-height:1.5">Defina a <b>Última coleta</b> (safra) e o <b>Ciclo (anos)</b> de cada cliente em Lançamentos › Clientes para montar o pipeline de recompra. Clientes de Fertilidade Grid já vêm pré-preenchidos com ciclo de 2 anos.</td></tr></tbody>'; return; }
+  const rows=lista.map(x=>{ const prox=x.proxima===proxSafra; return '<tr><td>'+esc(x.nome)+'</td><td>'+esc(x.servico||'—')+'</td><td class="num">'+fnum(x.ha)+'</td>'+
+    '<td>'+esc(x.ultima)+'</td><td class="num">'+x.ciclo+' ano(s)</td><td'+(prox?' style="font-weight:800;color:var(--leaf)"':'')+'>'+esc(x.proxima)+'</td>'+
+    '<td class="num">'+BRL(x.estimativa)+'</td></tr>'; }).join('');
+  tel.innerHTML='<thead><tr><th>Cliente</th><th>Serviço</th><th class="num">Área (ha)</th><th>Última coleta</th><th class="num">Ciclo</th><th>Próxima</th><th class="num">Receita estimada</th></tr></thead><tbody>'+rows+'</tbody>';
+}
 function renderCli(){
   if(baseGate('cli'))return;
   try{ renderSazonalidade(); }catch(e){ console.warn('sazonalidade',e); }
+  try{ renderRecompra(); }catch(e){ console.warn('recompra',e); }
   const cl=D.crossSell.clientes, servN=D.crossSell.servicos;
   const nSub=cl.filter(c=>c.total<=1).length, avg=cl.reduce((s,c)=>s+c.total,0)/cl.length;
   const km=D.visitas.reduce((s,v)=>s+v.km,0), vis=D.visitas.reduce((s,v)=>s+v.visitas,0);
@@ -1529,6 +1563,14 @@ function renderMetas(){
     {lab:'Laboratório 26/27',val:BRLk(lab),sub:'valor real isolado'},
     {lab:'Coleta 26/27',val:BRLk(col),sub:'rateio custos de campo'},
     {lab:'Demais custos / ha',val:BRL(dem/ha),sub:'estrutura e overhead'},
+  ]);
+  /* ponto de equilíbrio em hectares */
+  const chHa=contribHa(), beHa=breakevenHa(), beRec=breakevenRec(), ms=margemSeguranca();
+  if(document.getElementById('kBreakeven')) kpi('kBreakeven',[
+    {lab:'Ponto de equilíbrio',val:fnum(Math.round(beHa))+' ha',c:beHa<=ha?'g':'r',sub:'de '+fnum(Math.round(ha))+' ha vendidos na safra'},
+    {lab:'Receita de equilíbrio',val:BRLk(beRec),sub:'cobre a estrutura de '+BRLk(dem)},
+    {lab:'Contribuição / ha',val:BRL(chHa),c:'gold',sub:'sobra por ha após lab + coleta'},
+    {lab:'Margem de segurança',val:PCT(ms),c:ms>=0.2?'g':(ms>0?'gold':'r'),sub:ms>0?'folga acima do equilíbrio':'abaixo do equilíbrio!'},
   ]);
   /* cascata da margem por hectare */
   const stH=[
@@ -2766,6 +2808,8 @@ function renderCliEditor(){
   const MESES_PED=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const servOpts=[{v:'',t:'— serviço —'}].concat((D.servicos||[]).map(s=>({v:s.nome,t:s.nome})));
   const mesOpts=[{v:'',t:'— mês —'}].concat(MESES_PED.map(m=>({v:m,t:m})));
+  const _sb=(D.safras&&D.safras.labels&&D.safras.labels[2])||SAFRA_BASE;
+  const safraOpts=[{v:'',t:'— safra —'}].concat([-2,-1,0].map(n=>{ const s=safraMais(_sb,n); return {v:s,t:s}; }));
   edTable('edCli',{title:'Clientes e vendas — safra '+S,
     help:'Cada linha é um cliente. Informe a Área (ha) e o Preço/ha — a Receita é calculada sozinha (Área × Preço/ha). O Grupo define o custeio; o Serviço registra o que foi vendido; o Mês do pedido alimenta o gráfico de sazonalidade na aba Clientes.',
     rows:D.clientes,
@@ -2776,8 +2820,10 @@ function renderCliEditor(){
       {k:'mes',label:'Mês do pedido',type:'select',opts:mesOpts},
       {k:'ha',label:'Área (ha)',type:'num',num:true},
       {k:'precoHa',label:'Preço/ha (R$)',type:'money',num:true},
-      {label:'Receita (R$)',type:'calc',num:true,calc:r=>fmoney((+r.ha||0)*(+r.precoHa||0))}],
-    newRow:()=>({nome:'',grupo:'fert',servico:'',vendedor:'A definir',mes:'',ha:0,precoHa:0,receita:0}),
+      {label:'Receita (R$)',type:'calc',num:true,calc:r=>fmoney((+r.ha||0)*(+r.precoHa||0))},
+      {k:'ultimaColeta',label:'Última coleta',type:'select',opts:safraOpts},
+      {k:'cicloColeta',label:'Ciclo (anos)',type:'num',num:true}],
+    newRow:()=>({nome:'',grupo:'fert',servico:'',vendedor:'A definir',mes:'',ha:0,precoHa:0,receita:0,ultimaColeta:'',cicloColeta:0}),
     onchange:()=>{ D.clientes.forEach(r=>{ r.receita=(+r.ha||0)*(+r.precoHa||0); }); }});
 }
 function renderEditors(){
@@ -3111,7 +3157,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · comissao-auto-5';
+const APP_VERSION='2026-08-12 · recompra-breakeven-6';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
