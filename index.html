@@ -2630,7 +2630,12 @@ function atualizarAudit(){
 function drawLabClientes(){
   const host=document.getElementById('edLab'); if(!host)return;
   const cls=labClientesGrid();
-  let h='<div class="edhead"><h3>Amostras e custo por cliente (automático)</h3><p class="edhelp">Puxado das vendas com grid de Fertilidade. Amostras = Área ÷ (ha/ponto do grid) × % de coleta. Escolha <b>Novo</b> (paga argila no 00-20) ou <b>Antigo</b>. Para mudar as quantidades, ajuste o grid/% acima ou a Área em Clientes.</p></div>';
+  const R=resumoAmostras();
+  const badge=cls.length
+    ? '✓ '+cls.length+' cliente(s) de Fertilidade Grid puxado(s) · '+fnum(Math.round(R.ha))+' ha · '+fnum(R.total)+' amostras'
+    : '⚠ Nenhum cliente de Fertilidade Grid nesta base — confira se está conectado à nuvem (login) e o Serviço/Área na aba Clientes';
+  let h='<div class="edhead"><h3>Amostras e custo por cliente (automático)</h3><p class="edhelp">Puxado das vendas com grid de Fertilidade. Amostras = Área ÷ (ha/ponto do grid) × % de coleta. Escolha <b>Novo</b> (paga argila no 00-20) ou <b>Antigo</b>. Para mudar as quantidades, ajuste o grid/% acima ou a Área em Clientes.</p>'+
+    '<div style="margin-top:7px;font-size:12.5px;font-weight:700;color:'+(cls.length?'var(--head)':'var(--red)')+';background:'+(cls.length?'var(--tintG)':'var(--tintR)')+';border:1px solid var(--line);border-radius:8px;padding:7px 11px;display:inline-block">'+badge+'</div></div>';
   h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Cliente</th><th>Grid</th><th class="num">Área (ha)</th><th>Tipo</th><th class="num">Am. 00-20</th><th class="num">Am. 00-10</th><th class="num">Am. 20-40</th><th class="num">Receita</th><th class="num">Custo lab</th></tr></thead><tbody>';
   if(!cls.length) h+='<tr><td colspan="9" style="color:var(--muted);padding:14px 6px">Nenhuma venda com grid de Fertilidade lançada. Em <b>Clientes</b>, defina o Serviço (Grid 2/3/5) e a Área.</td></tr>';
   cls.forEach(c=>{ const r=labCustoCliente(c), a=r.a;
@@ -3095,7 +3100,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · admin-ui-3';
+const APP_VERSION='2026-08-12 · lab-count-4';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
