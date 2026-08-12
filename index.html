@@ -477,6 +477,11 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Mix de receita 26/27</h3><div class="cap">Concentração por linha de serviço.</div><div class="chartbox tall"><canvas id="cServPie"></canvas></div></div>
     </div>
     <div class="panel"><h3>Detalhe por serviço</h3><div class="cap">Ticket por hectare = receita ÷ ha vendidos.</div><div style="overflow-x:auto"><table id="tServ"></table></div></div>
+    <div class="panel" id="reconPanel"><h3>Reconciliação &amp; completude de dados</h3><div class="cap">Confere as duas fontes de receita — o <b>agregado por serviço</b> (esta aba, Visão Geral) contra as <b>vendas por cliente</b> (aba Clientes). Não altera nenhum número; só mostra onde divergem e o que falta lançar para as abas ficarem 100% coerentes.</div>
+      <div class="kpis" id="kRecon" style="margin-bottom:14px"></div>
+      <div style="overflow-x:auto"><table id="tRecon"></table></div>
+      <div id="reconGaps" style="margin-top:14px"></div>
+    </div>
   </section>
 
   <!-- METAS & MARGEM/HA -->
@@ -1366,6 +1371,48 @@ function renderServ(){
   sv.forEach(s=>{const th=s.ha2627?s.rec2627/s.ha2627:0;const var_=s.rec2526?(s.rec2627-s.rec2526)/s.rec2526:0;
     t+=`<tr><td>${s.nome}</td><td>${Math.round(s.ha2627).toLocaleString('pt-BR')}</td><td>${BRL(s.rec2627)}</td><td>${s.cli2627}</td><td>${th?BRL(th):'—'}</td><td>${BRL(s.rec2526)}</td><td><span class="tag ${var_>0.05?'hi':(var_<-0.05?'lo':'md')}">${s.rec2526?(var_>=0?'+':'')+PCT(var_):'novo'}</span></td></tr>`});
   t+='</tbody>';document.getElementById('tServ').innerHTML=t;
+  try{ renderReconcilia(); }catch(e){ console.warn('reconcilia',e); }
+}
+function renderReconcilia(){
+  // fonte 1: agregado por serviço (D.servicos)  ·  fonte 2: vendas por cliente (D.clientes)
+  const agg={}; (D.servicos||[]).forEach(s=>{ if(s&&s.nome) agg[s.nome]=(agg[s.nome]||0)+(+s.rec2627||0); });
+  const cli={}; (D.clientes||[]).forEach(c=>{ if(c&&(c.servico||'').trim()) cli[c.servico]=(cli[c.servico]||0)+(+c.receita||0); });
+  const nomes=Array.from(new Set([...Object.keys(agg),...Object.keys(cli)])).sort();
+  const totAgg=Object.values(agg).reduce((a,b)=>a+b,0), totCli=Object.values(cli).reduce((a,b)=>a+b,0);
+  let nDiverg=0, somaDif=0;
+  const linhas=nomes.map(n=>{ const a=agg[n]||0, c=cli[n]||0, dif=c-a; if(Math.abs(dif)>=1){nDiverg++; somaDif+=Math.abs(dif);} return {n,a,c,dif}; });
+  // KPIs
+  if(document.getElementById('kRecon')) kpi('kRecon',[
+    {lab:'Total geral',val:(Math.abs(totAgg-totCli)<1?'bate ✓':BRLk(Math.abs(totAgg-totCli))+' dif.'),c:Math.abs(totAgg-totCli)<1?'g':'gold',sub:'agregado '+BRLk(totAgg)+' · clientes '+BRLk(totCli)},
+    {lab:'Serviços que divergem',val:String(nDiverg),c:nDiverg?'r':'g',sub:nDiverg?'somam '+BRLk(somaDif)+' de diferença':'todas as linhas batem'},
+    {lab:'Carteira — nº de clientes',val:((D.crossSell&&D.crossSell.clientes||[]).length)+' × '+((D.clientes||[]).length),c:((D.crossSell&&D.crossSell.clientes||[]).length)!==((D.clientes||[]).length)?'gold':'g',sub:'cross-sell × vendas reais'},
+  ]);
+  // tabela por serviço
+  const tel=document.getElementById('tRecon');
+  if(tel){ const rows=linhas.map(r=>{ const bate=Math.abs(r.dif)<1; const cor=bate?'var(--green)':(r.dif>0?'var(--red)':'var(--gold,#B8801F)');
+      const tag=bate?'<span class="tag hi">bate</span>':(r.a===0?'<span class="tag lo">só em clientes</span>':(r.c===0?'<span class="tag lo">só no agregado</span>':'<span class="tag md">difere</span>'));
+      return '<tr><td>'+esc(r.n)+'</td><td class="num">'+BRL(r.a)+'</td><td class="num">'+BRL(r.c)+'</td><td class="num" style="color:'+cor+';font-weight:700">'+(bate?'—':(r.dif>0?'+':'−')+BRL(Math.abs(r.dif)))+'</td><td>'+tag+'</td></tr>'; }).join('');
+    tel.innerHTML='<thead><tr><th>Serviço</th><th class="num">Agregado (Serviços)</th><th class="num">Vendas por cliente</th><th class="num">Diferença</th><th>Situação</th></tr></thead><tbody>'+rows+'</tbody>';
+  }
+  // pontas soltas / completude
+  const semServ=(D.clientes||[]).filter(c=>c&&(+c.receita||0)>0&&!(c.servico||'').trim());
+  const semServR=semServ.reduce((a,c)=>a+(+c.receita||0),0);
+  const semVend=(D.clientes||[]).filter(c=>c&&(+c.receita||0)>0&&(!c.vendedor||c.vendedor==='A definir'));
+  const semVendR=semVend.reduce((a,c)=>a+(+c.receita||0),0);
+  const metasSemVenda=((D.metasServico&&D.metasServico.segmentos)||[]).filter(sg=>(+sg.metaReceita||0)>0 && !((sg.servicos||[]).some(nm=>cli[nm]>0)));
+  const funilVazio=!((D.funil||[]).length);
+  const semCiclo=(D.clientes||[]).filter(c=>c&&/Fertilidade Grid/i.test(c.servico||'')&&(+c.ha||0)>0&&!proximaColeta(c));
+  const gaps=[];
+  if(semServ.length) gaps.push(['r',semServ.length+' venda(s) sem serviço marcado ('+BRLk(semServR)+')','não entram nos gráficos por serviço/segmento — marque o Serviço em Lançamentos › Clientes']);
+  if(semVend.length) gaps.push(['gold',semVend.length+' venda(s) sem vendedor ('+BRLk(semVendR)+')','ficam como "A definir" e não entram na comissão de ninguém']);
+  metasSemVenda.forEach(sg=>gaps.push(['gold','Segmento "'+esc(sg.nome)+'" tem meta mas nenhuma venda marcada','marque o serviço correspondente nas vendas ou zere a meta']));
+  if(funilVazio) gaps.push(['navy','Funil de vendas vazio','sem pipeline não dá para projetar a próxima safra — lance em Lançamentos › Funil']);
+  if(semCiclo.length) gaps.push(['navy',semCiclo.length+' cliente(s) de grid sem ciclo de recompra','defina Última coleta + Ciclo para entrarem no pipeline de recompra']);
+  const gel=document.getElementById('reconGaps');
+  if(gel){ if(!gaps.length){ gel.innerHTML='<div class="note" style="color:var(--green)"><b>✓ Sem pontas soltas.</b> Todos os lançamentos estão completos.</div>'; }
+    else { gel.innerHTML='<div class="cap" style="margin-bottom:6px"><b>O que falta lançar para reconciliar:</b></div>'+
+      gaps.map(g=>'<div class="callitem" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)"><span class="tag '+(g[0]==='r'?'lo':(g[0]==='gold'?'md':'hi'))+'" style="flex:none;margin-top:2px">•</span><div><b>'+g[1]+'</b><div style="color:var(--muted);font-size:12px">'+g[2]+'</div></div></div>').join(''); }
+  }
 }
 function renderOp(){
   if(baseGate('op'))return;
@@ -3157,7 +3204,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · lab-custos-auto-7';
+const APP_VERSION='2026-08-12 · reconciliacao-8';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
