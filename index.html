@@ -993,7 +993,7 @@ function custoReal(){let c=(D.projGastos?D.projGastos.real:sum(D.caixaMensal.cus
 function custoAincorrer(){return D.projGastos?D.projGastos.projetado:0;}
 /* --- comissão paga em 30/05/2027 (base = receita bruta − laboratório) --- */
 function comLab(){return (D.comissao&&D.comissao.labBase)||0;}
-function comBase(){return recBruta()-comLab();}
+function comBase(){return recBruta();} // laboratório é despesa, não entra na base de comissão
 function comRate(){return (D.comissao&&D.comissao.rate)||0.07;}
 function comissaoVal(){return comBase()*comRate();}
 function comMes(){return (D.comissao&&D.comissao.mes)||'Mai/27';}
@@ -1009,15 +1009,15 @@ function custo26(){return custoTotal();}
 function haTotal(){return D.servicos.reduce((a,s)=>a+(s.ha2627>0?s.ha2627:0),0)||1;}
 function coletaCats(){return (D.custoHa&&D.custoHa.coletaCategorias)||[];}
 function custoColeta(){const cc=D.custoCategoria2026||{};return coletaCats().reduce((a,k)=>a+(cc[k]||0),0);}
-function custoLab(){return (D.custoHa&&D.custoHa.laboratorio!=null)?D.custoHa.laboratorio:comLab();}
+function custoLab(){ const lt=(typeof labTotal==='function')?labTotal():0; if(lt>0)return lt; return (D.custoHa&&D.custoHa.laboratorio!=null)?D.custoHa.laboratorio:0; } // despesa: análises da aba Laboratório, ou valor base
 function custoDemais(){return Math.max(custoTotal()-custoColeta()-custoLab(),0);} // estrutura/overhead restante
 /* --- metas por segmento de serviço: receita e margem de contribuição direta --- */
 function segReceita(seg){ const set=new Set((seg&&seg.servicos)||[]); return (D.servicos||[]).reduce((a,s)=>a+(set.has(s.nome)?(+s.rec2627||0):0),0); }
 function segTemFert(seg){ return (((seg&&seg.servicos)||[]).some(n=>/Fertilidade/i.test(n))); }
 function segMC(seg){ const rec=segReceita(seg); if(!rec) return {rec:0,imp:0,lab:0,com:0,mc:0,pct:0};
-  const imp=rec*taxRate, lab=segTemFert(seg)?custoLab():0, com=Math.max(rec-lab,0)*comRate();
+  const imp=rec*taxRate, lab=segTemFert(seg)?custoLab():0, com=rec*comRate();
   const mc=rec-imp-lab-com; return {rec:rec,imp:imp,lab:lab,com:com,mc:mc,pct:rec?mc/rec:0}; }
-function geralMC(){ const rec=recBruta(), imp=rec*taxRate, lab=custoLab(), com=Math.max(rec-lab,0)*comRate(); const mc=rec-imp-lab-com; return {rec:rec,mc:mc,pct:rec?mc/rec:0}; }
+function geralMC(){ const rec=recBruta(), imp=rec*taxRate, lab=custoLab(), com=rec*comRate(); const mc=rec-imp-lab-com; return {rec:rec,mc:mc,pct:rec?mc/rec:0}; }
 function kpi(el,items){document.getElementById(el).innerHTML=items.map(i=>
   `<div class="kpi ${i.c||''}"><div class="lab">${i.lab}</div><div class="val">${i.val}</div>${i.sub?`<div class="sub">${i.sub}</div>`:''}</div>`).join('')}
 function call(el,items){document.getElementById(el).innerHTML=items.map(i=>
@@ -2735,8 +2735,7 @@ function renderEditors(){
       {section:'Premissas financeiras',sub:'movem a margem de todo o painel',accent:'#C08A2C'},
       {label:'Imposto sobre NF (%)',type:'pct',get:()=>D.impostoNF.rate,set:v=>{D.impostoNF.rate=v;taxRate=v;document.querySelectorAll('#taxseg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.t)-v)<1e-9));},hint:'Reflete na margem de todo o painel.'},
       {label:'Comissão (%)',type:'pct',get:()=>D.comissao.rate,set:v=>D.comissao.rate=v,hint:'Base do vendedor.'},
-      {label:'Base de comissão — laboratório (R$)',type:'money',get:()=>D.comissao.labBase,set:v=>D.comissao.labBase=v,hint:'Descontado da receita antes da comissão.'},
-      {label:'Laboratório total (R$)',type:'money',get:()=>D.custoHa.laboratorio,set:v=>D.custoHa.laboratorio=v},
+      {label:'Laboratório — despesa base (R$)',type:'money',get:()=>D.custoHa.laboratorio,set:v=>D.custoHa.laboratorio=v,hint:'Despesa (não é comissão). Cresce com as análises de fertilidade — ao preencher a aba Laboratório, o custo passa a ser calculado pela quantidade de análises.'},
       {section:'Metas por segmento de serviço',sub:'faturamento e margem por linha',accent:'#2F6FB0'},
       {label:'» Meta de MARGEM geral (%)',type:'pct',get:()=>D.metasServico.margemGeralMeta,set:v=>D.metasServico.margemGeralMeta=v,hint:'Margem-alvo da empresa (base: contribuição direta).'},
       {label:'Meta faturamento — Fertilidade (R$)',type:'money',get:()=>D.metasServico.segmentos[0].metaReceita,set:v=>D.metasServico.segmentos[0].metaReceita=v,hint:'Grid 2/3/5.'},
