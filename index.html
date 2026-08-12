@@ -2423,6 +2423,23 @@ function labPrincipal(c){ const p=labP(); return (+c.am0020||0)*(c.tipo==='novo'
 function labCli(c){ const p=labP(); return labPrincipal(c)+(+c.am0010||0)*p.adic0010+(+c.am2040||0)*p.adic2040; }
 /* total do laboratório = automático, a partir dos grids lançados em Clientes */
 function labTotal(){ return labClientesGrid().reduce((s,c)=>s+labCustoCliente(c).custo,0); }
+/* resumo de amostras a coletar (planejamento de campo) */
+function resumoAmostras(){ let p0020=0,p0010=0,p2040=0,ha=0,custo=0,n=0;
+  labClientesGrid().forEach(c=>{ const r=labCustoCliente(c); if(r.a){ p0020+=r.a.am0020; p0010+=r.a.am0010; p2040+=r.a.am2040; ha+=(+c.ha||0); custo+=r.custo; n++; } });
+  return {p0020:p0020,p0010:p0010,p2040:p2040,total:p0020+p0010+p2040,ha:ha,custo:custo,n:n}; }
+function resumoColetaHTML(){
+  const R=resumoAmostras(), co=D.coleta||{}, carros=+co.carros||1;
+  const kc=(l,v,s)=>'<div class="kpi"><div class="lab">'+l+'</div><div class="val">'+v+'</div>'+(s?'<div class="sub">'+s+'</div>':'')+'</div>';
+  return '<div class="panel" style="margin-bottom:16px"><h3>Planejamento de coleta — amostras a coletar</h3>'+
+    '<div class="cap">Puxado automático das vendas com grid de Fertilidade (Serviço + Área em Clientes). Total de pontos e amostras por profundidade para dimensionar o trabalho de campo.</div>'+
+    '<div class="kpis" style="margin-bottom:0">'+
+      kc('Pontos de coleta (00-20)',fnum(R.p0020),R.n+' cliente(s) · '+fnum(Math.round(R.ha))+' ha')+
+      kc('Amostras 00-10',fnum(R.p0010),'')+
+      kc('Amostras 20-40',fnum(R.p2040),'')+
+      kc('Total de amostras',fnum(R.total),'custo lab '+BRL(R.custo))+
+      kc('Pontos por carro',fnum(carros?Math.round(R.p0020/carros):0),carros+' carro(s)')+
+    '</div></div>';
+}
 /* -- coleta: custo e performance -- */
 function colLinha(col,tipo){ return (col.linhas||[]).find(l=>l.tipo===tipo); }
 function colSumTipo(col,tipo){ const l=colLinha(col,tipo); return l?(l.valores||[]).reduce((a,b)=>a+(+b||0),0):0; }
@@ -2583,7 +2600,7 @@ function renderColetaEditor(){
   function fmtCell(un,v){ return un==='R$'?fmoney(v):fnum(v); }
   function lineSum(l){ return (l.valores||[]).reduce((a,b)=>a+(+b||0),0); }
   function draw(){
-    let h='<div class="edhead"><h3>Coleta — custo e produção por coletor</h3><p class="edhelp">Uma matriz por coletor (equipe flexível — deixe zero nos meses que a pessoa não trabalhou). Linhas de <b>custo</b> (R$) somam o gasto; <b>ha</b>, <b>pontos</b> e <b>dias</b> medem a produção. Custo/ponto e custo/ha aparecem no rodapé.</p><label class="carroslbl">Carros em uso: <input class="edinp num carrosinp" value="'+esc(fnum(co.carros||2))+'" style="width:60px"></label></div>';
+    let h=resumoColetaHTML()+'<div class="edhead"><h3>Coleta — custo e produção por coletor</h3><p class="edhelp">Uma matriz por coletor (equipe flexível — deixe zero nos meses que a pessoa não trabalhou). Linhas de <b>custo</b> (R$) somam o gasto; <b>ha</b>, <b>pontos</b> e <b>dias</b> medem a produção. Custo/ponto e custo/ha aparecem no rodapé.</p><label class="carroslbl">Carros em uso: <input class="edinp num carrosinp" value="'+esc(fnum(co.carros||2))+'" style="width:60px"></label></div>';
     co.coletores.forEach((col,ci)=>{
       const cu=colCustoTotal(col),pt=colSumTipo(col,'pontos'),ha=colSumTipo(col,'ha');
       h+='<div class="eqcolcard" data-ci="'+ci+'"><div class="eqhd"><input class="edinp eqname colname" data-ci="'+ci+'" value="'+esc(col.nome)+'">'+
