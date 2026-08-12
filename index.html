@@ -601,6 +601,14 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     </div>
     <div class="panel"><h3>Margem por venda</h3><div class="cap">Cada linha é uma venda (cliente × serviço). Preço praticado vs. tabela mostra o desvio de preço; a margem de contribuição e a margem cheia mostram o que sobra. Ordenado da maior para a menor contribuição.</div><div style="overflow-x:auto"><table id="tMargVenda"></table></div></div>
     <div class="panel"><h3>Ranking de clientes por rentabilidade</h3><div class="cap">Consolidado por cliente na safra em foco: receita, contribuição, margem % e lucro cheio (após estrutura). Use para saber quem sustenta a empresa e quem precisa de reajuste.</div><div style="overflow-x:auto"><table id="tMargCli"></table></div></div>
+    <div class="panel" id="simPrecoPanel"><h3>Simulador de reajuste de preço</h3><div class="cap">Quanto um reajuste no preço/ha faz na sua margem. Como quase todo o custo é fixo (estrutura, coleta, laboratório), o aumento de preço vira margem quase inteira — só imposto e comissão sobem junto. Base: safra 26/27.</div>
+      <div class="simctrl" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:8px 0 16px">
+        <div class="edpills" id="simPills"></div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)">Reajuste no preço/ha <input type="range" id="simRange" min="0" max="30" step="1" style="width:190px;accent-color:var(--leaf)"> <b id="simPct" style="font-size:16px;color:var(--head);min-width:52px">+0%</b></label>
+      </div>
+      <div class="kpis" id="kSimPreco"></div>
+      <div class="note" id="simNote" style="margin-top:12px"></div>
+    </div>
   </section>
 
   <section class="view" id="v-equipe">
@@ -2393,9 +2401,45 @@ function renderFunil(){
 }
 
 /* ===================== PREÇOS & MARGEM POR VENDA ===================== */
+let _simReajuste=10; // % de reajuste no preço/ha para o simulador
+function renderSimPreco(){
+  if(!document.getElementById('kSimPreco'))return;
+  const r=(+_simReajuste||0)/100;
+  const rb=recBruta(), ha=haTotal();
+  const imp=imposto(), ct=custoTotal(), comA=comissaoVal();
+  const margA=rb-imp-ct-comA;                     // margem líquida atual
+  const rbN=rb*(1+r), impN=rbN*taxRate;           // imposto acompanha a receita
+  const comN=comA*(1+r);                          // comissão ~ proporcional à receita (estimativa)
+  const margN=rbN-impN-ct-comN;                   // margem líquida com reajuste (custos fixos)
+  const dMarg=margN-margA, dRec=rbN-rb;
+  const preA=ha?rb/ha:0, preN=ha?rbN/ha:0;
+  // pills de atalho
+  const pill=document.getElementById('simPills');
+  if(pill && !pill.dataset.done){ pill.dataset.done='1';
+    pill.innerHTML=[0,5,10,15,20].map(v=>'<button class="edpill" data-v="'+v+'">+'+v+'%</button>').join('');
+    pill.querySelectorAll('button').forEach(b=>{ b.onclick=()=>{ _simReajuste=+b.dataset.v; const rg=document.getElementById('simRange'); if(rg)rg.value=_simReajuste; renderSimPreco(); }; });
+  }
+  if(pill) pill.querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.v===+_simReajuste));
+  const rg=document.getElementById('simRange'); if(rg){ if(rg.value!=String(_simReajuste))rg.value=_simReajuste; if(!rg.dataset.done){ rg.dataset.done='1'; rg.oninput=()=>{ _simReajuste=+rg.value; renderSimPreco(); }; } }
+  const pc=document.getElementById('simPct'); if(pc)pc.textContent='+'+_simReajuste+'%';
+  kpi('kSimPreco',[
+    {lab:'Receita com reajuste',val:BRLk(rbN),c:'',sub:'era '+BRLk(rb)+' · +'+BRLk(dRec)},
+    {lab:'Margem líquida',val:BRLk(margN),c:'g',sub:'era '+BRLk(margA)+' · +'+BRLk(dMarg)},
+    {lab:'Margem %',val:PCT(rbN?margN/rbN:0),c:'gold',sub:'era '+PCT(rb?margA/rb:0)},
+    {lab:'Preço médio / ha',val:BRL(preN),c:'',sub:'era '+BRL(preA)},
+    {lab:'Comissão estimada',val:BRLk(comN),c:'',sub:'era '+BRLk(comA)},
+  ]);
+  const nt=document.getElementById('simNote');
+  if(nt){ let msg='<b>Leitura:</b> um reajuste de <b>+'+_simReajuste+'%</b> adiciona <b>'+BRL(dRec)+'</b> de receita e <b style="color:var(--green)">'+BRL(dMarg)+'</b> de margem líquida — como o custo fixo não muda, quase todo o aumento vira resultado.';
+    const base=rb*(1-taxRate)-comA;
+    if(margA<0 && base>0){ const rBE=Math.max(0,(ct/base-1)*100); msg+=' Hoje a margem líquida está <b style="color:var(--red)">negativa</b> — um reajuste de ~<b>+'+Math.round(rBE)+'%</b> já zera o prejuízo.'; }
+    nt.innerHTML=msg;
+  }
+}
 function renderPrecoMargem(){
   if(typeof document==='undefined')return;
   if(!document.getElementById('v-margem'))return;
+  try{ renderSimPreco(); }catch(e){ console.warn('simPreco',e); }
   const S=safraAtual();
   const tag=document.getElementById('margSafraTag'); if(tag)tag.textContent=S;
   // ---- tabela de preços da safra ----
@@ -3213,7 +3257,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · funil-carteira-9';
+const APP_VERSION='2026-08-12 · sim-preco-10';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
