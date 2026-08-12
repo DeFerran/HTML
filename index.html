@@ -217,6 +217,10 @@ table.edtab select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 
 .edbool{display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--ink);font-weight:600;
   text-transform:none;letter-spacing:0;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--card)}
 .edbool input{width:auto;height:17px;margin:0;accent-color:var(--leaf);cursor:pointer}
+body.somente-leitura .edbtn,body.somente-leitura #btnSalvar{display:none!important}
+.acessobar{background:#8C6A1E;color:#fff;padding:10px 16px;font:600 12.5px/1.4 var(--sans);text-align:center}
+.admrole{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:capitalize}
+.admrole.admin{background:var(--tintR);color:var(--red)}.admrole.editor{background:var(--tintG);color:var(--leaf)}.admrole.leitor{background:var(--tintGold);color:var(--goldT)}
 /* --- matriz de custo mensal (categoria x mês) --- */
 .mxwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin-top:4px}
 table.mxtab{border-collapse:separate;border-spacing:0;font-size:12px;min-width:1100px}
@@ -375,6 +379,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
   <button data-v="custos">Custos &amp; Coleta</button>
   <button data-v="op">Operação</button>
   <button data-v="edit">✎ Lançamentos</button>
+  <button data-v="admin" id="tabAdmin" style="display:none">⚙ Administração</button>
 </nav>
 
 <div class="safrabar" id="safraBar">
@@ -681,6 +686,19 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="edsec" data-sec="coleta" style="display:none"><div id="edColeta"></div></div>
     <div class="edsec" data-sec="estr" style="display:none"><div class="edcard" id="edEstrutura"></div></div>
     <div class="edsec" data-sec="op" style="display:none"><div class="edcard" id="edOp"></div><div class="edcard" id="edEtapas"></div><div class="edcard" id="edVisitas"></div></div>
+  </section>
+
+  <!-- ADMINISTRAÇÃO -->
+  <section class="view" id="v-admin">
+    <div class="lead"><h2>Administração — usuários e acessos</h2>
+      <p>Libere quem pode acessar (por e-mail), defina o papel e as abas de cada um. <b>Admin</b> vê e altera tudo; <b>Editor</b> edita o painel; <b>Leitor</b> só visualiza. A pessoa cria a conta com o e-mail liberado e o acesso é aplicado no primeiro login.</p></div>
+    <div class="panel"><h3>Adicionar / liberar usuário</h3>
+      <div class="edform" id="admForm"></div>
+      <div class="authmsg" id="admMsg" style="margin-top:10px"></div></div>
+    <div class="panel"><h3>Usuários liberados</h3><div class="cap">Papel e abas de cada um. As mudanças valem no próximo carregamento da pessoa.</div><div style="overflow-x:auto"><table id="tMembros"></table></div></div>
+    <div class="panel"><h3>Histórico de versões (meu painel)</h3><div class="cap">Snapshots automáticos do seu painel (a cada ~10 min de edição) e manuais. Restaurar substitui os dados atuais pela versão escolhida.</div>
+      <div style="margin-bottom:10px"><button class="edbtn primary" onclick="cloudSnapshotManual()">➕ Criar versão agora</button> <button class="edbtn" onclick="carregarHistorico()">↺ Atualizar lista</button></div>
+      <div style="overflow-x:auto"><table id="tHistorico"></table></div></div>
   </section>
 
   <div class="foot">DF AGRO Consultoria Agrícola · Painel de gestão editável · Os dados são salvos automaticamente neste navegador. Use "Baixar painel atualizado" para backup e para levar a outro computador.</div>
@@ -1643,6 +1661,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');document.getElementById('v-'+b.dataset.v).classList.add('active');
   if(b.dataset.v==='edit')renderEditors();
+  if(b.dataset.v==='admin'){ try{renderAdmin();carregarHistorico();}catch(e){} }
   if(b.dataset.v==='funil')renderFunil();
   if(b.dataset.v==='margem')renderPrecoMargem();
   if(b.dataset.v==='equipe')renderEquipe();
@@ -2946,9 +2965,9 @@ async function doAuth(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return;
     }
   }catch(e){ authMsg(traduzErro(e.message||e),'err'); }
   finally{ if(btn) btn.disabled=false; } }
-async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); }
+async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); try{ carregarPermissoes(); }catch(e){} }
 function authSkip(){ showAuth(false); cloudSet('Nuvem: offline'); }
-function onLogin(user){ if(!user)return; sbUser=user; showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); }
+function onLogin(user){ if(!user)return; sbUser=user; showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); try{ carregarPermissoes(); }catch(e){} }
 async function cloudLoad(){ if(!sb||!sbUser)return;
   try{ const {data,error}=await sb.from('painel_estado').select('dados,atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle();
     if(error) throw error;
@@ -2974,6 +2993,94 @@ function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); return; }
 
 (function(){ let _t='claro'; try{ _t=localStorage.getItem(THKEY)||'claro'; }catch(e){} applyTheme(_t,true); })();
 renderAll();
+/* ===================== CONTROLE DE ACESSO (RBAC) ===================== */
+const ABAS_TODAS=[{v:'geral',t:'Visão Geral'},{v:'fin',t:'Financeiro'},{v:'cli',t:'Clientes'},{v:'serv',t:'Serviços'},{v:'funil',t:'Funil'},{v:'margem',t:'Preços & Margem'},{v:'metas',t:'Metas'},{v:'equipe',t:'Equipe'},{v:'custos',t:'Custos'},{v:'op',t:'Operação'},{v:'edit',t:'Lançamentos'}];
+let meuPapel=null, minhasAbas=[], ehAdmin=false, ehMembro=false, _admNovo={email:'',papel:'leitor',abas:[]};
+function abaLiberada(v){ if(ehAdmin)return true; if(!minhasAbas.length)return true; return minhasAbas.indexOf(v)>=0; }
+async function carregarPermissoes(){
+  meuPapel=null; minhasAbas=[]; ehAdmin=false; ehMembro=false;
+  if(sb&&sbUser){ try{
+    const email=(sbUser.email||'').toLowerCase();
+    const {data}=await sb.from('membros').select('papel,abas,ativo').eq('email',email).maybeSingle();
+    if(data&&data.ativo){ ehMembro=true; meuPapel=data.papel; ehAdmin=(data.papel==='admin'); minhasAbas=Array.isArray(data.abas)?data.abas:[]; }
+  }catch(e){ console.warn('permissoes',e); } }
+  aplicarPermissoes();
+  if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
+}
+function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
+  if(!show){ if(bar)bar.remove(); return; }
+  if(!bar){ bar=document.createElement('div'); bar.id='acessoBar'; bar.className='acessobar'; const nav=document.querySelector('nav.tabs'); if(nav&&nav.parentNode)nav.parentNode.insertBefore(bar,nav.nextSibling); }
+  bar.textContent=txt;
+}
+function aplicarPermissoes(){
+  const logado=!!sbUser, aplicar=logado&&ehMembro;
+  const ta=document.getElementById('tabAdmin'); if(ta) ta.style.display=ehAdmin?'':'none';
+  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin')return;
+    b.style.display=(aplicar&&!abaLiberada(v))?'none':''; });
+  const leitor=aplicar&&meuPapel==='leitor';
+  document.body.classList.toggle('somente-leitura',leitor);
+  if(logado&&!ehMembro) mostrarAcessoBar(true,'Seu acesso ainda não foi liberado pelo administrador. Você visualiza o painel, mas alterações não são salvas na nuvem.');
+  else if(leitor) mostrarAcessoBar(true,'Acesso de leitura: você visualiza o painel, mas não edita.');
+  else mostrarAcessoBar(false);
+  const at=document.querySelector('#tabs button.active');
+  if(at&&at.style.display==='none'){ const g=document.querySelector('#tabs button[data-v="geral"]'); if(g)g.click(); }
+}
+function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+function renderAdminForm(){
+  const el=document.getElementById('admForm'); if(!el)return;
+  el.innerHTML=
+    '<div class="edfield"><label>E-mail do usuário</label><input id="admEmail" placeholder="pessoa@email.com" value="'+esc(_admNovo.email)+'"></div>'+
+    '<div class="edfield"><label>Papel</label><select id="admPapel">'+['admin','editor','leitor'].map(p=>'<option value="'+p+'"'+(_admNovo.papel===p?' selected':'')+'>'+p+'</option>').join('')+'</select></div>'+
+    '<div class="edfield" style="grid-column:1/-1"><label>Abas liberadas (vazio = todas)</label><div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px">'+
+      ABAS_TODAS.map(a=>'<label class="edbool" style="border:none;padding:2px 0"><input type="checkbox" data-aba="'+a.v+'"'+(_admNovo.abas.indexOf(a.v)>=0?' checked':'')+'><span>'+a.t+'</span></label>').join('')+
+    '</div></div>'+
+    '<div class="edfield"><label>&nbsp;</label><button class="edbtn primary" id="admAdd">➕ Liberar acesso</button></div>';
+  const em=document.getElementById('admEmail'); if(em)em.oninput=()=>_admNovo.email=em.value;
+  const pp=document.getElementById('admPapel'); if(pp)pp.onchange=()=>_admNovo.papel=pp.value;
+  el.querySelectorAll('input[data-aba]').forEach(c=>c.onchange=()=>{ const v=c.dataset.aba, i=_admNovo.abas.indexOf(v); if(c.checked){ if(i<0)_admNovo.abas.push(v);} else if(i>=0)_admNovo.abas.splice(i,1); });
+  const ab=document.getElementById('admAdd'); if(ab)ab.onclick=adicionarMembro;
+}
+async function adicionarMembro(){
+  if(!sb||!ehAdmin){ admMsg('Sem permissão.','err'); return; }
+  const email=(_admNovo.email||'').trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ admMsg('Digite um e-mail válido.','err'); return; }
+  admMsg('Salvando…');
+  try{ const {error}=await sb.from('membros').upsert({email:email,papel:_admNovo.papel,abas:_admNovo.abas,ativo:true,convidado_por:(sbUser.email||'')},{onConflict:'email'});
+    if(error)throw error; admMsg('Acesso liberado para '+email+'.','ok'); _admNovo={email:'',papel:'leitor',abas:[]}; renderAdmin();
+  }catch(e){ admMsg('Erro: '+(e.message||e),'err'); }
+}
+async function atualizarMembro(id,patch){ if(!sb||!ehAdmin)return; try{ patch.atualizado_em=new Date().toISOString(); await sb.from('membros').update(patch).eq('id',id); renderAdmin(); }catch(e){ admMsg('Erro: '+(e.message||e),'err'); } }
+async function removerMembro(id,email){ if(!sb||!ehAdmin)return; if(!confirm('Remover o acesso de '+email+'?'))return; try{ await sb.from('membros').delete().eq('id',id); renderAdmin(); }catch(e){ admMsg('Erro: '+(e.message||e),'err'); } }
+async function renderAdmin(){
+  renderAdminForm();
+  const tel=document.getElementById('tMembros'); if(!tel||!sb)return;
+  try{ const {data}=await sb.from('membros').select('id,email,papel,abas,ativo,user_id').order('criado_em',{ascending:true});
+    const rows=(data||[]).map(m=>{ const abas=(Array.isArray(m.abas)&&m.abas.length)?m.abas.length+' aba(s)':'todas';
+      const vinc=m.user_id?'<span class="tag hi">conta ativa</span>':'<span class="tag md">aguardando 1º login</span>';
+      return '<tr><td>'+esc(m.email)+'</td><td><span class="admrole '+m.papel+'">'+m.papel+'</span></td><td>'+abas+'</td><td>'+vinc+'</td>'+
+        '<td style="text-align:right;white-space:nowrap"><button class="edbtn" data-act="papel" data-id="'+m.id+'" data-papel="'+m.papel+'">papel</button> '+
+        '<button class="edbtn" data-act="toggle" data-id="'+m.id+'" data-ativo="'+(m.ativo?1:0)+'">'+(m.ativo?'desativar':'ativar')+'</button> '+
+        '<button class="edbtn ghost" data-act="rem" data-id="'+m.id+'" data-email="'+esc(m.email)+'">remover</button></td></tr>'; }).join('');
+    tel.innerHTML='<thead><tr><th>E-mail</th><th>Papel</th><th>Abas</th><th>Conta</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="color:var(--muted);padding:12px">Nenhum usuário liberado ainda.</td></tr>')+'</tbody>';
+    tel.querySelectorAll('button[data-act]').forEach(btn=>btn.onclick=()=>{ const id=+btn.dataset.id;
+      if(btn.dataset.act==='papel'){ const o=['leitor','editor','admin']; atualizarMembro(id,{papel:o[(o.indexOf(btn.dataset.papel)+1)%3]}); }
+      else if(btn.dataset.act==='toggle'){ atualizarMembro(id,{ativo:btn.dataset.ativo!=='1'}); }
+      else if(btn.dataset.act==='rem'){ removerMembro(id,btn.dataset.email); } });
+  }catch(e){ tel.innerHTML='<tbody><tr><td>Erro ao carregar: '+esc(e.message||e)+'</td></tr></tbody>'; }
+}
+async function cloudSnapshotManual(){ if(!sb||!sbUser){ alert('Entre na nuvem para versionar.'); return; }
+  try{ await sb.from('painel_historico').insert({user_id:sbUser.id,empresa:'DF AGRO',dados:D,origem:'manual'}); carregarHistorico(); setStatus('● Versão criada','ok'); }catch(e){ alert('Erro ao criar versão: '+(e.message||e)); } }
+async function carregarHistorico(){ const tel=document.getElementById('tHistorico'); if(!tel||!sb||!sbUser)return;
+  try{ const {data}=await sb.from('painel_historico').select('id,origem,criado_em').order('criado_em',{ascending:false}).limit(50);
+    const rows=(data||[]).map(h=>'<tr><td>'+new Date(h.criado_em).toLocaleString('pt-BR')+'</td><td>'+(h.origem==='manual'?'<span class="tag hi">manual</span>':'<span class="tag md">automática</span>')+'</td><td style="text-align:right"><button class="edbtn" data-hid="'+h.id+'">restaurar</button></td></tr>').join('');
+    tel.innerHTML='<thead><tr><th>Data / hora</th><th>Origem</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3" style="color:var(--muted);padding:12px">Nenhuma versão ainda.</td></tr>')+'</tbody>';
+    tel.querySelectorAll('button[data-hid]').forEach(btn=>btn.onclick=()=>restaurarVersao(+btn.dataset.hid));
+  }catch(e){ tel.innerHTML='<tbody><tr><td>Erro: '+esc(e.message||e)+'</td></tr></tbody>'; } }
+async function restaurarVersao(id){ if(!sb||!sbUser)return; if(!confirm('Restaurar esta versão? Os dados atuais serão substituídos (o estado atual é guardado como versão antes).'))return;
+  try{ const {data,error}=await sb.from('painel_historico').select('dados').eq('id',id).maybeSingle(); if(error)throw error;
+    if(data&&data.dados){ D=hydrate(data.dados); saveLocal(); try{renderEditors();}catch(e){} renderAll(); if(typeof scheduleCloud==='function')scheduleCloud(); setStatus('● Versão restaurada','ok'); }
+  }catch(e){ alert('Erro ao restaurar: '+(e.message||e)); } }
+aplicarPermissoes();
 try{ authInit(); }catch(e){ console.warn('authInit',e); }
 /* aviso se a biblioteca de gráficos não carregou (sem internet/CDN) — o resto do painel continua funcionando */
 (function(){ if(window.Chart)return; try{
