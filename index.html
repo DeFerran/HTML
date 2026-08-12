@@ -615,7 +615,8 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="edbar">
       <div class="edstatus ok" id="edStatus">● Tudo salvo</div>
       <div class="edbtns">
-        <button class="edbtn primary" onclick="baixarPainel()">💾 Baixar painel atualizado</button>
+        <button class="edbtn primary" id="btnSalvar" onclick="salvarTudo()">💾 Salvar tudo</button>
+        <button class="edbtn" onclick="baixarPainel()">⬇ Baixar painel atualizado</button>
         <button class="edbtn" onclick="exportJSON()">⬇ Exportar dados (.json)</button>
         <button class="edbtn" onclick="document.getElementById('impJson').click()">⬆ Importar dados</button>
         <button class="edbtn ghost" onclick="recarregarArquivo()">↺ Recarregar do arquivo</button>
@@ -1582,6 +1583,20 @@ function schedulePersist(){ setStatus('Salvando…','saving'); clearTimeout(_per
     setStatus((sbUser?'● Salvo · sincronizando nuvem · ':'● Tudo salvo · ')+t,'ok'); },350); }
 function scheduleDash(){ clearTimeout(_dashT); _dashT=setTimeout(()=>{ try{renderAll();}catch(e){console.warn('render',e);} },420); }
 function commit(){ schedulePersist(); scheduleDash(); }
+function salvarTudo(){
+  clearTimeout(_persistT);
+  saveLocal();
+  const btn=document.getElementById('btnSalvar');
+  if(btn){ if(!btn._o)btn._o=btn.innerHTML; btn.disabled=true; btn.innerHTML='✓ Salvo!';
+    setTimeout(()=>{ btn.innerHTML=btn._o; btn.disabled=false; },1600); }
+  const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  if(sb && sbUser){
+    setStatus('● Salvando na nuvem…','saving');
+    Promise.resolve(cloudSave(false)).catch(()=>{ setStatus('● Salvo neste computador · falha ao sincronizar com a nuvem','saving'); });
+  } else {
+    setStatus('✓ Tudo salvo neste computador · '+t+(sb?' — entre na nuvem para sincronizar com outro computador':''),'ok');
+  }
+}
 
 /* -- tabela editável genérica -- */
 function edTable(host,cfg){
