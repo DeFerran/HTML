@@ -221,6 +221,18 @@ table.edtab select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 
 .edbool{display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--ink);font-weight:600;
   text-transform:none;letter-spacing:0;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--card)}
 .edbool input{width:auto;height:17px;margin:0;accent-color:var(--leaf);cursor:pointer}
+/* seletor de abas do painel de administração */
+.abasbox{grid-column:1/-1;border:1px solid var(--line);border-radius:11px;background:var(--soft);padding:13px 15px}
+.abasbox .abastitle{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.abasbox .abassub{font-size:11.5px;color:var(--muted);margin:3px 0 11px}
+.abasgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px}
+.abachip{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+  background:var(--card);cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink);user-select:none;
+  transition:border-color .12s,background .12s}
+.abachip:hover{border-color:var(--leaf)}
+.abachip.on{border-color:var(--leaf);background:var(--tintG)}
+.abachip input{width:16px;height:16px;margin:0;flex:none;accent-color:var(--leaf);cursor:pointer}
+.admselfnote{color:var(--muted);font-size:11.5px;font-style:italic}
 body.somente-leitura .edbtn,body.somente-leitura #btnSalvar{display:none!important}
 .acessobar{background:#8C6A1E;color:#fff;padding:10px 16px;font:600 12.5px/1.4 var(--sans);text-align:center}
 body.pre-login header,body.pre-login nav.tabs,body.pre-login main,body.pre-login .foot,body.pre-login #acessoBar{display:none!important}
@@ -3083,7 +3095,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · admin-fix-2';
+const APP_VERSION='2026-08-12 · admin-ui-3';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
@@ -3107,22 +3119,31 @@ function aplicarPermissoes(){
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
+  const papeis=[['leitor','Leitor — só visualiza'],['editor','Editor — vê e edita'],['admin','Admin — controla tudo']];
   el.innerHTML=
-    '<div class="edfield"><label>E-mail do usuário</label><input id="admEmail" placeholder="pessoa@email.com" value="'+esc(_admNovo.email)+'"></div>'+
-    '<div class="edfield"><label>Papel</label><select id="admPapel">'+['admin','editor','leitor'].map(p=>'<option value="'+p+'"'+(_admNovo.papel===p?' selected':'')+'>'+p+'</option>').join('')+'</select></div>'+
-    '<div class="edfield" style="grid-column:1/-1"><label>Abas liberadas (vazio = todas)</label><div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px">'+
-      ABAS_TODAS.map(a=>'<label class="edbool" style="border:none;padding:2px 0"><input type="checkbox" data-aba="'+a.v+'"'+(_admNovo.abas.indexOf(a.v)>=0?' checked':'')+'><span>'+a.t+'</span></label>').join('')+
-    '</div></div>'+
-    '<div class="edfield"><label>&nbsp;</label><button class="edbtn primary" id="admAdd">➕ Liberar acesso</button></div>';
+    '<div class="edfield"><label>E-mail do usuário</label><input id="admEmail" type="email" autocomplete="off" placeholder="pessoa@email.com" value="'+esc(_admNovo.email)+'"></div>'+
+    '<div class="edfield"><label>Papel</label><select id="admPapel">'+papeis.map(p=>'<option value="'+p[0]+'"'+(_admNovo.papel===p[0]?' selected':'')+'>'+p[1]+'</option>').join('')+'</select></div>'+
+    '<div class="abasbox">'+
+      '<div class="abastitle">Abas liberadas</div>'+
+      '<div class="abassub">Marque as abas que este usuário pode ver. Deixe <b>tudo desmarcado</b> para liberar todas.</div>'+
+      '<div class="abasgrid">'+ABAS_TODAS.map(a=>{ const on=_admNovo.abas.indexOf(a.v)>=0;
+        return '<label class="abachip'+(on?' on':'')+'"><input type="checkbox" data-aba="'+esc(a.v)+'"'+(on?' checked':'')+'><span>'+esc(a.t)+'</span></label>'; }).join('')+'</div>'+
+    '</div>'+
+    '<div class="edfield" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:2px">'+
+      '<button class="edbtn primary" id="admAdd">➕ Liberar acesso</button>'+
+      '<span class="admselfnote">O acesso é vinculado quando o usuário faz o primeiro login com este e-mail.</span></div>';
   const em=document.getElementById('admEmail'); if(em)em.oninput=()=>_admNovo.email=em.value;
   const pp=document.getElementById('admPapel'); if(pp)pp.onchange=()=>_admNovo.papel=pp.value;
-  el.querySelectorAll('input[data-aba]').forEach(c=>c.onchange=()=>{ const v=c.dataset.aba, i=_admNovo.abas.indexOf(v); if(c.checked){ if(i<0)_admNovo.abas.push(v);} else if(i>=0)_admNovo.abas.splice(i,1); });
+  el.querySelectorAll('input[data-aba]').forEach(c=>c.onchange=()=>{ const v=c.dataset.aba, i=_admNovo.abas.indexOf(v);
+    if(c.checked){ if(i<0)_admNovo.abas.push(v);} else if(i>=0)_admNovo.abas.splice(i,1);
+    const chip=c.closest('.abachip'); if(chip)chip.classList.toggle('on',c.checked); });
   const ab=document.getElementById('admAdd'); if(ab)ab.onclick=adicionarMembro;
 }
 async function adicionarMembro(){
   if(!sb||!ehAdmin){ admMsg('Sem permissão.','err'); return; }
   const email=(_admNovo.email||'').trim().toLowerCase();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ admMsg('Digite um e-mail válido.','err'); return; }
+  if(email===((sbUser&&sbUser.email)||'').toLowerCase() && _admNovo.papel!=='admin'){ admMsg('Você não pode rebaixar a sua própria conta de administrador.','err'); return; }
   admMsg('Salvando…');
   try{ const {error}=await sb.from('membros').upsert({email:email,papel:_admNovo.papel,abas:_admNovo.abas,ativo:true,convidado_por:(sbUser.email||'')},{onConflict:'email'});
     if(error)throw error; admMsg('Acesso liberado para '+email+'.','ok'); _admNovo={email:'',papel:'leitor',abas:[]}; renderAdmin();
@@ -3134,12 +3155,17 @@ async function renderAdmin(){
   renderAdminForm();
   const tel=document.getElementById('tMembros'); if(!tel||!sb)return;
   try{ const {data}=await sb.from('membros').select('id,email,papel,abas,ativo,user_id').order('criado_em',{ascending:true});
+    const meuEmail=((sbUser&&sbUser.email)||'').toLowerCase();
     const rows=(data||[]).map(m=>{ const abas=(Array.isArray(m.abas)&&m.abas.length)?m.abas.length+' aba(s)':'todas';
       const vinc=m.user_id?'<span class="tag hi">conta ativa</span>':'<span class="tag md">aguardando 1º login</span>';
+      const self=(sbUser&&(m.user_id===sbUser.id||(m.email||'').toLowerCase()===meuEmail));
+      const acoes=self
+        ? '<span class="admselfnote">você — administrador principal</span>'
+        : '<button class="edbtn" data-act="papel" data-id="'+m.id+'" data-papel="'+m.papel+'">papel</button> '+
+          '<button class="edbtn" data-act="toggle" data-id="'+m.id+'" data-ativo="'+(m.ativo?1:0)+'">'+(m.ativo?'desativar':'ativar')+'</button> '+
+          '<button class="edbtn ghost" data-act="rem" data-id="'+m.id+'" data-email="'+esc(m.email)+'">remover</button>';
       return '<tr><td>'+esc(m.email)+'</td><td><span class="admrole '+m.papel+'">'+m.papel+'</span></td><td>'+abas+'</td><td>'+vinc+'</td>'+
-        '<td style="text-align:right;white-space:nowrap"><button class="edbtn" data-act="papel" data-id="'+m.id+'" data-papel="'+m.papel+'">papel</button> '+
-        '<button class="edbtn" data-act="toggle" data-id="'+m.id+'" data-ativo="'+(m.ativo?1:0)+'">'+(m.ativo?'desativar':'ativar')+'</button> '+
-        '<button class="edbtn ghost" data-act="rem" data-id="'+m.id+'" data-email="'+esc(m.email)+'">remover</button></td></tr>'; }).join('');
+        '<td style="text-align:right;white-space:nowrap">'+acoes+'</td></tr>'; }).join('');
     tel.innerHTML='<thead><tr><th>E-mail</th><th>Papel</th><th>Abas</th><th>Conta</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="color:var(--muted);padding:12px">Nenhum usuário liberado ainda.</td></tr>')+'</tbody>';
     tel.querySelectorAll('button[data-act]').forEach(btn=>btn.onclick=()=>{ const id=+btn.dataset.id;
       if(btn.dataset.act==='papel'){ const o=['leitor','editor','admin']; atualizarMembro(id,{papel:o[(o.indexOf(btn.dataset.papel)+1)%3]}); }
