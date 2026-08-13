@@ -618,7 +618,7 @@ table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(
       <span>Tirar o <b>"Outros" (R$&nbsp;200k)</b> do custo da safra — lançamento pontual de maio, sem categoria <span class="badge">P1 · rastrear</span></span></div>
     <div class="grid g32">
       <div class="panel"><h3>Resultado da safra 26/27 — do faturamento à margem</h3><div class="cap">Receita bruta → (−) imposto NF → (−) custo Real jan–jul → (−) custo ago–dez → (−) comissão 30/05/27 → margem líquida.</div><div class="chartbox tall"><canvas id="cWaterfall"></canvas></div></div>
-      <div class="panel" id="dreGeral"><h3>DRE da safra 26/27</h3><div class="cap">O mesmo raciocínio em números.</div><table class="dre" id="dreGeral"></table></div>
+      <div class="panel" id="drePanel"><h3>DRE da safra 26/27</h3><div class="cap">O mesmo raciocínio em números.</div><table class="dre" id="dreGeral"></table></div>
     </div>
     <div class="grid two">
       <div class="panel"><h3>Margem % por safra</h3><div class="cap">A 26/27 já está líquida de imposto. O gatilho de comissão cheia é 30%.</div><div class="chartbox"><canvas id="cMargem"></canvas></div></div>
@@ -2112,6 +2112,15 @@ function autoCardLabels(root){
       if(tds[0] && !tds[0].classList.contains('cardttl') && !tds[0].hasAttribute('colspan')) tds[0].classList.add('cardttl');
     });
   });
+}
+/* re-rotula automaticamente quando uma tabela-card é redesenhada (troca de imposto,
+   safra, filtros etc.) — mantém os rótulos do modo card sempre em sincronia */
+let _cardLabelQueued=false;
+function scheduleCardLabels(){ if(_cardLabelQueued)return; _cardLabelQueued=true; Promise.resolve().then(()=>{ _cardLabelQueued=false; try{ autoCardLabels(); }catch(e){} }); }
+if(typeof MutationObserver!=='undefined' && typeof document!=='undefined'){
+  try{ new MutationObserver(muts=>{
+    for(const m of muts){ const t=m.target; if(t && t.nodeType===1 && t.closest && t.closest('table.resp-cards')){ scheduleCardLabels(); break; } }
+  }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
 }
 function toggleOutros(){outrosOff=!outrosOff;document.getElementById('tgOutros').classList.toggle('on',outrosOff);renderGeral();renderFin();}
 function setTax(t){taxRate=t;document.querySelectorAll('#taxseg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.t)-t)<1e-9));renderGeral();renderFin();}
@@ -4117,7 +4126,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · scroll-lateral-resolvido';
+const APP_VERSION='2026-08-14 · fix-dre-cards';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
