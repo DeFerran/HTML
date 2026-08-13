@@ -604,7 +604,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="kpis" id="kGeral"></div>
     <div class="panel" id="resultOper"><h3>Resultado operacional vs. contábil</h3><div class="cap">A margem da safra é puxada para baixo por lançamentos que <b>não são custo recorrente da operação</b> — despesas pontuais e <b>compra de ativo (investimento/capex)</b>, que idealmente é depreciada ao longo de anos, não jogada inteira numa safra. Aqui você vê as duas margens lado a lado: a <b>contábil</b> (tudo dentro) e a <b>operacional</b> (só o custo recorrente).</div>
       <div class="kpis" id="kResultOper"></div>
-      <div style="overflow-x:auto"><table id="tNaoOper"></table></div>
+      <div style="overflow-x:auto"><table id="tNaoOper" class="resp-cards"></table></div>
       <div class="note" id="resultOperNote" style="margin-top:10px"></div>
     </div>
     <div class="panel"><h3>Detalhe por serviço — sem mistura</h3><div class="cap">A média geral mistura ticket alto (Fertilidade Grid) com ticket baixo (SmartSeed, Coleta) e mascara o quadro. Aqui cada serviço aparece isolado: hectares, receita, <b>receita/ha</b>, <b>ticket médio por cliente</b> e a margem — de <b>contribuição</b> (antes da estrutura) e <b>líquida</b> (após ratear a estrutura por receita). A última linha é a média geral, para comparar.</div><div style="overflow-x:auto"><table id="tServGeral"></table></div><div id="servGeralNote"></div></div>
@@ -691,7 +691,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Faturamento — meta vs. realizado por segmento</h3><div class="cap">Barra clara = meta; barra colorida = realizado (contratado na 26/27). Rótulo mostra o % da meta.</div><div class="chartbox tall"><canvas id="cSegFat"></canvas></div></div>
       <div class="panel"><h3>Margem de contribuição — meta vs. realizado (%)</h3><div class="cap">Barra = margem realizada; losango = meta. Verde quando o realizado bate ou supera a meta.</div><div class="chartbox tall"><canvas id="cSegMar"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Painel de metas por segmento</h3><div class="cap">Faturamento e margem, meta vs. realizado, com % de atingimento. A linha <b>Geral</b> inclui todos os serviços (inclusive Coleta AP+).</div><div style="overflow-x:auto"><table id="tSeg"></table></div><div class="note" id="noteSeg"></div></div>
+    <div class="panel"><h3>Painel de metas por segmento</h3><div class="cap">Faturamento e margem, meta vs. realizado, com % de atingimento. A linha <b>Geral</b> inclui todos os serviços (inclusive Coleta AP+).</div><div style="overflow-x:auto"><table id="tSeg" class="resp-cards"></table></div><div class="note" id="noteSeg"></div></div>
     <div class="lead" style="margin-top:6px"><h2 style="font-size:19px">Metas de margem líquida</h2>
       <p>Quatro níveis de ambição para a <b>margem líquida geral</b> (todos os serviços, após imposto, custos e comissões). As barras são os níveis de meta — <b>verde</b> quando a margem realizada da safra alcança o nível; a linha tracejada é a margem líquida realizada (a mesma da Visão Geral).</p></div>
     <div class="kpis" id="kMargemLiq"></div>
@@ -703,7 +703,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Escada de comissão do Anderlírio</h3><div class="cap">Faturamento necessário para cada faixa de taxa. <b>Verde</b> = faixa já atingida pelas vendas dele.</div><div class="chartbox"><canvas id="cComVendas"></canvas></div></div>
       <div class="panel"><h3>Comissão a pagar — composição</h3><div class="cap">Comissão de venda + override 4% (Anderlírio s/ Bruno) + bônus de entregas (Bruno).</div><div class="chartbox"><canvas id="cComPagar"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Detalhe da comissão por colaborador</h3><div class="cap">Composição da comissão de cada um. O <b>override</b> do Anderlírio (4% s/ vendas do Bruno) e os <b>bônus</b> do Bruno entram no total de cada um.</div><div style="overflow-x:auto"><table id="tComissao"></table></div></div>
+    <div class="panel"><h3>Detalhe da comissão por colaborador</h3><div class="cap">Composição da comissão de cada um. O <b>override</b> do Anderlírio (4% s/ vendas do Bruno) e os <b>bônus</b> do Bruno entram no total de cada um.</div><div style="overflow-x:auto"><table id="tComissao" class="resp-cards"></table></div></div>
     <div class="lead" style="margin-top:6px"><h2 style="font-size:19px">Margem por hectare</h2>
       <p>A conta da safra dividida pelos <b id="haTot"></b> contratados. É a leitura mais honesta de preço: quanto cada hectare rende e quanto custa.</p></div>
     <div class="kpis" id="kHa"></div>
@@ -824,7 +824,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="edpills" id="eqSelInd" style="margin:0 0 8px"></div>
       <div class="chartbox tall"><canvas id="cEvolColab"></canvas></div>
     </div>
-    <div class="panel"><h3>Resumo por colaborador e indicador</h3><div class="cap">Meta 26/27 e 27/28, realizado acumulado na safra e % de atingimento. Verde = no alvo; âmbar = atenção; vermelho = abaixo. Prazo em dias: menor é melhor.</div><div style="overflow-x:auto"><table id="tEquipe"></table></div></div>
+    <div class="panel"><h3>Resumo por colaborador e indicador</h3><div class="cap">Meta 26/27 e 27/28, realizado acumulado na safra e % de atingimento. Verde = no alvo; âmbar = atenção; vermelho = abaixo. Prazo em dias: menor é melhor.</div><div style="overflow-x:auto"><table id="tEquipe" class="resp-cards"></table></div></div>
   </section>
 
   <!-- CUSTOS & COLETA -->
@@ -836,11 +836,11 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
 
     <h3 class="secttl">Custo por colaborador</h3>
     <div class="kpis" id="kColab"></div>
-    <div class="panel"><h3>Custo real por colaborador — da base de lançamentos</h3><div class="cap">Junta o <b>fixo</b> (salário/encargos/benefícios recorrentes) com o <b>variável</b> (combustível, viagem, hospedagem, campo) de cada pessoa. A coluna <b>Custo/Receita</b> lê o custo <b>contra a receita que a pessoa gera</b> — gastar mais não é pior se produz mais. Preencha o colaborador nas despesas e cadastre os salários em <b>Lançamentos → Despesas → Custos recorrentes</b>.</div><div style="overflow-x:auto"><table id="tColab"></table></div></div>
+    <div class="panel"><h3>Custo real por colaborador — da base de lançamentos</h3><div class="cap">Junta o <b>fixo</b> (salário/encargos/benefícios recorrentes) com o <b>variável</b> (combustível, viagem, hospedagem, campo) de cada pessoa. A coluna <b>Custo/Receita</b> lê o custo <b>contra a receita que a pessoa gera</b> — gastar mais não é pior se produz mais. Preencha o colaborador nas despesas e cadastre os salários em <b>Lançamentos → Despesas → Custos recorrentes</b>.</div><div style="overflow-x:auto"><table id="tColab" class="resp-cards"></table></div></div>
 
     <h3 class="secttl">Custo por veículo</h3>
     <div class="kpis" id="kVei"></div>
-    <div class="panel"><h3>Custo real por veículo — da base de lançamentos</h3><div class="cap">Combustível, manutenção e demais custos de cada veículo (marque o <b>veículo</b> na despesa). Com o km rodado (odômetro inicial → atual, no cadastro em <b>Lançamentos → Despesas → Veículos</b>), o sistema calcula <b>custo/km</b> e <b>combustível/km</b>.</div><div style="overflow-x:auto"><table id="tVei"></table></div></div>
+    <div class="panel"><h3>Custo real por veículo — da base de lançamentos</h3><div class="cap">Combustível, manutenção e demais custos de cada veículo (marque o <b>veículo</b> na despesa). Com o km rodado (odômetro inicial → atual, no cadastro em <b>Lançamentos → Despesas → Veículos</b>), o sistema calcula <b>custo/km</b> e <b>combustível/km</b>.</div><div style="overflow-x:auto"><table id="tVei" class="resp-cards"></table></div></div>
 
     <h3 class="secttl">Orçamento, alertas &amp; investimentos</h3>
     <div class="kpis" id="kOrcResumo"></div>
@@ -848,7 +848,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Orçamento × realizado</h3><div class="cap">Metas definidas em <b>Lançamentos → Despesas → Orçamentos</b>, comparadas com o realizado da base. Verde ≤ 90% · amarelo 90–100% · vermelho acima do orçamento.</div><div style="overflow-x:auto"><table id="tOrcamento"></table></div></div>
       <div class="panel"><h3>Alertas</h3><div class="cap">Sinais que merecem atenção — sempre com contexto, não só "gastou mais".</div><div id="alertasBox"></div></div>
     </div>
-    <div class="panel"><h3>Investimentos (CAPEX) — isolados da operação</h3><div class="cap">Compras de ativo não são custo de uma safra: aparecem aqui separadas, não misturadas nos indicadores operacionais. Marque a natureza <b>Investimento / CAPEX</b> na despesa.</div><div style="overflow-x:auto"><table id="tCapex"></table></div></div>
+    <div class="panel"><h3>Investimentos (CAPEX) — isolados da operação</h3><div class="cap">Compras de ativo não são custo de uma safra: aparecem aqui separadas, não misturadas nos indicadores operacionais. Marque a natureza <b>Investimento / CAPEX</b> na despesa.</div><div style="overflow-x:auto"><table id="tCapex" class="resp-cards"></table></div></div>
 
     <h3 class="secttl" id="estrCusto">Estrutura de custo — 7 grupos</h3>
     <div class="grid g32">
@@ -862,7 +862,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Custo de laboratório por cliente</h3><div class="cap">Custo laboratorial de cada venda. Cliente novo paga argila (R$ 44 no 00–20); cliente antigo, R$ 38.</div><div class="chartbox tall"><canvas id="cLabCli"></canvas></div></div>
       <div class="panel"><h3>Lab como % da receita do serviço</h3><div class="cap">Quanto do faturamento de cada cliente é consumido pelo laboratório. Barra alta = margem apertada nessa venda.</div><div class="chartbox tall"><canvas id="cLabPct"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Detalhe laboratório por cliente</h3><div style="overflow-x:auto"><table id="tLab"></table></div></div>
+    <div class="panel"><h3>Detalhe laboratório por cliente</h3><div style="overflow-x:auto"><table id="tLab" class="resp-cards"></table></div></div>
 
     <h3 class="secttl">Coleta — custo e performance dos coletores</h3>
     <div class="kpis" id="kColeta"></div>
@@ -870,7 +870,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Custo de coleta por mês</h3><div class="cap">Custo total de campo (salário + comissão + viagem + combustível) empilhado por coletor. Mostra os meses de maior operação.</div><div class="chartbox tall"><canvas id="cColetaMes"></canvas></div></div>
       <div class="panel"><h3>Performance por coletor</h3><div class="cap">Custo por ponto de cada coletor. Barra menor = mais eficiente (menor custo por amostra coletada).</div><div class="chartbox tall"><canvas id="cColetorPerf"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Indicadores por coletor</h3><div class="cap">Ha coletados, pontos, dias em campo, custo total e custo por ponto/ha. Verde = mais eficiente; vermelho = mais caro por unidade.</div><div style="overflow-x:auto"><table id="tColetores"></table></div></div>
+    <div class="panel"><h3>Indicadores por coletor</h3><div class="cap">Ha coletados, pontos, dias em campo, custo total e custo por ponto/ha. Verde = mais eficiente; vermelho = mais caro por unidade.</div><div style="overflow-x:auto"><table id="tColetores" class="resp-cards"></table></div></div>
   </section>
 
   <!-- OPERAÇÃO -->
@@ -2089,6 +2089,22 @@ function wrapTables(root){
     if(ovx==='auto'||ovx==='scroll') return;               // já tem container com scroll
     const w=document.createElement('div'); w.className='tblscroll';
     par.insertBefore(w,t); w.appendChild(t);
+  });
+  autoCardLabels(root);
+}
+/* rotula automaticamente as células de tabelas .resp-cards a partir do cabeçalho,
+   para o modo card no mobile — sem precisar editar cada render */
+function autoCardLabels(root){
+  if(typeof document==='undefined')return;
+  (root||document).querySelectorAll('table.resp-cards').forEach(t=>{
+    const ths=[...t.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+    if(!ths.length) return;
+    t.querySelectorAll('tbody tr').forEach(tr=>{
+      const tds=tr.children;
+      if(tds.length===1 && tds[0].hasAttribute('colspan')) return; // estado vazio
+      for(let i=0;i<tds.length;i++){ if(!tds[i].getAttribute('data-label') && ths[i]) tds[i].setAttribute('data-label',ths[i]); }
+      if(tds[0] && !tds[0].classList.contains('cardttl') && !tds[0].hasAttribute('colspan')) tds[0].classList.add('cardttl');
+    });
   });
 }
 function toggleOutros(){outrosOff=!outrosOff;document.getElementById('tgOutros').classList.toggle('on',outrosOff);renderGeral();renderFin();}
@@ -4095,7 +4111,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · responsivo-fase5';
+const APP_VERSION='2026-08-13 · responsivo-completo';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
