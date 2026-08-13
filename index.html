@@ -465,6 +465,34 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
   .taxseg{display:flex;width:100%}
   .taxseg button{flex:1}
 }
+/* ===== Fase 4: Lançamentos/Despesas no mobile ===== */
+.respfilt-toggle{display:none}
+@media(max-width:767px){
+  /* tabela de lançamentos -> cards (nada é escondido; vira rótulo:valor) */
+  table.resp-cards thead{display:none}
+  table.resp-cards,table.resp-cards tbody,table.resp-cards tr,table.resp-cards td{display:block;width:100%}
+  table.resp-cards tr{border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:10px;background:var(--card);box-shadow:var(--shadow)}
+  table.resp-cards td{border:none;padding:4px 0;display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:right}
+  table.resp-cards td::before{content:attr(data-label);color:var(--muted);font-weight:700;text-transform:uppercase;font-size:9.5px;letter-spacing:.4px;text-align:left;flex:0 0 auto}
+  table.resp-cards td.cardttl{display:block;text-align:left;font-size:15px;font-weight:700;color:var(--head);border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px}
+  table.resp-cards td.cardttl::before{display:none}
+  table.resp-cards td[data-label="Valor"]{font-size:15px;font-weight:700}
+  table.resp-cards td.acts{justify-content:flex-end;gap:8px;border-top:1px solid var(--line);margin-top:6px;padding-top:8px}
+  table.resp-cards td.acts::before{display:none}
+  table.resp-cards tfoot{display:block;margin-top:2px}
+  table.resp-cards tfoot tr{display:flex;justify-content:space-between;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-weight:700}
+  table.resp-cards tfoot td{display:none}
+  table.resp-cards tfoot td.mxcat,table.resp-cards tfoot td.mxgrand{display:block}
+  .mxwrap:has(table.resp-cards){border:none;overflow-x:visible}
+  /* formulário e filtros em 1 coluna */
+  .labprec{flex-direction:column;gap:10px}
+  .lpf{width:100%;min-width:0}
+  .lpf input,.lpf select,.lpf .edinp{width:100%}
+  /* filtros recolhíveis atrás do botão ⚙ Filtros */
+  .respfilt-toggle{display:inline-flex;margin-bottom:10px}
+  .respfilt{display:none}
+  .respfilt.open{display:flex}
+}
 </style>
 <script>try{if((localStorage.getItem('dfagro_theme')||'claro')==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}</script>
 </head>
@@ -3317,7 +3345,7 @@ function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function natDaCategoria(cat){ const c=(D.categorias||[]).find(x=>x.nome===cat); return c?c.natureza:'Outros'; }
-let _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''};
+let _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''}, _despFiltOpen=false;
 let _despForm=null; // objeto do lançamento em edição (null = form fechado)
 function lancFiltradas(){ const f=_despFiltro;
   return (D.lancamentos||[]).filter(l=>l&&(!f.comp||(l.competencia||'').indexOf(f.comp)===0)&&(!f.centro||l.centroCusto===f.centro)&&(!f.nat||l.natureza===f.nat)&&(!f.cat||l.categoria===f.cat)&&(!f.colab||l.colaborador===f.colab)); }
@@ -3380,23 +3408,26 @@ function renderDespesas(){
       field('Observação',"<input class='edinp dpf' data-k='obs' value='"+esc(F.obs||'')+"'>")+
       '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="despSalvar">Salvar lançamento</button><button class="edbtn ghost" id="despCancelar">Cancelar</button></div></div>';
   }
-  // filtros
-  h+='<div class="labprec" style="gap:8px 12px;margin-bottom:10px">'+
+  // filtros (recolhíveis no mobile atrás de "⚙ Filtros")
+  const filtAtivos=Object.values(_despFiltro).filter(Boolean).length;
+  h+='<button class="edbtn respfilt-toggle" id="despFiltBtn">⚙ Filtros'+(filtAtivos?(' · '+filtAtivos):'')+'</button>';
+  h+='<div class="labprec respfilt'+(_despFiltOpen?' open':'')+'" id="despFiltWrap" style="gap:8px 12px;margin-bottom:10px">'+
     '<label class="lpf"><span>Competência</span><input class="edinp dfil" data-f="comp" value="'+esc(_despFiltro.comp)+'" placeholder="2026 ou 2026-05"></label>'+
     '<label class="lpf"><span>Centro</span><select class="edinp dfil" data-f="centro">'+sel(_despFiltro.centro,nomesCentros(),'todos')+'</select></label>'+
     '<label class="lpf"><span>Natureza</span><select class="edinp dfil" data-f="nat">'+sel(_despFiltro.nat,NATUREZAS,'todas')+'</select></label>'+
     '<label class="lpf"><span>Categoria</span><select class="edinp dfil" data-f="cat">'+sel(_despFiltro.cat,nomesCategorias(),'todas')+'</select></label>'+
     '<label class="lpf"><span>Colaborador</span><select class="edinp dfil" data-f="colab">'+sel(_despFiltro.colab,nomesColaboradores(),'todos')+'</select></label>'+
+    (filtAtivos?'<button class="edbtn ghost" id="despFiltLimpar" style="align-self:flex-end">Limpar filtros</button>':'')+
   '</div>';
   // tabela
   const rows=lancFiltradas().slice().sort((a,b)=>(b.competencia||'').localeCompare(a.competencia||'')||(+b.valor||0)-(+a.valor||0));
   const totFil=rows.reduce((a,l)=>a+(+l.valor||0),0);
-  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Competência</th><th>Descrição</th><th>Categoria</th><th>Natureza</th><th>Centro</th><th>Colaborador</th><th class="num">Valor</th><th></th></tr></thead><tbody>';
+  h+='<div class="mxwrap"><table class="edtab resp-cards"><thead><tr><th>Competência</th><th>Descrição</th><th>Categoria</th><th>Natureza</th><th>Centro</th><th>Colaborador</th><th class="num">Valor</th><th></th></tr></thead><tbody>';
   if(!rows.length) h+='<tr><td colspan="8" style="color:var(--muted);padding:14px 6px">Nenhum lançamento'+(lanc.length?' com esses filtros':' ainda')+'. Clique em <b>+ Nova despesa</b>'+(migrou?'':' ou importe os custos atuais')+'.</td></tr>';
-  rows.forEach(l=>{ h+='<tr><td>'+esc(l.competencia||'—')+'</td><td>'+esc(l.descricao||'—')+'</td><td>'+esc(l.categoria||'—')+'</td>'+
-    '<td>'+(/CAPEX/.test(l.natureza||'')?'<span class="badge bnovo">CAPEX</span>':'<span class="badge">'+esc((l.natureza||'—').replace('Custo operacional ','OPEX ').replace('Despesa ','').replace('Custo com ',''))+'</span>')+'</td>'+
-    '<td>'+esc(l.centroCusto||'—')+'</td><td>'+esc(l.colaborador||'—')+'</td><td class="num"><b>'+BRL(+l.valor||0)+'</b></td>'+
-    '<td style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
+  rows.forEach(l=>{ h+='<tr><td data-label="Competência">'+esc(l.competencia||'—')+'</td><td data-label="Descrição" class="cardttl">'+esc(l.descricao||'—')+'</td><td data-label="Categoria">'+esc(l.categoria||'—')+'</td>'+
+    '<td data-label="Natureza">'+(/CAPEX/.test(l.natureza||'')?'<span class="badge bnovo">CAPEX</span>':'<span class="badge">'+esc((l.natureza||'—').replace('Custo operacional ','OPEX ').replace('Despesa ','').replace('Custo com ',''))+'</span>')+'</td>'+
+    '<td data-label="Centro">'+esc(l.centroCusto||'—')+'</td><td data-label="Colaborador">'+esc(l.colaborador||'—')+'</td><td class="num" data-label="Valor"><b>'+BRL(+l.valor||0)+'</b></td>'+
+    '<td class="acts" style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
   h+='</tbody><tfoot><tr><td class="mxcat">Total filtrado</td><td></td><td></td><td></td><td></td><td></td><td class="num mxgrand">'+BRL(totFil)+'</td><td></td></tr></tfoot></table></div>';
   host.innerHTML=h;
   // handlers
@@ -3408,6 +3439,8 @@ function renderDespesas(){
     if(k==='categoria' && v && !_despForm._natTouched){ _despForm.natureza=natDaCategoria(v); const ns=host.querySelector('select.dpf[data-k=natureza]'); if(ns)ns.value=_despForm.natureza; }
     if(k==='natureza')_despForm._natTouched=true; }; });
   host.querySelectorAll('.dfil').forEach(inp=>{ inp.oninput=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; inp.onchange=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; });
+  const fb=document.getElementById('despFiltBtn'); if(fb)fb.onclick=()=>{ _despFiltOpen=!_despFiltOpen; const w=document.getElementById('despFiltWrap'); if(w)w.classList.toggle('open',_despFiltOpen); };
+  const fl=document.getElementById('despFiltLimpar'); if(fl)fl.onclick=()=>{ _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''}; renderDespesas(); };
   host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
   try{ renderRecorrencias(); }catch(e){}
@@ -4062,7 +4095,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · responsivo-fase3';
+const APP_VERSION='2026-08-13 · responsivo-fase4';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
