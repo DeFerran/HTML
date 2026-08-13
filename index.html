@@ -491,8 +491,9 @@ table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(
   table.resp-cards td.cardttl{display:block;text-align:left;font-size:15px;font-weight:700;color:var(--head);border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px}
   table.resp-cards td.cardttl::before{display:none}
   table.resp-cards td[data-label="Valor"]{font-size:15px;font-weight:700}
-  table.resp-cards td.acts{justify-content:flex-end;gap:8px;border-top:1px solid var(--line);margin-top:6px;padding-top:8px}
+  table.resp-cards td.acts{justify-content:flex-end;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);margin-top:6px;padding-top:8px;white-space:normal!important}
   table.resp-cards td.acts::before{display:none}
+  table.resp-cards td.acts .edbtn{min-height:40px}
   table.resp-cards tfoot{display:block;margin-top:2px}
   table.resp-cards tfoot tr{display:flex;justify-content:space-between;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-weight:700}
   table.resp-cards tfoot td{display:none}
@@ -980,10 +981,10 @@ body.sidebar-collapsed .sb-brand .logo-sw{display:none}
     <div class="panel"><h3>Adicionar / liberar usuário</h3>
       <div class="edform" id="admForm"></div>
       <div class="authmsg" id="admMsg" style="margin-top:10px"></div></div>
-    <div class="panel"><h3>Usuários liberados</h3><div class="cap">Papel e abas de cada um. As mudanças valem no próximo carregamento da pessoa.</div><div style="overflow-x:auto"><table id="tMembros"></table></div></div>
+    <div class="panel"><h3>Usuários liberados</h3><div class="cap">Papel e abas de cada um. As mudanças valem no próximo carregamento da pessoa.</div><div style="overflow-x:auto"><table id="tMembros" class="resp-cards"></table></div></div>
     <div class="panel"><h3>Histórico de versões (meu painel)</h3><div class="cap">Snapshots automáticos do seu painel (a cada ~10 min de edição) e manuais. Restaurar substitui os dados atuais pela versão escolhida.</div>
       <div style="margin-bottom:10px"><button class="edbtn primary" onclick="cloudSnapshotManual()">➕ Criar versão agora</button> <button class="edbtn" onclick="carregarHistorico()">↺ Atualizar lista</button></div>
-      <div style="overflow-x:auto"><table id="tHistorico"></table></div></div>
+      <div style="overflow-x:auto"><table id="tHistorico" class="resp-cards"></table></div></div>
   </section>
 
   <div class="foot">DF AGRO Consultoria Agrícola · Painel de gestão editável · Os dados são salvos automaticamente neste navegador.<span id="verInfo"></span></div>
@@ -4167,7 +4168,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · logo-marca';
+const APP_VERSION='2026-08-14 · admin-mobile';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
@@ -4238,7 +4239,7 @@ async function renderAdmin(){
           '<button class="edbtn" data-act="toggle" data-id="'+m.id+'" data-ativo="'+(m.ativo?1:0)+'">'+(m.ativo?'desativar':'ativar')+'</button> '+
           '<button class="edbtn ghost" data-act="rem" data-id="'+m.id+'" data-email="'+esc(m.email)+'">remover</button>';
       return '<tr><td>'+esc(m.email)+'</td><td><span class="admrole '+m.papel+'">'+m.papel+'</span></td><td>'+abas+'</td><td>'+vinc+'</td>'+
-        '<td style="text-align:right;white-space:nowrap">'+acoes+'</td></tr>'; }).join('');
+        '<td class="acts" style="text-align:right;white-space:nowrap">'+acoes+'</td></tr>'; }).join('');
     tel.innerHTML='<thead><tr><th>E-mail</th><th>Papel</th><th>Abas</th><th>Conta</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="color:var(--muted);padding:12px">Nenhum usuário liberado ainda.</td></tr>')+'</tbody>';
     tel.querySelectorAll('button[data-act]').forEach(btn=>btn.onclick=()=>{ const id=+btn.dataset.id;
       if(btn.dataset.act==='papel'){ const o=['leitor','editor','admin']; atualizarMembro(id,{papel:o[(o.indexOf(btn.dataset.papel)+1)%3]}); }
@@ -4250,7 +4251,7 @@ async function cloudSnapshotManual(){ if(!sb||!sbUser){ alert('Entre na nuvem pa
   try{ await sb.from('painel_historico').insert({user_id:sbUser.id,empresa:'DF AGRO',dados:D,origem:'manual'}); carregarHistorico(); setStatus('● Versão criada','ok'); }catch(e){ alert('Erro ao criar versão: '+(e.message||e)); } }
 async function carregarHistorico(){ const tel=document.getElementById('tHistorico'); if(!tel||!sb||!sbUser)return;
   try{ const {data}=await sb.from('painel_historico').select('id,origem,criado_em').order('criado_em',{ascending:false}).limit(50);
-    const rows=(data||[]).map(h=>'<tr><td>'+new Date(h.criado_em).toLocaleString('pt-BR')+'</td><td>'+(h.origem==='manual'?'<span class="tag hi">manual</span>':'<span class="tag md">automática</span>')+'</td><td style="text-align:right"><button class="edbtn" data-hid="'+h.id+'">restaurar</button></td></tr>').join('');
+    const rows=(data||[]).map(h=>'<tr><td>'+new Date(h.criado_em).toLocaleString('pt-BR')+'</td><td>'+(h.origem==='manual'?'<span class="tag hi">manual</span>':'<span class="tag md">automática</span>')+'</td><td class="acts" style="text-align:right"><button class="edbtn" data-hid="'+h.id+'">restaurar</button></td></tr>').join('');
     tel.innerHTML='<thead><tr><th>Data / hora</th><th>Origem</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3" style="color:var(--muted);padding:12px">Nenhuma versão ainda.</td></tr>')+'</tbody>';
     tel.querySelectorAll('button[data-hid]').forEach(btn=>btn.onclick=()=>restaurarVersao(+btn.dataset.hid));
   }catch(e){ tel.innerHTML='<tbody><tr><td>Erro: '+esc(e.message||e)+'</td></tr></tbody>'; } }
