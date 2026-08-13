@@ -25,6 +25,22 @@ Custos · Operações · Edição de dados.
 Os dados ficam salvos no navegador (`localStorage`) e, quando o usuário entra na
 conta, são sincronizados com a nuvem.
 
+### Navegação (sidebar + topbar)
+
+A navegação usa uma **barra lateral** agrupada (Financeiro · Comercial ·
+Metas & Equipe · Operação · Gestão) e uma **topbar** com o título dinâmico da
+seção e os controles de nuvem/tema/exportação. Cada item da sidebar apenas
+**dispara o botão equivalente do menu horizontal original** (`#tabs`) — não há
+rota, componente ou fonte de dados nova; é uma camada de navegação sobre o
+mesmo mecanismo de troca de views (`.view.active`).
+
+- **Sub-itens de deep-link** (Fluxo de Caixa, DRE da safra, Conciliação,
+  Estrutura de Custo) abrem a view existente e rolam até o painel certo.
+- **Rollback:** a flag `useNewSidebar` (em `localStorage`) desliga a sidebar e
+  restaura o menu horizontal clássico — o `#tabs` permanece no DOM. O link
+  "Layout clássico" no rodapé da sidebar faz isso; um botão flutuante reativa.
+- Em telas < 900px a sidebar recolhe e o menu horizontal volta automaticamente.
+
 ## Nuvem (Supabase)
 
 - **Organização:** `Bigdata Site`
