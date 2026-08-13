@@ -1305,7 +1305,7 @@ function estruturaPoolSafra(s){ const base=(typeof custoDemais==='function')?cus
 /* margem de uma venda do funil (usa a tabela de preços da safra da própria venda) */
 function vendaMargem(o){ const S=(o&&o.safra)||SAFRA_BASE; const area=+((o&&o.area)||0); const receita=+((o&&o.valor)||0);
   const ps=precoServ(S,o&&o.servico); const custoDir=(+ps.custo||0)*area;
-  const imp=receita*taxRate; const com=Math.max(receita-custoDir,0)*comRate();
+  const imp=receita*taxRate; const com=comissaoSobre(receita); // comissão sobre receita bruta da venda
   const mc=receita-imp-custoDir-com;
   const valorTab=(+ps.preco||0)*area; const desvio=valorTab>0?(receita-valorTab)/valorTab:null;
   const precoReal=area>0?receita/area:0;
@@ -1317,11 +1317,10 @@ function margVendasCarteira(){
   const CL=(D.clientes||[]).filter(c=>c&&+c.receita>0);
   const haFert=CL.filter(c=>c.grupo==='fert').reduce((a,b)=>a+(+b.ha||0),0)||1;
   const labHa=(typeof custoLab==='function'?custoLab():0)/haFert;   // R$/ha de laboratório (só Fertilidade)
-  const rateC=comRate();
   const rows=CL.map(c=>{ const area=(+c.ha>0)?+c.ha:0; const receita=+c.receita||0;
     const lc=(typeof labCustoCliente==='function')?labCustoCliente(c):null;   // custo real de lab por grid do cliente (exato)
     const labc=(lc&&lc.custo>0)?lc.custo:((c.grupo==='fert')?labHa*area:0);    // exato quando há grid; senão rateio p/ fert
-    const imp=receita*taxRate; const com=Math.max(receita-labc,0)*rateC;
+    const imp=receita*taxRate; const com=comissaoSobre(receita); // comissão sobre receita bruta (base única)
     const mc=receita-imp-labc-com;                                  // = margem de contribuição da aba Clientes
     const precoReal=area>0?receita/area:0;
     return {cliente:String(c.nome||'—'),servico:grupoLabel(c.grupo),estagio:'Fechado',vendedor:c.vendedor||'A definir',
@@ -1375,7 +1374,13 @@ function sum(a){return a.reduce((x,y)=>x+(+y||0),0)}
 function outrosVal(){return D.custoCategoria2026 ? (D.custoCategoria2026['Outros']||0) : 0;}
 /* --- resultado operacional x contábil: separa custos NÃO-operacionais (one-offs + investimento/capex) --- */
 function custoNaoOperLista(){ return (D.custoNaoOper&&D.custoNaoOper.length)?D.custoNaoOper:['Outros','Compra de Ativo']; }
-function custoNaoOper(){ const cc=D.custoCategoria2026||{}; return custoNaoOperLista().reduce((a,k)=>a+(+cc[k]||0),0); }
+function custoNaoOper(){ const cc=D.custoCategoria2026||{};
+  const naoOper=custoNaoOperLista().reduce((a,k)=>a+(+cc[k]||0),0);
+  // fonte única = projGastos: reescala a parcela não-operacional (one-offs/capex)
+  // para a MESMA base do total abatido em margContabilVal, para não misturar fontes.
+  const totalCat=Object.keys(cc).reduce((a,k)=>a+(+cc[k]||0),0);
+  const totalProj=custoRawTotal();
+  return (totalCat>0&&totalProj>0)?naoOper*(totalProj/totalCat):naoOper; }
 function custoRawTotal(){ return (D.projGastos?+D.projGastos.total:sum(D.caixaMensal.custo))||0; } // custo cheio, sem o toggle
 function margContabilVal(){ return recBruta()-imposto()-custoRawTotal()-comissaoVal(); }                 // tudo dentro
 function margOperVal(){ return margContabilVal()+custoNaoOper(); }                                        // exclui one-offs + capex
@@ -1390,6 +1395,10 @@ function custoAincorrer(){return D.projGastos?D.projGastos.projetado:0;}
 /* comLab removido: laboratório é despesa, não base de comissão */
 function comBase(){return recBruta();} // laboratório é despesa, não entra na base de comissão
 function comRate(){return (D.comissao&&D.comissao.rate)||0.07;}
+/* REGRA DE NEGÓCIO (única): a comissão incide sobre a RECEITA BRUTA da venda —
+   custos (laboratório, custo direto) NÃO são descontados da base. Usada em todos
+   os pontos para que empresa, funil, carteira e segmentos conciliem. */
+function comissaoSobre(receita){ return (+receita||0)*comRate(); }
 /* vendas por vendedor: puxa automático das vendas marcadas em Clientes; campo manual (>0) sobrepõe */
 function vendasVendedor(chave){ const pat=chave==='anderlirio'?/anderl/i:/bruno/i;
   return (D.clientes||[]).reduce((a,c)=>a+((c&&pat.test(c.vendedor||''))?(+c.receita||0):0),0); }
@@ -1416,7 +1425,7 @@ function custoColeta(){const cc=D.custoCategoria2026||{};return coletaCats().red
 function custoLab(){ const lt=(typeof labTotal==='function')?labTotal():0; if(lt>0)return lt; return (D.custoHa&&D.custoHa.laboratorio!=null)?D.custoHa.laboratorio:0; } // despesa: análises da aba Laboratório, ou valor base
 function custoDemais(){return Math.max(custoTotal()-custoColeta()-custoLab(),0);} // estrutura/overhead restante
 /* --- ponto de equilíbrio em hectares --- contribuição/ha cobre o custo fixo de estrutura */
-function contribHa(){ const ha=haTotal(); const varc=custoLab()+custoColeta(); return ha>0?(recBruta()-varc)/ha:0; } // margem de contribuição por hectare (após custos variáveis)
+function contribHa(){ const ha=haTotal(); const varc=imposto()+comissaoVal()+custoLab()+custoColeta(); return ha>0?(recBruta()-varc)/ha:0; } // contribuição/ha após TODOS os custos variáveis (imposto e comissão variam com a receita)
 function breakevenHa(){ const c=contribHa(); return c>0?custoDemais()/c:0; }                                        // ha necessários p/ cobrir a estrutura
 function breakevenRec(){ const ha=haTotal(); return ha>0?breakevenHa()*(recBruta()/ha):0; }                          // receita de equilíbrio
 function margemSeguranca(){ const ha=haTotal(); const be=breakevenHa(); return ha>0?(ha-be)/ha:0; }                   // folga acima do equilíbrio (pode ser negativa)
@@ -1694,13 +1703,14 @@ function renderCli(){
   if(baseGate('cli'))return;
   try{ renderSazonalidade(); }catch(e){ console.warn('sazonalidade',e); }
   try{ renderRecompra(); }catch(e){ console.warn('recompra',e); }
-  const cl=D.crossSell.clientes, servN=D.crossSell.servicos;
-  const nSub=cl.filter(c=>c.total<=1).length, avg=cl.reduce((s,c)=>s+c.total,0)/cl.length;
-  const km=D.visitas.reduce((s,v)=>s+v.km,0), vis=D.visitas.reduce((s,v)=>s+v.visitas,0);
+  const cl=(D.crossSell&&D.crossSell.clientes)||[], servN=(D.crossSell&&D.crossSell.servicos)||[];
+  const nCl=cl.length||0;
+  const nSub=cl.filter(c=>c.total<=1).length, avg=nCl?cl.reduce((s,c)=>s+c.total,0)/nCl:0;
+  const km=(D.visitas||[]).reduce((s,v)=>s+(+v.km||0),0), vis=(D.visitas||[]).reduce((s,v)=>s+(+v.visitas||0),0);
   kpi('kCli',[
-    {lab:'Clientes na carteira',val:cl.length,sub:'safra 26/27'},
+    {lab:'Clientes na carteira',val:nCl,sub:'safra 26/27'},
     {lab:'Serviços/cliente',val:avg.toFixed(1),c:'gold',sub:'meta: dobrar a densidade'},
-    {lab:'Subatendidos (≤1 serv.)',val:nSub,c:'r',sub:PCT(nSub/cl.length)+' da carteira'},
+    {lab:'Subatendidos (≤1 serv.)',val:nSub,c:'r',sub:(nCl?PCT(nSub/nCl):'—')+' da carteira'},
     {lab:'Km rodado (visitas)',val:Math.round(km).toLocaleString('pt-BR'),c:'',sub:vis+' visitas registradas'},
   ]);
   call('callCli',[
@@ -4249,7 +4259,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · integridade-sync';
+const APP_VERSION='2026-08-14 · calculos-regras-negocio';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
