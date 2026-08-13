@@ -1722,8 +1722,8 @@ function renderCli(){
       datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:9.5},formatter:v=>Math.round(v).toLocaleString('pt-BR')+' km'},
       tooltip:{callbacks:{label:c=>Math.round(c.raw)+' km'}}}}});
   // heatmap
-  let h='<table><thead><tr><th class="nm">Cliente</th>'+servN.map(s=>`<th>${s}</th>`).join('')+'<th>Total</th></tr></thead><tbody>';
-  cl.forEach(c=>{h+=`<tr><td class="nm">${c.nome}</td>`+c.marks.map(m=>`<td class="cell"><span class="dot ${m?'on':''}"></span></td>`).join('')+`<td style="text-align:center;font-weight:700;color:${c.total<=1?'#C0392B':'#1E7D3C'}">${c.total}</td></tr>`});
+  let h='<table><thead><tr><th class="nm">Cliente</th>'+servN.map(s=>`<th>${esc(s)}</th>`).join('')+'<th>Total</th></tr></thead><tbody>';
+  cl.forEach(c=>{h+=`<tr><td class="nm">${esc(c.nome)}</td>`+c.marks.map(m=>`<td class="cell"><span class="dot ${m?'on':''}"></span></td>`).join('')+`<td style="text-align:center;font-weight:700;color:${c.total<=1?'#C0392B':'#1E7D3C'}">${c.total}</td></tr>`});
   h+='</tbody></table>';document.getElementById('heat').innerHTML=h;
 }
 function renderServ(){
@@ -1754,7 +1754,7 @@ function renderServ(){
       tooltip:{callbacks:{label:c=>c.label+': '+BRL(c.raw)+' ('+PCT(c.raw/rec)+')'}}}}});
   let t='<thead><tr><th>Serviço</th><th>Ha 26/27</th><th>Receita 26/27</th><th>Clientes</th><th>R$/ha</th><th>Receita 25/26</th><th>Var.</th></tr></thead><tbody>';
   sv.forEach(s=>{const th=s.ha2627?s.rec2627/s.ha2627:0;const var_=s.rec2526?(s.rec2627-s.rec2526)/s.rec2526:0;
-    t+=`<tr><td data-label="Serviço" class="cardttl">${s.nome}</td><td data-label="Ha 26/27">${Math.round(s.ha2627).toLocaleString('pt-BR')}</td><td data-label="Receita 26/27">${BRL(s.rec2627)}</td><td data-label="Clientes">${s.cli2627}</td><td data-label="R$/ha">${th?BRL(th):'—'}</td><td data-label="Receita 25/26">${BRL(s.rec2526)}</td><td data-label="Var."><span class="tag ${var_>0.05?'hi':(var_<-0.05?'lo':'md')}">${s.rec2526?(var_>=0?'+':'')+PCT(var_):'novo'}</span></td></tr>`});
+    t+=`<tr><td data-label="Serviço" class="cardttl">${esc(s.nome)}</td><td data-label="Ha 26/27">${Math.round(s.ha2627).toLocaleString('pt-BR')}</td><td data-label="Receita 26/27">${BRL(s.rec2627)}</td><td data-label="Clientes">${s.cli2627}</td><td data-label="R$/ha">${th?BRL(th):'—'}</td><td data-label="Receita 25/26">${BRL(s.rec2526)}</td><td data-label="Var."><span class="tag ${var_>0.05?'hi':(var_<-0.05?'lo':'md')}">${s.rec2526?(var_>=0?'+':'')+PCT(var_):'novo'}</span></td></tr>`});
   t+='</tbody>';document.getElementById('tServ').innerHTML=t;
   try{ renderReconcilia(); }catch(e){ console.warn('reconcilia',e); }
 }
@@ -1877,7 +1877,7 @@ function renderComissaoColab(){
   rows+='<tr style="background:var(--soft)"><td style="padding-left:22px;color:var(--muted)">↳ override sobre vendas do Bruno</td><td>'+BRL(vB)+'</td><td>'+pctTxt(overRate)+'</td><td>'+BRL(comAover)+'</td></tr>';
   rows+='<tr style="font-weight:600"><td style="padding-left:22px">= Anderlírio total</td><td>—</td><td>—</td><td>'+BRL(comAtot)+'</td></tr>';
   rows+='<tr><td>Bruno<br><span style="color:var(--muted);font-size:10.5px">Técnico / Relatórios · meta '+BRLk(metaB)+'</span></td><td>'+BRL(vB)+'</td><td>'+pctTxt(rateB)+'</td><td>'+BRL(comBvenda)+'</td></tr>';
-  bonusList.forEach(bn=>{ rows+='<tr style="background:var(--soft)"><td style="padding-left:22px;color:var(--muted)">↳ '+(bn.nome||'bônus')+'</td><td>—</td><td>'+(bn.entregue?'<span class="tag hi">entregue</span>':'<span class="tag md">pendente</span>')+'</td><td>'+BRL(bn.entregue?(+bn.valor||0):0)+'</td></tr>'; });
+  bonusList.forEach(bn=>{ rows+='<tr style="background:var(--soft)"><td style="padding-left:22px;color:var(--muted)">↳ '+esc(bn.nome||'bônus')+'</td><td>—</td><td>'+(bn.entregue?'<span class="tag hi">entregue</span>':'<span class="tag md">pendente</span>')+'</td><td>'+BRL(bn.entregue?(+bn.valor||0):0)+'</td></tr>'; });
   rows+='<tr style="font-weight:600"><td style="padding-left:22px">= Bruno total</td><td>—</td><td>—</td><td>'+BRL(comBtot)+'</td></tr>';
   rows+='<tr style="font-weight:700;background:var(--totbg)"><td>Total a pagar</td><td>—</td><td>—</td><td>'+BRL(totalPagar)+'</td></tr>';
   const tel=document.getElementById('tComissao'); if(tel) tel.innerHTML='<thead><tr><th>Colaborador / item</th><th>Base (vendas)</th><th>Taxa / status</th><th>Comissão</th></tr></thead><tbody>'+rows+'</tbody>';
@@ -1916,7 +1916,7 @@ function renderMetasSegmentos(){
   const tag=ok=>ok?'<span class="tag hi">no alvo</span>':'<span class="tag md">abaixo</span>';
   let rows='';
   segs.forEach(s=>{ const rf=segReceita(s), mf=+s.metaReceita||0, mc=segMC(s), mm=(+s.metaMargem||0), fo=segFonte(s);
-    rows+='<tr><td>'+s.nome+'</td><td>'+BRL(mf)+'</td><td>'+BRL(rf)+(fo?' <span style="color:var(--muted);font-size:9.5px">'+fo+'</span>':'')+'</td><td>'+(mf?pctTxt(rf/mf*100):'—')+' '+tag(mf>0&&rf>=mf)+'</td><td>'+pctTxt(mm*100)+'</td><td>'+pctTxt(mc.pct*100)+' '+tag(mc.pct>=mm)+'</td></tr>'; });
+    rows+='<tr><td>'+esc(s.nome)+'</td><td>'+BRL(mf)+'</td><td>'+BRL(rf)+(fo?' <span style="color:var(--muted);font-size:9.5px">'+esc(fo)+'</span>':'')+'</td><td>'+(mf?pctTxt(rf/mf*100):'—')+' '+tag(mf>0&&rf>=mf)+'</td><td>'+pctTxt(mm*100)+'</td><td>'+pctTxt(mc.pct*100)+' '+tag(mc.pct>=mm)+'</td></tr>'; });
   rows+='<tr style="font-weight:700;background:var(--totbg)"><td>Geral (todos os serviços)</td><td>'+BRL(gMeta)+'</td><td>'+BRL(gReal)+'</td><td>'+(gMeta?pctTxt(gReal/gMeta*100):'—')+' '+tag(gMeta>0&&gReal>=gMeta)+'</td><td>'+pctTxt(gMarMetaF*100)+'</td><td>'+pctTxt(gMC.pct*100)+' '+tag(gMC.pct>=gMarMetaF)+'</td></tr>';
   const tel=document.getElementById('tSeg'); if(tel) tel.innerHTML='<thead><tr><th>Segmento</th><th>Meta fat.</th><th>Realizado</th><th>% da meta</th><th>Meta margem</th><th>Margem realizada</th></tr></thead><tbody>'+rows+'</tbody>';
   const noteEl=document.getElementById('noteSeg');
@@ -2077,7 +2077,7 @@ function renderMetas(){
   const nd2='<span style="color:var(--red);font-weight:700">a definir</span>';
   const thg='<tr><th>Grupo</th><th>Receita</th><th>Hectares</th><th>Preço/ha</th><th>Lab</th><th>Campo</th><th>Comissão</th><th>Contribuição</th><th>MC/ha</th></tr>';
   document.getElementById('tGrupo').innerHTML=thg+GP.map(g=>
-    '<tr><td><b>'+g.nome+'</b></td><td>'+BRL(g.rec)+'</td><td>'+Math.round(g.ha).toLocaleString('pt-BR')+'</td><td>'+BRL(g.preHa)+'</td><td>'+BRL(g.lab)+'</td><td>'+(g.campoDef?BRL(g.campo):nd2)+'</td><td>'+BRL(g.com)+'</td><td style="color:'+(g.mc>=0?'var(--green)':'var(--red)')+';font-weight:700">'+BRL(g.mc)+'</td><td>'+BRL(g.mcHa)+'</td></tr>').join('')+
+    '<tr><td><b>'+esc(g.nome)+'</b></td><td>'+BRL(g.rec)+'</td><td>'+Math.round(g.ha).toLocaleString('pt-BR')+'</td><td>'+BRL(g.preHa)+'</td><td>'+BRL(g.lab)+'</td><td>'+(g.campoDef?BRL(g.campo):nd2)+'</td><td>'+BRL(g.com)+'</td><td style="color:'+(g.mc>=0?'var(--green)':'var(--red)')+';font-weight:700">'+BRL(g.mc)+'</td><td>'+BRL(g.mcHa)+'</td></tr>').join('')+
     '<tr class="tot"><td><b>Σ Contribuição</b></td><td colspan="6"></td><td style="font-weight:800">'+BRL(somaMC)+'</td><td></td></tr>'+
     '<tr><td style="color:var(--red)"><b>(−) Pool de estrutura</b></td><td colspan="6" style="color:var(--muted);font-size:11px">salário, combustível, veículos, overhead, "Outros"</td><td style="color:var(--red);font-weight:700">−'+BRL(poolEstrut)+'</td><td></td></tr>'+
     '<tr class="tot"><td><b>= Margem líquida</b></td><td colspan="6"></td><td style="color:'+((somaMC-poolEstrut)>=0?'var(--green)':'var(--red)')+';font-weight:800">'+((somaMC-poolEstrut)<0?'−':'')+BRL(Math.abs(somaMC-poolEstrut))+'</td><td></td></tr>';
@@ -2108,9 +2108,9 @@ function renderMetas(){
     const porPre=fertRows.slice().sort((a,b)=>a.preHa-b.preHa); // menor preço/ha = mais subprecificado
     const melhorR=porRec[0], melhorM=porMC[0], subP=porPre[0];
     kpi('kCli3',[
-      {lab:'Maior receita',val:BRLk(melhorR.receita),sub:melhorR.nome},
-      {lab:'Maior contribuição',val:BRLk(melhorM.mc),c:'g',sub:melhorM.nome+' · '+BRL(melhorM.mcHa)+'/ha'},
-      {lab:'Menor preço/ha (Fertilidade)',val:BRL(subP.preHa),c:'gold',sub:subP.nome+' · alvo de reajuste'},
+      {lab:'Maior receita',val:BRLk(melhorR.receita),sub:esc(melhorR.nome)},
+      {lab:'Maior contribuição',val:BRLk(melhorM.mc),c:'g',sub:esc(melhorM.nome)+' · '+BRL(melhorM.mcHa)+'/ha'},
+      {lab:'Menor preço/ha (Fertilidade)',val:BRL(subP.preHa),c:'gold',sub:esc(subP.nome)+' · alvo de reajuste'},
     ]);
     const tR=porRec.slice(0,10);
     mk('cCliRec',{type:'bar',data:{labels:tR.map(r=>r.nome),datasets:[{data:tR.map(r=>r.receita),backgroundColor:C.navy,borderRadius:4}]},
@@ -2126,10 +2126,10 @@ function renderMetas(){
     const th='<tr><th>Cliente</th><th>Grupo</th><th class="num">Receita</th><th class="num">Ha</th><th class="num">Preço/ha</th><th class="num">Contribuição</th><th class="num">R$/ha</th><th>Classificação</th></tr>';
     const gname=g=>g==='coleta'?'Coleta AP+':'Fertilidade';
     let body=porMC.map(r=>
-      '<tr><td>'+r.nome+'</td><td style="color:var(--muted)">'+gname(r.grupo)+'</td><td class="num">'+BRL(r.receita)+'</td><td class="num">'+Math.round(r.ha).toLocaleString('pt-BR')+'</td><td class="num">'+BRL(r.preHa)+'</td><td class="num" style="color:'+(r.mc>=0?'var(--green)':'var(--red)')+';font-weight:700">'+(r.mc<0?'−':'')+BRL(Math.abs(r.mc))+'</td><td class="num">'+BRL(r.mcHa)+'</td><td><span class="tag '+r.cc+'">'+r.cls+'</span></td></tr>').join('');
+      '<tr><td>'+esc(r.nome)+'</td><td style="color:var(--muted)">'+gname(r.grupo)+'</td><td class="num">'+BRL(r.receita)+'</td><td class="num">'+Math.round(r.ha).toLocaleString('pt-BR')+'</td><td class="num">'+BRL(r.preHa)+'</td><td class="num" style="color:'+(r.mc>=0?'var(--green)':'var(--red)')+';font-weight:700">'+(r.mc<0?'−':'')+BRL(Math.abs(r.mc))+'</td><td class="num">'+BRL(r.mcHa)+'</td><td><span class="tag '+r.cc+'">'+r.cls+'</span></td></tr>').join('');
     if(PEND.length){
       body+='<tr class="tot"><td colspan="8" style="color:#9A6B00;font-weight:700;background:#fdeede">⚠ Área mapeada sem receita lançada — '+PEND.length+' clientes · '+Math.round(PEND.reduce((a,b)=>a+b.ha,0)).toLocaleString('pt-BR')+' ha (conferir faturamento ou oportunidade de venda)</td></tr>';
-      body+=PEND.map(c=>'<tr><td>'+c.nome+'</td><td style="color:var(--muted)">pendência</td><td class="num" style="color:var(--red)">R$ 0</td><td class="num">'+Math.round(c.ha).toLocaleString('pt-BR')+'</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td><span class="tag lo">Verificar</span></td></tr>').join('');
+      body+=PEND.map(c=>'<tr><td>'+esc(c.nome)+'</td><td style="color:var(--muted)">pendência</td><td class="num" style="color:var(--red)">R$ 0</td><td class="num">'+Math.round(c.ha).toLocaleString('pt-BR')+'</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td><span class="tag lo">Verificar</span></td></tr>').join('');
     }
     document.getElementById('tCli').innerHTML=th+body;
   } else {
@@ -2414,7 +2414,7 @@ function loadFile(file){
     D=hydrate(mergeImport(D,_fresh));outrosOff=false;document.getElementById('tgOutros').classList.remove('on');
     taxRate=(D.impostoNF&&D.impostoNF.rate)||0.17;
     document.querySelectorAll('#taxseg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.t)-taxRate)<1e-9));
-    document.getElementById('srcInfo').innerHTML='Fonte: <b>'+file.name.slice(0,26)+'</b><br>atualizado agora';
+    document.getElementById('srcInfo').innerHTML='Fonte: <b>'+esc(file.name.slice(0,26))+'</b><br>atualizado agora';
     saveLocal();renderEditors();renderAll();
   }catch(err){alert('Não consegui ler este arquivo. Verifique se é a planilha GESTÃO_AP (.xlsx).\\n\\n'+err.message);}};
   rd.readAsArrayBuffer(file);
@@ -2434,7 +2434,7 @@ function pnum(v){ if(v==null)return 0; let s=String(v).trim().replace(/[R$\s]/g,
   const n=parseFloat(s); return isNaN(n)?0:n; }
 function fmoney(n){ return (n==null||n===''||isNaN(n))?'':Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fnum(n){ return (n==null||n===''||isNaN(n))?'':Number(n).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
-function esc(s){ return String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 /* -- autosave + re-render (debounced) -- */
 let _persistT=null,_dashT=null;
@@ -2998,8 +2998,8 @@ function renderPrecoMargem(){
     {lab:'Receita ('+(_margFiltro==='fechadas'?'fechadas':'todas')+')',val:BRLk(recTot),sub:rows.length+' venda(s) · '+fnum(totArea)+' ha'},
     {lab:'Contribuição',val:BRLk(mcTot),c:mcTot>=0?'g':'r',sub:'após imposto, comissão e custo direto'},
     {lab:'Margem média',val:PCT(mcPctTot),c:mcPctTot>=0.25?'g':(mcPctTot>=0.15?'gold':'r'),sub:'lucro cheio: '+BRLk(lucroTot)+' ('+PCT(recTot?lucroTot/recTot:0)+')'},
-    {lab:'Mais rentável',val:BRLk(melhor.mc),c:'g',sub:melhor.cliente+' · '+PCT(melhor.mcPct)},
-    {lab:'Menor margem',val:pior?PCT(pior.mcPct):'—',c:'gold',sub:pior?(pior.cliente+' · alvo de reajuste'):'—'},
+    {lab:'Mais rentável',val:BRLk(melhor.mc),c:'g',sub:esc(melhor.cliente)+' · '+PCT(melhor.mcPct)},
+    {lab:'Menor margem',val:pior?PCT(pior.mcPct):'—',c:'gold',sub:pior?(esc(pior.cliente)+' · alvo de reajuste'):'—'},
   ]);
   // ---- aviso de custos zerados ----
   if(avEl){ const semCusto=rows.filter(r=>r.custoDir<=0).length;
@@ -4181,7 +4181,13 @@ async function doAuth(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return;
     }
   }catch(e){ authMsg(traduzErro(e.message||e),'err'); }
   finally{ if(btn) btn.disabled=false; } }
-async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); try{ carregarPermissoes(); }catch(e){} document.body.classList.add('pre-login'); showAuth(true); }
+async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null;
+  // aparelho compartilhado: apaga os dados do usuário que saiu, para não vazarem
+  // para o próximo (localStorage + estado em memória são zerados).
+  try{ localStorage.removeItem(SKEY); }catch(e){}
+  try{ D=hydrate(JSON.parse(JSON.stringify(SEED))); }catch(e){ try{ D=hydrate({}); }catch(_){ } }
+  try{ renderEditors&&renderEditors(); }catch(e){} try{ renderAll&&renderAll(); }catch(e){}
+  cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); try{ carregarPermissoes(); }catch(e){} document.body.classList.add('pre-login'); showAuth(true); }
 function authSkip(){ showAuth(false); cloudSet('Nuvem: offline'); }
 function onLogin(user){ if(!user)return; sbUser=user; document.body.classList.remove('pre-login'); showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); try{ carregarPermissoes(); }catch(e){} }
 async function cloudLoad(){ if(!sb||!sbUser)return;
@@ -4230,7 +4236,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · seed-vazio-import-seguro';
+const APP_VERSION='2026-08-14 · xss-hardening-logout';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
