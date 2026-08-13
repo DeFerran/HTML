@@ -207,3 +207,45 @@ test("tool desconhecida → disponivel=false", async () => {
   const r = await runReadTool(db, "drop_tables", {}, CTX);
   expect(r.disponivel).toBe(false);
 });
+
+// ---------------------------------------------------------------- RAG
+
+const HITS = [
+  { doc_id: "d1", titulo: "Manual de Calagem", fonte: "manual.md", idx: 0, trecho: "Aplicar calcário conforme V%.", distancia: 0.12 },
+  { doc_id: "d1", titulo: "Manual de Calagem", fonte: "manual.md", idx: 1, trecho: "Considerar PRNT do produto.", distancia: 0.20 },
+  { doc_id: "d2", titulo: "Guia de Amostragem", fonte: "guia.txt", idx: 3, trecho: "Coletar 15 subamostras por gleba.", distancia: 0.25 },
+];
+
+test("search_knowledge: retorna trechos e FONTES únicas dos docs usados", async () => {
+  const { db, fromTables } = makeDb(SAMPLE);
+  const ctx = { ...CTX, retrieve: (_q: string, _n: number) => Promise.resolve(HITS) };
+  const r = await runReadTool(db, "search_knowledge", { consulta: "calagem" }, ctx);
+  expect(r.encontrado).toBe(true);
+  const d = r.dados as { trechos: unknown[]; fontes: Array<{ doc_id: string }> };
+  expect(d.trechos.length).toBe(3);
+  // fontes deduplicadas por documento (d1, d2).
+  expect(d.fontes.map((f) => f.doc_id).sort()).toEqual(["d1", "d2"]);
+  // a tool NÃO acessa o banco diretamente: o escopo (RLS) vem do retrieve injetado.
+  expect(fromTables).toEqual([]);
+});
+
+test("search_knowledge: sem resultados → encontrado=false, sem inventar", async () => {
+  const { db } = makeDb(SAMPLE);
+  const ctx = { ...CTX, retrieve: () => Promise.resolve([]) };
+  const r = await runReadTool(db, "search_knowledge", { consulta: "tema inexistente" }, ctx);
+  expect(r.encontrado).toBe(false);
+  expect(r.dados).toBeUndefined();
+});
+
+test("search_knowledge: sem retrieve no contexto → disponivel=false", async () => {
+  const { db } = makeDb(SAMPLE);
+  const r = await runReadTool(db, "search_knowledge", { consulta: "x" }, CTX);
+  expect(r.disponivel).toBe(false);
+});
+
+test("search_knowledge: consulta vazia → encontrado=false", async () => {
+  const { db } = makeDb(SAMPLE);
+  const ctx = { ...CTX, retrieve: () => Promise.resolve(HITS) };
+  const r = await runReadTool(db, "search_knowledge", { consulta: "  " }, ctx);
+  expect(r.encontrado).toBe(false);
+});

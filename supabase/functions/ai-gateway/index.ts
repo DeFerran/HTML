@@ -22,9 +22,11 @@ import {
   ToolResultBlock,
 } from "./provider.ts";
 import { runReadTool, toolSpecs } from "./tools/read_tools.ts";
+import { KnowledgeHit } from "./tools/types.ts";
 
 // ---- configuração (backend) ----
 const EMPRESA = "DF AGRO"; // tenant único atual (ver docs/ai/01-AUDITORIA-ATUAL.md)
+const EMB_MODEL = "gte-small"; // embeddings nativas do Edge (384 dim), sem chave
 const MAX_TOKENS = 1024;
 const TIMEOUT_MS = 60_000;
 const RATE_LIMIT_PER_MIN = 30; // por usuário
@@ -39,6 +41,10 @@ const SYSTEM_PROMPT =
   `nunca invente números de clientes, receitas, custos, hectares, análises de solo ` +
   `ou mapas. Para qualquer dado objetivo, use as ferramentas de leitura disponíveis ` +
   `(get_client, get_season, get_costs, get_collection_status). ` +
+  `Para dúvidas conceituais/procedimentais, use search_knowledge (Base de ` +
+  `Conhecimento) e SEMPRE cite ao final quais documentos (fontes) você utilizou. ` +
+  `Se search_knowledge não achar nada, diga que não há documento aprovado sobre o ` +
+  `tema — não invente. ` +
   `Algumas ferramentas (get_farm, get_field, get_soil_analysis) retornam ` +
   `disponivel=false porque esta plataforma NÃO tem esse cadastro — nesse caso, ` +
   `diga com clareza que a informação não existe na plataforma e NÃO invente nada. ` +
@@ -70,6 +76,15 @@ function argsHash(obj: unknown): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(16);
+}
+
+// embeddings nativas do Edge (gte-small, 384 dim) — sem chave externa.
+// deno-lint-ignore no-explicit-any
+const SB_AI = (globalThis as any).Supabase?.ai;
+async function embedText(text: string): Promise<number[]> {
+  if (!SB_AI) throw new Error("Supabase.ai indisponível.");
+  const session = new SB_AI.Session(EMB_MODEL);
+  return (await session.run(text, { mean_pool: true, normalize: true })) as number[];
 }
 
 Deno.serve(async (req: Request) => {
@@ -152,7 +167,29 @@ Deno.serve(async (req: Request) => {
 
   const started = Date.now();
   let conversationId = conversationIdIn;
-  const ctx = { userId, empresa: EMPRESA };
+
+  // recuperação semântica (RAG): embed a consulta + RPC sob RLS (só docs
+  // aprovados/indexados do próprio usuário). Injetada como ctx.retrieve.
+  const retrieve = async (consulta: string, limite: number): Promise<KnowledgeHit[]> => {
+    const qv = await embedText(consulta);
+    const { data, error } = await sb.rpc("match_ai_knowledge", {
+      query_embedding: `[${qv.join(",")}]`,
+      match_count: limite,
+    });
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Array<Record<string, unknown>>).map((h) => ({
+      doc_id: String(h.doc_id),
+      titulo: String(h.titulo),
+      fonte: (h.fonte as string) ?? null,
+      idx: Number(h.idx),
+      trecho: String(h.trecho),
+      distancia: Number(h.distancia),
+    }));
+  };
+  const ctx = { userId, empresa: EMPRESA, retrieve };
+
+  // documentos da Base de Conhecimento efetivamente usados nesta resposta.
+  const fontesUsadas = new Map<string, { doc_id: string; titulo: string; fonte: string | null }>();
 
   try {
     // ---- conversa (cria se preciso) ----
@@ -227,6 +264,21 @@ Deno.serve(async (req: Request) => {
         let payload: unknown;
         try {
           payload = await runReadTool(sb, call.name, call.input, ctx);
+          // captura as fontes citáveis vindas do RAG.
+          if (call.name === "search_knowledge") {
+            const dados = (payload as { dados?: { fontes?: unknown } })?.dados;
+            const fontes = Array.isArray(dados?.fontes) ? dados!.fontes : [];
+            for (const f of fontes as Array<Record<string, unknown>>) {
+              const id = String(f.doc_id);
+              if (id && !fontesUsadas.has(id)) {
+                fontesUsadas.set(id, {
+                  doc_id: id,
+                  titulo: String(f.titulo ?? ""),
+                  fonte: (f.fonte as string) ?? null,
+                });
+              }
+            }
+          }
         } catch (e) {
           ok = false;
           erro = (e as Error).message ?? "erro na tool";
@@ -306,6 +358,7 @@ Deno.serve(async (req: Request) => {
       conversation_id: conversationId,
       reply: finalText,
       usage: { input: inputTokens, output: outputTokens },
+      fontes: [...fontesUsadas.values()], // docs da Base de Conhecimento usados
     });
   } catch (e) {
     // (6) tratamento de erro + log do run com falha.

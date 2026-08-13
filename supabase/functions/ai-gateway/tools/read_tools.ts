@@ -12,7 +12,14 @@
 //   get_client, get_season, get_costs, get_collection_status  → dados reais
 //   get_farm, get_field, get_soil_analysis                    → stub honesto
 
-import { Db, ToolContext, ToolDef, ToolHandler, ToolResult } from "./types.ts";
+import {
+  Db,
+  KnowledgeHit,
+  ToolContext,
+  ToolDef,
+  ToolHandler,
+  ToolResult,
+} from "./types.ts";
 
 // ---- helpers -----------------------------------------------------------
 
@@ -282,6 +289,62 @@ const getCollectionStatus: ToolHandler = async (db) => {
   };
 };
 
+// ---- search_knowledge (RAG) --------------------------------------------
+// Recuperação semântica na Base de Conhecimento. Só retorna trechos de
+// documentos APROVADos e INDEXADos do próprio usuário (RLS via ctx.retrieve).
+// Sempre informa quais documentos (fontes) foram usados.
+
+const searchKnowledge: ToolHandler = async (_db, args, ctx) => {
+  const consulta = str(args, "consulta");
+  const limite = Math.min(Math.max(intOrNull(args, "limite") ?? 5, 1), 10);
+  if (!consulta) {
+    return { disponivel: true, encontrado: false, motivo: "Informe a consulta." };
+  }
+  if (!ctx.retrieve) {
+    return {
+      disponivel: false,
+      encontrado: false,
+      motivo: "Recuperação de conhecimento indisponível neste contexto.",
+    };
+  }
+
+  let hits: KnowledgeHit[];
+  try {
+    hits = await ctx.retrieve(consulta, limite);
+  } catch (e) {
+    throw new Error(`retrieve: ${(e as Error).message}`);
+  }
+
+  if (!hits.length) {
+    return {
+      disponivel: true,
+      encontrado: false,
+      motivo:
+        "Nenhum documento aprovado da Base de Conhecimento é relevante para essa pergunta.",
+    };
+  }
+
+  // fontes únicas (para citar quais documentos foram utilizados).
+  const fontesMap = new Map<string, { doc_id: string; titulo: string; fonte: string | null }>();
+  for (const h of hits) {
+    if (!fontesMap.has(h.doc_id)) {
+      fontesMap.set(h.doc_id, { doc_id: h.doc_id, titulo: h.titulo, fonte: h.fonte });
+    }
+  }
+
+  return {
+    disponivel: true,
+    encontrado: true,
+    dados: {
+      trechos: hits.map((h) => ({
+        trecho: h.trecho,
+        fonte: { doc_id: h.doc_id, titulo: h.titulo, fonte: h.fonte, idx: h.idx },
+      })),
+      fontes: [...fontesMap.values()],
+    },
+  };
+};
+
 // ---- stubs honestos: entidades sem fonte de dados nesta plataforma -----
 
 const STUB_MOTIVO: Record<string, string> = {
@@ -360,6 +423,22 @@ export const READ_TOOLS: ToolDef[] = [
     },
     nivel: "READ",
     handler: getCollectionStatus,
+  },
+  {
+    name: "search_knowledge",
+    description:
+      "Busca semântica na Base de Conhecimento (documentos técnicos aprovados). Use para perguntas conceituais/procedimentais. Retorna trechos e as FONTES (documentos) usadas — cite-as na resposta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        consulta: { type: "string", description: "Pergunta ou termos a buscar." },
+        limite: { type: "integer", description: "Máx. de trechos (1–10, padrão 5)." },
+      },
+      required: ["consulta"],
+      additionalProperties: false,
+    },
+    nivel: "READ",
+    handler: searchKnowledge,
   },
   {
     name: "get_farm",

@@ -642,6 +642,7 @@ header .htxt h1{display:none}
   <button data-v="custos">Custos &amp; Coleta</button>
   <button data-v="op">Operação</button>
   <button data-v="edit">✎ Lançamentos</button>
+  <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="admin" id="tabAdmin" style="display:none">⚙ Administração</button>
 </nav>
 
@@ -1001,6 +1002,13 @@ header .htxt h1{display:none}
     <div class="panel"><h3>Histórico de versões (meu painel)</h3><div class="cap">Snapshots automáticos do seu painel (a cada ~10 min de edição) e manuais. Restaurar substitui os dados atuais pela versão escolhida.</div>
       <div style="margin-bottom:10px"><button class="edbtn primary" onclick="cloudSnapshotManual()">➕ Criar versão agora</button> <button class="edbtn" onclick="carregarHistorico()">↺ Atualizar lista</button></div>
       <div style="overflow-x:auto"><table id="tHistorico" class="resp-cards"></table></div></div>
+  </section>
+
+  <!-- INTELIGÊNCIA ARTIFICIAL · CONHECIMENTO (RAG) — aditivo, atrás de feature flag -->
+  <section class="view" id="v-ia">
+    <div class="lead"><h2>Inteligência Artificial — Conhecimento</h2>
+      <p>Base de Conhecimento do Copiloto. Adicione documentos técnicos (texto ou arquivo <b>.txt/.md</b>), <b>aprove</b> os que devem alimentar a IA, acompanhe a indexação e pesquise. Só documentos <b>aprovados</b> e <b>indexados</b> entram nas respostas — nada é indexado automaticamente.</p></div>
+    <div id="iaKB"><div class="cap">Carregando…</div></div>
   </section>
 
   <div class="foot">DF AGRO Consultoria Agrícola · Painel de gestão editável · Os dados são salvos automaticamente neste navegador.<span id="verInfo"></span></div>
@@ -2229,6 +2237,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='margem')renderPrecoMargem();
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
+  if(b.dataset.v==='ia'){ try{renderIAConhecimento();}catch(e){} }
   wrapTables();
   window.scrollTo({top:0,behavior:'smooth'});
 });
@@ -4284,7 +4293,8 @@ function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar'
 function aplicarPermissoes(){
   const logado=!!sbUser, aplicar=logado&&ehMembro;
   const ta=document.getElementById('tabAdmin'); if(ta) ta.style.display=ehAdmin?'':'none';
-  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin')return;
+  const ti=document.getElementById('tabIA'); if(ti) ti.style.display=(aplicar&&kbEnabled())?'':'none';
+  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin'||v==='ia')return;
     b.style.display=(aplicar&&!abaLiberada(v))?'none':''; });
   const leitor=aplicar&&meuPapel==='leitor';
   document.body.classList.toggle('somente-leitura',leitor);
@@ -4294,6 +4304,102 @@ function aplicarPermissoes(){
   const at=document.querySelector('#tabs button.active');
   if(at&&at.style.display==='none'){ const g=document.querySelector('#tabs button[data-v="geral"]'); if(g)g.click(); }
   if(typeof mirrorSidebarPerms==='function') mirrorSidebarPerms();
+}
+/* ===================== IA · BASE DE CONHECIMENTO (RAG) =====================
+   Aditivo e isolado. Fala só com as tabelas ai_knowledge_* (RLS por usuário) e
+   com a Edge Function ai-knowledge (ingestão/busca). Não toca nenhuma view/dado
+   existente. Feature flag: localStorage 'df_ia_kb' ('0' desliga). */
+function kbEnabled(){ try{ return localStorage.getItem('df_ia_kb')!=='0'; }catch(e){ return true; } }
+window.desativarPainelIA=function(){ try{ localStorage.setItem('df_ia_kb','0'); }catch(e){} try{ aplicarPermissoes(); }catch(e){} };
+window.ativarPainelIA=function(){ try{ localStorage.setItem('df_ia_kb','1'); }catch(e){} try{ aplicarPermissoes(); }catch(e){} };
+let _kbBusy=false;
+function iaMsg(t,cls){ const e=document.getElementById('kbMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+async function kbFnError(error){ let m=error&&error.message||'erro'; try{ if(error&&error.context&&error.context.json){ const j=await error.context.json(); if(j&&j.error&&j.error.message) m=j.error.message; } }catch(_){} return m; }
+function renderIAConhecimento(){
+  const host=document.getElementById('iaKB'); if(!host)return;
+  if(!sb||!sbUser){ host.innerHTML='<div class="panel"><div class="cap">Entre na sua conta (nuvem) para usar a Base de Conhecimento.</div></div>'; return; }
+  host.innerHTML=
+    '<div class="panel"><h3>Adicionar documento</h3>'
+    +'<div class="cap">Cole o texto ou carregue um arquivo .txt/.md. Marque <b>Aprovar</b> para liberar o uso pela IA. Nada é indexado automaticamente.</div>'
+    +'<div class="edform">'
+      +'<label>Título<br><input id="kbTitulo" type="text" placeholder="Ex.: Manual de calagem"></label>'
+      +'<label>Fonte (opcional)<br><input id="kbFonte" type="text" placeholder="Ex.: manual / autor / referência"></label>'
+      +'<label>Tipo<br><select id="kbTipo"><option value="texto">Texto</option><option value="markdown">Markdown</option></select></label>'
+      +'<label>Arquivo .txt/.md (opcional)<br><input id="kbArquivo" type="file" accept=".txt,.md,.markdown,text/plain"></label>'
+    +'</div>'
+    +'<label style="display:block;margin-top:8px">Conteúdo<br><textarea id="kbConteudo" rows="6" style="width:100%"></textarea></label>'
+    +'<label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px"><input id="kbAprovar" type="checkbox" checked> Aprovar para a Base de Conhecimento</label>'
+    +'<div style="margin-top:10px"><button class="edbtn primary" id="kbAddBtn">➕ Adicionar e indexar</button></div>'
+    +'<div class="authmsg" id="kbMsg" style="margin-top:10px"></div></div>'
+    +'<div class="panel"><h3>Pesquisar na base</h3><div class="cap">Busca semântica só nos documentos <b>aprovados</b> e <b>indexados</b>.</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input id="kbBusca" type="text" placeholder="Ex.: como calcular a calagem?" style="flex:1;min-width:200px"><button class="edbtn" id="kbBuscaBtn">🔎 Pesquisar</button></div>'
+      +'<div id="kbResultados" style="margin-top:10px"></div></div>'
+    +'<div class="panel"><h3>Documentos</h3><div class="cap">Status de indexação e ações. Só documentos aprovados+indexados alimentam a IA.</div>'
+      +'<div style="margin-bottom:8px"><button class="edbtn" id="kbRefreshBtn">↺ Atualizar</button></div>'
+      +'<div style="overflow-x:auto"><table id="kbTabela" class="resp-cards"></table></div></div>';
+  document.getElementById('kbArquivo').onchange=kbReadFile;
+  document.getElementById('kbAddBtn').onclick=kbAdd;
+  document.getElementById('kbBuscaBtn').onclick=kbSearch;
+  document.getElementById('kbRefreshBtn').onclick=kbList;
+  kbList();
+}
+function kbReadFile(ev){ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ const ta=document.getElementById('kbConteudo'); if(ta)ta.value=String(r.result||''); const t=document.getElementById('kbTitulo'); if(t&&!t.value)t.value=f.name.replace(/\.(txt|md|markdown)$/i,''); if(/\.(md|markdown)$/i.test(f.name)){ const tp=document.getElementById('kbTipo'); if(tp)tp.value='markdown'; } };
+  r.readAsText(f); }
+async function kbAdd(){ if(_kbBusy||!sb)return;
+  const titulo=(document.getElementById('kbTitulo').value||'').trim();
+  const fonte=(document.getElementById('kbFonte').value||'').trim();
+  const tipo=document.getElementById('kbTipo').value;
+  const conteudo=(document.getElementById('kbConteudo').value||'').trim();
+  const aprovado=document.getElementById('kbAprovar').checked;
+  if(!titulo){ iaMsg('Informe o título.','err'); return; }
+  if(!conteudo){ iaMsg('Cole o conteúdo ou carregue um arquivo.','err'); return; }
+  _kbBusy=true; iaMsg('Salvando e indexando…');
+  try{
+    const {data,error}=await sb.from('ai_knowledge_docs').insert({titulo,fonte:fonte||null,tipo,conteudo,aprovado,status:'pendente'}).select('id').single();
+    if(error)throw error;
+    const {data:pd,error:pe}=await sb.functions.invoke('ai-knowledge',{body:{action:'process',doc_id:data.id}});
+    if(pe)throw new Error(await kbFnError(pe));
+    iaMsg('Documento indexado ('+((pd&&pd.n_chunks)||0)+' trechos).','ok');
+    document.getElementById('kbTitulo').value='';document.getElementById('kbFonte').value='';document.getElementById('kbConteudo').value='';document.getElementById('kbArquivo').value='';
+    kbList();
+  }catch(e){ iaMsg('Erro: '+(e.message||e),'err'); }
+  _kbBusy=false;
+}
+function kbStatusBadge(s,erro){ const map={pendente:['#9a6a00','pendente'],processando:['#7a5cff','processando'],indexado:['#0A6A30','indexado'],erro:['#c0392b','erro'],desativado:['#777','desativado']}; const m=map[s]||['#777',s]; let t='<span style="color:'+m[0]+';font-weight:700">'+m[1]+'</span>'; if(s==='erro'&&erro)t+=' <span class="cap" title="'+esc(erro)+'">ⓘ</span>'; return t; }
+async function kbList(){ const host=document.getElementById('kbTabela'); if(!host||!sb)return;
+  host.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{
+    const {data,error}=await sb.from('ai_knowledge_docs').select('id,titulo,fonte,tipo,status,aprovado,n_chunks,erro,atualizado_em').order('atualizado_em',{ascending:false});
+    if(error)throw error;
+    const rows=(data||[]);
+    if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Nenhum documento ainda.</td></tr></tbody>'; return; }
+    const head='<thead><tr><th>Título</th><th>Fonte</th><th>Status</th><th>Aprovado</th><th>Trechos</th><th>Ações</th></tr></thead>';
+    const body=rows.map(d=>{ const ap=d.aprovado?'<span style="color:#0A6A30;font-weight:700">sim</span>':'<span style="color:#9a6a00">não</span>';
+      const acts='<button class="edbtn" onclick="kbReprocess(\''+d.id+'\')">↻ Reprocessar</button> '
+        +'<button class="edbtn" onclick="kbToggleAprovado(\''+d.id+'\','+(d.aprovado?'false':'true')+')">'+(d.aprovado?'Desaprovar':'Aprovar')+'</button> '
+        +'<button class="edbtn" onclick="kbDesativar(\''+d.id+'\')">Desativar</button>';
+      return '<tr><td>'+esc(d.titulo)+'</td><td>'+esc(d.fonte||'—')+'</td><td>'+kbStatusBadge(d.status,d.erro)+'</td><td>'+ap+'</td><td>'+((d.n_chunks)||0)+'</td><td>'+acts+'</td></tr>'; }).join('');
+    host.innerHTML=head+'<tbody>'+body+'</tbody>'; try{ wrapTables(); }catch(e){}
+  }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; }
+}
+async function kbReprocess(id){ if(!sb)return; iaMsg('Reprocessando…');
+  try{ const {data,error}=await sb.functions.invoke('ai-knowledge',{body:{action:'process',doc_id:id}}); if(error)throw new Error(await kbFnError(error)); iaMsg('Reprocessado ('+((data&&data.n_chunks)||0)+' trechos).','ok'); kbList(); }
+  catch(e){ iaMsg('Erro: '+(e.message||e),'err'); } }
+async function kbToggleAprovado(id,ap){ if(!sb)return; try{ const {error}=await sb.from('ai_knowledge_docs').update({aprovado:ap,atualizado_em:new Date().toISOString()}).eq('id',id); if(error)throw error; kbList(); }catch(e){ iaMsg('Erro: '+(e.message||e),'err'); } }
+async function kbDesativar(id){ if(!sb)return; if(!confirm('Desativar este documento? Ele deixa de ser usado pela IA.'))return; try{ const {error}=await sb.from('ai_knowledge_docs').update({aprovado:false,status:'desativado',atualizado_em:new Date().toISOString()}).eq('id',id); if(error)throw error; kbList(); }catch(e){ iaMsg('Erro: '+(e.message||e),'err'); } }
+async function kbSearch(){ if(!sb)return; const q=(document.getElementById('kbBusca').value||'').trim(); const out=document.getElementById('kbResultados'); if(!out)return;
+  if(!q){ out.innerHTML='<div class="cap">Digite uma pergunta.</div>'; return; }
+  out.innerHTML='<div class="cap">Pesquisando…</div>';
+  try{
+    const {data,error}=await sb.functions.invoke('ai-knowledge',{body:{action:'search',consulta:q,limite:5}});
+    if(error)throw new Error(await kbFnError(error));
+    const res=(data&&data.resultados)||[];
+    if(!res.length){ out.innerHTML='<div class="cap">Nenhum documento aprovado é relevante para essa busca.</div>'; return; }
+    const fontes=(data&&data.fontes)||[];
+    const fl=fontes.map(f=>esc(f.titulo)+(f.fonte?(' ('+esc(f.fonte)+')'):'')).join(', ');
+    out.innerHTML='<div class="cap"><b>Fontes:</b> '+(fl||'—')+'</div>'+res.map(r=>'<div class="panel" style="margin-top:8px"><div style="font-weight:700">'+esc(r.titulo)+'</div><div class="cap">'+esc(r.fonte||'—')+' · trecho #'+(r.idx)+'</div><div>'+esc(r.trecho)+'</div></div>').join('');
+  }catch(e){ out.innerHTML='<div class="cap">Erro: '+esc(e.message||String(e))+'</div>'; }
 }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){

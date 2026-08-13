@@ -17,6 +17,7 @@ Claude e, quando útil, chama **ferramentas SOMENTE-LEITURA** sobre os espelhos
 | `get_season` | `bi_safras` + `bi_servicos` | safra = rótulo global (24/25…27/28). |
 | `get_costs` | `bi_custos_mensais` + `bi_custo_categoria` + `bi_proj_gastos` | real vs projetado. |
 | `get_collection_status` | `bi_operacao_situacao` + `bi_operacao_etapas` | só nível AGREGADO. |
+| `search_knowledge` | `ai_knowledge_*` (RAG) | busca semântica; retorna as **fontes** usadas (resposta traz `fontes[]`). |
 | `get_farm` | — | **stub**: `disponivel=false` (não há tabela). |
 | `get_field` | — | **stub**: `disponivel=false` (não há tabela). |
 | `get_soil_analysis` | — | **stub**: `disponivel=false` (não há tabela). |

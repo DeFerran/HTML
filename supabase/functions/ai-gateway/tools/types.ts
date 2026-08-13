@@ -22,6 +22,16 @@ export interface Db {
   from(table: string): QueryBuilder;
 }
 
+/** Um trecho recuperado da base de conhecimento (RAG). */
+export interface KnowledgeHit {
+  doc_id: string;
+  titulo: string;
+  fonte: string | null;
+  idx: number;
+  trecho: string;
+  distancia: number;
+}
+
 /**
  * Contexto de execução da tool. Vem do gateway (nunca do modelo).
  * A IA JAMAIS fornece user_id/empresa — eles saem do JWT + config do backend.
@@ -29,6 +39,11 @@ export interface Db {
 export interface ToolContext {
   userId: string;
   empresa: string;
+  /**
+   * Recuperação semântica (RAG). Injetada pelo gateway (embed + RPC sob RLS).
+   * Ausente em contexto sem RAG. Só lê documentos aprovados/indexados do usuário.
+   */
+  retrieve?: (consulta: string, limite: number) => Promise<KnowledgeHit[]>;
 }
 
 /** Resultado padronizado de toda READ tool. */
