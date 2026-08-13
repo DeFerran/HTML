@@ -494,7 +494,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
   .respfilt.open{display:flex}
 }
 </style>
-<script>try{if((localStorage.getItem('dfagro_theme')||'claro')==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}</script>
+<script>try{if((localStorage.getItem('dfagro_theme')||'dark')==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}</script>
 </head>
 <body class="pre-login">
 <div id="drop"><div class="box"><h2>Solte a planilha GESTÃO_AP aqui</h2><p>O painel lê o arquivo e redesenha tudo automaticamente</p></div></div>
@@ -4090,7 +4090,7 @@ function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); document.body.classLis
     if(session && session.user){ if(!sbUser) onLogin(session.user); }
     else { sbUser=null; cloudSet('Nuvem: entrar'); meuPapel=null;minhasAbas=[];ehAdmin=false;ehMembro=false; document.body.classList.add('pre-login'); showAuth(true); try{aplicarPermissoes();}catch(e){} } }); }
 
-(function(){ let _t='claro'; try{ _t=localStorage.getItem(THKEY)||'claro'; }catch(e){} applyTheme(_t,true); })();
+(function(){ let _t='dark'; try{ _t=localStorage.getItem(THKEY)||'dark'; }catch(e){} applyTheme(_t,true); })();
 renderAll();
 /* ===================== CONTROLE DE ACESSO (RBAC) ===================== */
 const ABAS_TODAS=[{v:'geral',t:'Visão Geral'},{v:'fin',t:'Financeiro'},{v:'cli',t:'Clientes'},{v:'serv',t:'Serviços'},{v:'funil',t:'Funil'},{v:'margem',t:'Preços & Margem'},{v:'metas',t:'Metas'},{v:'equipe',t:'Equipe'},{v:'custos',t:'Custos'},{v:'op',t:'Operação'},{v:'edit',t:'Lançamentos'}];
@@ -4111,7 +4111,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · responsivo-completo';
+const APP_VERSION='2026-08-13 · tema-escuro-padrao';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
