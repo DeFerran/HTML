@@ -4349,6 +4349,8 @@ function aplicarPermissoes(){
    com a Edge Function ai-knowledge (ingestão/busca). Não toca nenhuma view/dado
    existente. Feature flag: localStorage 'df_ia_kb' ('0' desliga). */
 function kbEnabled(){ try{ return localStorage.getItem('df_ia_kb')!=='0'; }catch(e){ return true; } }
+/* escrita na camada de IA = editor/admin (espelha pode_editar()/somente-leitura) */
+function podeEditarIA(){ return !!(ehAdmin || meuPapel==='editor'); }
 window.desativarPainelIA=function(){ try{ localStorage.setItem('df_ia_kb','0'); }catch(e){} try{ aplicarPermissoes(); }catch(e){} };
 window.ativarPainelIA=function(){ try{ localStorage.setItem('df_ia_kb','1'); }catch(e){} try{ aplicarPermissoes(); }catch(e){} };
 let _kbBusy=false;
@@ -4358,7 +4360,7 @@ function renderIAConhecimento(){
   const host=document.getElementById('iaKB'); if(!host)return;
   if(!sb||!sbUser){ host.innerHTML='<div class="panel"><div class="cap">Entre na sua conta (nuvem) para usar a Base de Conhecimento.</div></div>'; return; }
   host.innerHTML=
-    '<div class="panel"><h3>Adicionar documento</h3>'
+    '<div class="panel" id="kbAddPanel"><h3>Adicionar documento</h3>'
     +'<div class="cap">Cole o texto ou carregue um arquivo .txt/.md. Marque <b>Aprovar</b> para liberar o uso pela IA. Nada é indexado automaticamente.</div>'
     +'<div class="edform">'
       +'<label>Título<br><input id="kbTitulo" type="text" placeholder="Ex.: Manual de calagem"></label>'
@@ -4376,10 +4378,11 @@ function renderIAConhecimento(){
     +'<div class="panel"><h3>Documentos</h3><div class="cap">Status de indexação e ações. Só documentos aprovados+indexados alimentam a IA.</div>'
       +'<div style="margin-bottom:8px"><button class="edbtn" id="kbRefreshBtn">↺ Atualizar</button></div>'
       +'<div style="overflow-x:auto"><table id="kbTabela" class="resp-cards"></table></div></div>';
-  document.getElementById('kbArquivo').onchange=kbReadFile;
-  document.getElementById('kbAddBtn').onclick=kbAdd;
+  const _kbA=document.getElementById('kbArquivo'); if(_kbA)_kbA.onchange=kbReadFile;
+  const _kbAdd=document.getElementById('kbAddBtn'); if(_kbAdd)_kbAdd.onclick=kbAdd;
   document.getElementById('kbBuscaBtn').onclick=kbSearch;
   document.getElementById('kbRefreshBtn').onclick=kbList;
+  if(!podeEditarIA()){ const ap=document.getElementById('kbAddPanel'); if(ap) ap.innerHTML='<h3>Adicionar documento</h3><div class="cap">🔒 Modo leitura: adicionar/indexar documentos é restrito a <b>editor/admin</b>. Você pode pesquisar e visualizar.</div>'; }
   kbList();
 }
 function kbReadFile(ev){ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const r=new FileReader();
@@ -4414,10 +4417,11 @@ async function kbList(){ const host=document.getElementById('kbTabela'); if(!hos
     const rows=(data||[]);
     if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Nenhum documento ainda.</td></tr></tbody>'; return; }
     const head='<thead><tr><th>Título</th><th>Fonte</th><th>Status</th><th>Aprovado</th><th>Trechos</th><th>Ações</th></tr></thead>';
+    const edit=podeEditarIA();
     const body=rows.map(d=>{ const ap=d.aprovado?'<span style="color:#0A6A30;font-weight:700">sim</span>':'<span style="color:#9a6a00">não</span>';
-      const acts='<button class="edbtn" onclick="kbReprocess(\''+d.id+'\')">↻ Reprocessar</button> '
+      const acts=edit?('<button class="edbtn" onclick="kbReprocess(\''+d.id+'\')">↻ Reprocessar</button> '
         +'<button class="edbtn" onclick="kbToggleAprovado(\''+d.id+'\','+(d.aprovado?'false':'true')+')">'+(d.aprovado?'Desaprovar':'Aprovar')+'</button> '
-        +'<button class="edbtn" onclick="kbDesativar(\''+d.id+'\')">Desativar</button>';
+        +'<button class="edbtn" onclick="kbDesativar(\''+d.id+'\')">Desativar</button>'):'<span class="cap">🔒 leitura</span>';
       return '<tr><td>'+esc(d.titulo)+'</td><td>'+esc(d.fonte||'—')+'</td><td>'+kbStatusBadge(d.status,d.erro)+'</td><td>'+ap+'</td><td>'+((d.n_chunks)||0)+'</td><td>'+acts+'</td></tr>'; }).join('');
     host.innerHTML=head+'<tbody>'+body+'</tbody>'; try{ wrapTables(); }catch(e){}
   }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; }
@@ -4454,7 +4458,7 @@ function renderIAMemoria(){
   const host=document.getElementById('iaMem'); if(!host)return;
   if(!sb||!sbUser){ host.innerHTML='<div class="panel"><div class="cap">Entre na sua conta (nuvem) para usar a Memória.</div></div>'; return; }
   host.innerHTML=
-    '<div class="panel"><h3>Adicionar memória</h3>'
+    '<div class="panel" id="memAddPanel"><h3>Adicionar memória</h3>'
     +'<div class="cap">Tipos agronômicos (recomendação, análise de solo, manejo, dose, fertilidade, calagem) entram como <b>pendentes</b> mesmo que você marque validar.</div>'
     +'<div class="edform">'
       +'<label>Tipo<br><input id="memTipo" type="text" placeholder="preferencia / fato / recomendacao_agronomica"></label>'
@@ -4474,9 +4478,10 @@ function renderIAMemoria(){
         +'<button class="edbtn" id="memFiltrarBtn">🔎 Filtrar</button><button class="edbtn" id="memRefreshBtn">↺ Atualizar</button>'
       +'</div>'
       +'<div style="overflow-x:auto"><table id="memTabela" class="resp-cards"></table></div></div>';
-  document.getElementById('memAddBtn').onclick=memAdd;
+  const _mAdd=document.getElementById('memAddBtn'); if(_mAdd)_mAdd.onclick=memAdd;
   document.getElementById('memFiltrarBtn').onclick=()=>{ _memFiltro={status:document.getElementById('memFStatus').value,tipo:(document.getElementById('memFTipo').value||'').trim(),q:(document.getElementById('memFQ').value||'').trim()}; memList(); };
   document.getElementById('memRefreshBtn').onclick=memList;
+  if(!podeEditarIA()){ const ap=document.getElementById('memAddPanel'); if(ap) ap.innerHTML='<h3>Adicionar memória</h3><div class="cap">🔒 Modo leitura: criar/validar/editar memória é restrito a <b>editor/admin</b>. Você pode pesquisar e visualizar.</div>'; }
   memList();
 }
 async function memAdd(){ if(_memBusy||!sb)return;
@@ -4514,10 +4519,13 @@ async function memList(){ const host=document.getElementById('memTabela'); if(!h
     const rows=(data||[]);
     if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Nenhuma memória.</td></tr></tbody>'; return; }
     const head='<thead><tr><th>Conteúdo</th><th>Tipo</th><th>Entidade</th><th>Fonte</th><th>Conf.</th><th>Estado</th><th>Ações</th></tr></thead>';
+    const edit=podeEditarIA();
     const body=rows.map(m=>{ const ent=(m.entity_type||'')+(m.entity_id?(' · '+m.entity_id):''); const acts=[];
-      if(m.status!=='VALIDATED') acts.push('<button class="edbtn" onclick="memValidar(\''+m.id+'\')">✓ Validar</button>');
-      acts.push('<button class="edbtn" onclick="memEditar(\''+m.id+'\')">✎ Editar</button>');
-      if(m.status!=='INVALIDATED') acts.push('<button class="edbtn" onclick="memInvalidar(\''+m.id+'\')">⦸ Invalidar</button>');
+      if(edit){
+        if(m.status!=='VALIDATED') acts.push('<button class="edbtn" onclick="memValidar(\''+m.id+'\')">✓ Validar</button>');
+        acts.push('<button class="edbtn" onclick="memEditar(\''+m.id+'\')">✎ Editar</button>');
+        if(m.status!=='INVALIDATED') acts.push('<button class="edbtn" onclick="memInvalidar(\''+m.id+'\')">⦸ Invalidar</button>');
+      } else { acts.push('<span class="cap">🔒 leitura</span>'); }
       return '<tr><td>'+esc(m.content)+'</td><td>'+esc(m.memory_type)+(memCritico(m.memory_type)?' <span class="cap" title="agronômico: exige validação">⚠</span>':'')+'</td><td>'+esc(ent||'—')+'</td><td>'+esc(m.source)+'</td><td>'+Math.round((Number(m.confidence)||0)*100)+'%</td><td>'+memBadge(m.status)+'</td><td>'+acts.join(' ')+'</td></tr>'; }).join('');
     host.innerHTML=head+'<tbody>'+body+'</tbody>'; try{ wrapTables(); }catch(e){}
   }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; }

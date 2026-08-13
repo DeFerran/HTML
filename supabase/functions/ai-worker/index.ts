@@ -134,7 +134,9 @@ async function executeJob(sb: SB, job: Record<string, unknown>): Promise<Record<
   } catch (e) {
     const msg = (e as Error).message ?? "erro";
     const max = Number(job.max_tentativas) || 3;
-    const retry = shouldRetry(tentativa, max);
+    // erros terminais não adiantam retry (config/ação inválida) → falha direto.
+    const terminal = /not_configured|a(c|ç)(a|ã)o desconhecida/i.test(msg);
+    const retry = !terminal && shouldRetry(tentativa, max);
     if (retry) {
       const runAt = new Date(Date.now() + retryDelaySeconds(tentativa) * 1000).toISOString();
       await sb.from("ai_jobs").update({ status: "pendente", tentativas: tentativa, erro: msg.slice(0, 500), run_at: runAt, atualizado_em: new Date().toISOString() }).eq("id", job.id);
