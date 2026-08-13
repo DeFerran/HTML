@@ -715,7 +715,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <button data-sec="op">Operação</button>
     </div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
-    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div></div>
+    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edMatrizCusto"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
     <div class="edsec" data-sec="funil" style="display:none"><div class="edcard" id="edMetasSafra"></div><div class="edcard" id="edFunil"></div></div>
     <div class="edsec" data-sec="precos" style="display:none"><div class="edcard" id="edPrecos"></div></div>
@@ -3138,10 +3138,41 @@ function renderDespesas(){
   host.querySelectorAll('.dfil').forEach(inp=>{ inp.oninput=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; inp.onchange=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; });
   host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
+  try{ renderMatrizCustos(); }catch(e){}
+}
+/* matriz mensal = RELATÓRIO calculado da base (item 19): dimensão × mês, com troca de visão */
+const MZ_MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MZ_VIEWS=[['categoria','Categoria'],['centroCusto','Centro de custo'],['natureza','Natureza'],['colaborador','Colaborador'],['servico','Serviço'],['veiculo','Veículo']];
+let _matrizView='categoria';
+function compMes(comp){ const m=String(comp||'').match(/^\d{4}-(\d{2})/); return m?(+m[1]-1):-1; }
+function renderMatrizCustos(){
+  const host=document.getElementById('edMatrizCusto'); if(!host)return;
+  const dimKey=_matrizView;
+  const map={};
+  (D.lancamentos||[]).forEach(l=>{ if(!l)return; if((l.status||'')==='Cancelado')return; const key=(l[dimKey]||'').toString().trim()||'(não informado)';
+    if(!map[key])map[key]={m:new Array(12).fill(0),ano:0,tot:0}; const mi=compMes(l.competencia), v=+l.valor||0;
+    if(mi>=0)map[key].m[mi]+=v; else map[key].ano+=v; map[key].tot+=v; });
+  const linhas=Object.keys(map).map(k=>({k,...map[k]})).sort((a,b)=>b.tot-a.tot);
+  const colTot=new Array(12).fill(0); let anoTot=0, geral=0; linhas.forEach(r=>{ r.m.forEach((v,i)=>colTot[i]+=v); anoTot+=r.ano; geral+=r.tot; });
+  const temMes=colTot.some(v=>v>0);
+  let h='<div class="edhead"><h3>Matriz mensal de custo — relatório da base</h3><p class="edhelp">Consolida automaticamente os lançamentos por mês. Não é editável aqui — é um espelho da base única. Troque a visão para ver por centro de custo, colaborador, serviço, veículo ou natureza.</p></div>';
+  h+='<div class="edpills" style="margin:0 0 12px">'+MZ_VIEWS.map(v=>'<button class="edpill'+(v[0]===_matrizView?' on':'')+'" data-mv="'+v[0]+'">'+v[1]+'</button>').join('')+'</div>';
+  const cell=v=>v?BRLk(v):'<span style="color:var(--muted)">·</span>';
+  h+='<div class="mxwrap"><table class="edtab mxtab"><thead><tr><th class="mxcat">'+esc((MZ_VIEWS.find(v=>v[0]===_matrizView)||['','Dimensão'])[1])+'</th>';
+  MZ_MESES.forEach((m,i)=>{ if(temMes)h+='<th class="num mxm">'+m+'</th>'; });
+  h+='<th class="num">Sem mês</th><th class="num mxtot">Total</th></tr></thead><tbody>';
+  if(!linhas.length) h+='<tr><td colspan="'+(temMes?15:3)+'" style="color:var(--muted);padding:14px 6px">Sem lançamentos. Importe os custos atuais ou lance uma despesa acima.</td></tr>';
+  linhas.forEach(r=>{ h+='<tr><td class="mxcat">'+esc(r.k)+'</td>'; if(temMes)r.m.forEach(v=>h+='<td class="num">'+cell(v)+'</td>');
+    h+='<td class="num">'+cell(r.ano)+'</td><td class="num mxrowtot"><b>'+BRL(r.tot)+'</b></td></tr>'; });
+  h+='</tbody><tfoot><tr><td class="mxcat">Total</td>'; if(temMes)colTot.forEach(v=>h+='<td class="num">'+cell(v)+'</td>');
+  h+='<td class="num">'+cell(anoTot)+'</td><td class="num mxgrand">'+BRL(geral)+'</td></tr></tfoot></table></div>';
+  host.innerHTML=h;
+  host.querySelectorAll('button[data-mv]').forEach(b=>b.onclick=()=>{ _matrizView=b.dataset.mv; renderMatrizCustos(); });
 }
 function renderEditors(){
   renderLabEditor();
   try{ renderDespesas(); }catch(e){ console.warn('despesas',e); }
+  try{ renderMatrizCustos(); }catch(e){ console.warn('matriz',e); }
   renderColetaEditor();
   renderEstruturaEditor();
   renderCustoMensal();
@@ -3471,7 +3502,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · custos-ledger-15';
+const APP_VERSION='2026-08-12 · custos-matriz-16';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
