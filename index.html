@@ -507,6 +507,15 @@ table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(
   .respfilt{display:none}
   .respfilt.open{display:flex}
 }
+/* ===== Logo adaptável ao tema (verde no claro · branca no escuro) ===== */
+.sb-brand .logo-sw{display:inline-flex;align-items:center;min-width:0}
+.sb-brand .logo-sw .lg{height:34px;width:auto;max-width:186px;object-fit:contain;display:none}
+.sb-brand .logo-sw .lg-light{display:block}
+:root[data-theme="dark"] .sb-brand .logo-sw .lg-light{display:none}
+:root[data-theme="dark"] .sb-brand .logo-sw .lg-dark{display:block}
+.sb-brand.nologo .logo-sw{display:none}
+.sb-brand:not(.nologo) .sb-mark{display:none}
+body.sidebar-collapsed .sb-brand .logo-sw{display:none}
 /* ===== Editores de lançamento: cada linha vira um CARD-FORMULÁRIO no mobile ===== */
 @media(max-width:767px){
   table.edcards thead{display:none}
@@ -554,6 +563,10 @@ table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(
 <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
   <div class="sb-brand">
     <button class="sb-burger" id="sbBurger" title="Recolher / expandir menu" aria-label="Recolher menu" onclick="toggleSidebarCollapse()">☰</button>
+    <span class="logo-sw">
+      <img class="lg lg-light" src="logo-verde.png" alt="DF AGRO — Gestão Agrícola" onerror="var b=this.closest('.sb-brand'); if(b) b.classList.add('nologo')">
+      <img class="lg lg-dark" src="logo-branca.png" alt="DF AGRO — Gestão Agrícola" onerror="var b=this.closest('.sb-brand'); if(b) b.classList.add('nologo')">
+    </span>
     <div class="sb-mark">DF AGRO 360<small>Painel de Gestão</small></div>
   </div>
   <nav class="sb-nav" id="sbNav">
@@ -4154,7 +4167,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · pwa-offline';
+const APP_VERSION='2026-08-14 · logo-marca';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
