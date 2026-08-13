@@ -607,6 +607,18 @@ header .htxt h1{display:none}
     <button class="snav" data-target="op"><span class="sb-ic">🚜</span><span class="sb-tx">Operação</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><span class="sb-ic">✎</span><span class="sb-tx">Lançamentos</span></button>
+    <div class="snav-sub" id="sbIAHead" style="display:none;font-weight:800;color:var(--head);padding-top:12px">🧠 Inteligência Artificial</div>
+    <button class="snav snav-sub" data-target="iahub" data-ia="visao"><span class="sb-ic">📊</span><span class="sb-tx">Visão Geral</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="copiloto"><span class="sb-ic">🤖</span><span class="sb-tx">Copiloto AP</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="agentes"><span class="sb-ic">🧩</span><span class="sb-tx">Agentes</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="automacoes"><span class="sb-ic">⚡</span><span class="sb-tx">Automações</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="alertas"><span class="sb-ic">🔔</span><span class="sb-tx">Alertas Inteligentes</span></button>
+    <button class="snav snav-sub" data-target="ia"><span class="sb-ic">📚</span><span class="sb-tx">Conhecimento</span></button>
+    <button class="snav snav-sub" data-target="iamem"><span class="sb-ic">🧠</span><span class="sb-tx">Memória</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="whatsapp"><span class="sb-ic">💬</span><span class="sb-tx">WhatsApp</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="aprovacoes"><span class="sb-ic">✅</span><span class="sb-tx">Aprovações</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="historico"><span class="sb-ic">🗂️</span><span class="sb-tx">Histórico &amp; Auditoria</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="config"><span class="sb-ic">⚙</span><span class="sb-tx">Configurações</span></button>
     <button class="snav" data-target="admin" id="sbAdmin" style="display:none"><span class="sb-ic">⚙</span><span class="sb-tx">Administração</span></button>
   </nav>
   <div class="sb-foot">
@@ -644,6 +656,7 @@ header .htxt h1{display:none}
   <button data-v="edit">✎ Lançamentos</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
+  <button data-v="iahub" id="tabIAHub" style="display:none">🧠 IA · Central</button>
   <button data-v="admin" id="tabAdmin" style="display:none">⚙ Administração</button>
 </nav>
 
@@ -1017,6 +1030,14 @@ header .htxt h1{display:none}
     <div class="lead"><h2>Inteligência Artificial — Memória</h2>
       <p>Memória contextual do Copiloto. Cada item tem um <b>estado</b>: <b>PENDING_REVIEW</b> (proposto, aguardando revisão), <b>VALIDATED</b> (confirmado — só este é usado nas respostas) e <b>INVALIDATED</b> (descartado, mas <b>nunca apagado</b>). A IA pode <b>propor</b> memórias; informações agronômicas <b>sempre</b> exigem validação humana.</p></div>
     <div id="iaMem"><div class="cap">Carregando…</div></div>
+  </section>
+
+  <!-- CENTRAL DE IA (admin) — aditivo, atrás de feature flag + somente admin -->
+  <section class="view" id="v-iahub">
+    <div class="lead"><h2>Central de Inteligência Artificial</h2>
+      <p>Administração da IA da DF AGRO — <b>acesso restrito a administradores</b>. Telas ainda não liberadas aparecem como <span class="ia-badge">Em implantação</span> (sem funcionalidade falsa).</p></div>
+    <div id="iahubNav" class="ia-nav"></div>
+    <div id="iahubBody"></div>
   </section>
 
   <div class="foot">DF AGRO Consultoria Agrícola · Painel de gestão editável · Os dados são salvos automaticamente neste navegador.<span id="verInfo"></span></div>
@@ -2247,6 +2268,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='custos')renderCustos();
   if(b.dataset.v==='ia'){ try{renderIAConhecimento();}catch(e){} }
   if(b.dataset.v==='iamem'){ try{renderIAMemoria();}catch(e){} }
+  if(b.dataset.v==='iahub'){ try{renderIAHub();}catch(e){} }
   wrapTables();
   window.scrollTo({top:0,behavior:'smooth'});
 });
@@ -2290,6 +2312,8 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
   document.querySelectorAll('#sbNav .snav').forEach(b=>b.addEventListener('click',()=>{
     const tab=document.querySelector('#tabs button[data-v="'+b.dataset.target+'"]');
     if(tab) tab.click();
+    const ia=b.dataset.ia;
+    if(ia){ setTimeout(()=>{ try{ iahubGo(ia); }catch(e){} },30); }
     const sc=b.dataset.scroll;
     if(sc){ setTimeout(()=>{ const el=document.getElementById(sc); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); },80); }
     closeDrawer();
@@ -4306,7 +4330,10 @@ function aplicarPermissoes(){
   const tim=document.getElementById('tabIAMem'); if(tim) tim.style.display=(aplicar&&kbEnabled())?'':'none';
   const cf=document.getElementById('copFab'); if(cf) cf.style.display=(aplicar&&kbEnabled())?'':'none';
   if(!(aplicar&&kbEnabled())){ try{ copClose(); }catch(e){} }
-  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin'||v==='ia'||v==='iamem')return;
+  /* Central de IA: SOMENTE admin (usuários comuns não acessam a administração da IA) */
+  const tih=document.getElementById('tabIAHub'); if(tih) tih.style.display=(aplicar&&ehAdmin&&kbEnabled())?'':'none';
+  const sih=document.getElementById('sbIAHead'); if(sih) sih.style.display=(aplicar&&kbEnabled())?'':'none';
+  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin'||v==='ia'||v==='iamem'||v==='iahub')return;
     b.style.display=(aplicar&&!abaLiberada(v))?'none':''; });
   const leitor=aplicar&&meuPapel==='leitor';
   document.body.classList.toggle('somente-leitura',leitor);
@@ -4553,6 +4580,148 @@ async function copCarregarRecentes(){ const s=document.getElementById('copRecent
   try{ const {data}=await sb.from('ai_conversations').select('id,titulo').order('atualizado_em',{ascending:false}).limit(10);
     const opts=['<option value="">Recentes…</option>'].concat((data||[]).map(c=>'<option value="'+c.id+'"'+(c.id===copConv?' selected':'')+'>'+esc((c.titulo||'Conversa').slice(0,32))+'</option>'));
     s.innerHTML=opts.join(''); }catch(e){} }
+/* ===================== CENTRAL DE IA (admin) =====================
+   Aditivo e isolado. SOMENTE admin. Dados reais de ai_audit_log (tipo='run' =
+   agent_runs; tipo='tool_call' = tool_calls), ai_conversations, ai_messages,
+   ai_knowledge_* e ai_memory. Telas futuras = "Em implantação" (sem fake). */
+const IAHUB_SUBS=[
+  {k:'visao',t:'Visão Geral',ic:'📊'},
+  {k:'copiloto',t:'Copiloto AP',ic:'🤖'},
+  {k:'agentes',t:'Agentes',ic:'🧩'},
+  {k:'automacoes',t:'Automações',ic:'⚡',futuro:true},
+  {k:'alertas',t:'Alertas Inteligentes',ic:'🔔',futuro:true},
+  {k:'conhecimento',t:'Conhecimento',ic:'📚'},
+  {k:'memoria',t:'Memória',ic:'🧠'},
+  {k:'whatsapp',t:'WhatsApp',ic:'💬',futuro:true},
+  {k:'aprovacoes',t:'Aprovações',ic:'✅',futuro:true},
+  {k:'historico',t:'Histórico & Auditoria',ic:'🗂️'},
+  {k:'config',t:'Configurações',ic:'⚙',futuro:true}
+];
+let _iahubSub='visao';
+/* regra de permissão (pura, testável): só admin acessa a Central de IA */
+function iaAdminAllowed(papel){ return papel==='admin'; }
+function iahEscRestrito(host){ host.innerHTML='<div class="panel"><h3>Acesso restrito</h3><div class="cap">A administração da IA é exclusiva para administradores.</div></div>'; }
+function renderIAHub(){
+  const nav=document.getElementById('iahubNav'), body=document.getElementById('iahubBody');
+  if(!nav||!body)return;
+  if(!ehAdmin){ nav.innerHTML=''; iahEscRestrito(body); return; }
+  nav.innerHTML=IAHUB_SUBS.map(s=>'<button class="ia-pill'+(s.k===_iahubSub?' on':'')+'" onclick="iahubGo(\''+s.k+'\')">'+s.ic+' '+esc(s.t)+(s.futuro?' <span class="ia-badge sm">em implantação</span>':'')+'</button>').join('');
+  iahubGo(_iahubSub);
+}
+function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
+  const nav=document.getElementById('iahubNav'); if(nav) nav.querySelectorAll('.ia-pill').forEach(p=>p.classList.toggle('on',p.getAttribute('onclick').indexOf("'"+k+"'")>=0));
+  const body=document.getElementById('iahubBody'); if(!body)return;
+  if(k==='visao') return iahubVisao(body);
+  if(k==='historico') return iahubHistorico(body);
+  if(k==='agentes') return iahubAgentes(body);
+  if(k==='copiloto'){ body.innerHTML='<div class="panel"><h3>Copiloto AP</h3><div class="cap">O Copiloto abre em um painel lateral.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="copOpen()">🤖 Abrir Copiloto</button></div></div>'; return; }
+  if(k==='conhecimento'){ body.innerHTML='<div class="panel"><h3>Base de Conhecimento</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=ia]\').click()">📚 Abrir Conhecimento</button></div></div>'; return; }
+  if(k==='memoria'){ body.innerHTML='<div class="panel"><h3>Memória</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=iamem]\').click()">🧠 Abrir Memória</button></div></div>'; return; }
+  const sub=IAHUB_SUBS.find(s=>s.k===k)||{t:k};
+  const descr={automacoes:'Regras evento → condição → ação (com aprovação). Estrutura prevista; ainda não liberada.',alertas:'Alertas proativos a partir dos indicadores. Ainda não liberado.',whatsapp:'Canal WhatsApp (webhook seguro no backend). Ainda não liberado.',aprovacoes:'Fila de aprovação para ações sensíveis (Approval Engine). Ainda não liberado.',config:'Ajustes da IA (modelo, limites). Geridos no backend por segurança; UI ainda não liberada.'};
+  body.innerHTML='<div class="panel"><h3>'+esc(sub.t)+' <span class="ia-badge">Em implantação</span></h3><div class="cap">'+esc(descr[k]||'Tela em implantação.')+'</div><div class="note" style="margin-top:10px">Nenhuma funcionalidade fictícia é exibida aqui. Esta tela será liberada em uma fase futura, com testes e relatório.</div></div>';
+}
+function iahNum(n){ try{ return (Number(n)||0).toLocaleString('pt-BR'); }catch(e){ return String(n); } }
+function iahDur(ms){ ms=Number(ms)||0; return ms<1000?(ms+' ms'):((ms/1000).toFixed(1)+' s'); }
+function iahData(s){ try{ return new Date(s).toLocaleString('pt-BR'); }catch(e){ return s||''; } }
+function iahKpi(label,val,sub){ return '<div class="ia-kpi"><div class="ia-kpi-l">'+esc(label)+'</div><div class="ia-kpi-v">'+val+'</div>'+(sub?'<div class="ia-kpi-s">'+sub+'</div>':'')+'</div>'; }
+const IAHUB_PRICE={'claude-opus':15,'claude-sonnet':6,'claude-haiku':2}; /* US$/1M tokens (blended, aprox.) */
+function iahCusto(modelo,tokens){ const m=String(modelo||'').toLowerCase(); let p=6; for(const k in IAHUB_PRICE){ if(m.indexOf(k)>=0){ p=IAHUB_PRICE[k]; break; } } return (Number(tokens)||0)/1e6*p; }
+async function iahCount(tabela,filtros){ try{ let q=sb.from(tabela).select('id',{count:'exact',head:true}); (filtros||[]).forEach(f=>{ q=q.eq(f[0],f[1]); }); const {count}=await q; return count||0; }catch(e){ return 0; } }
+async function iahubVisao(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  body.innerHTML='<div class="cap">Carregando indicadores…</div>';
+  try{
+    const [runsTot,ok,err,convs,msgs]=await Promise.all([
+      iahCount('ai_audit_log',[['tipo','run']]),
+      iahCount('ai_audit_log',[['tipo','run'],['ok',true]]),
+      iahCount('ai_audit_log',[['tipo','run'],['ok',false]]),
+      iahCount('ai_conversations'),
+      iahCount('ai_messages')
+    ]);
+    /* amostra recente de runs para tempo médio / tokens / custo */
+    const {data:runRows}=await sb.from('ai_audit_log').select('latencia_ms,tokens,modelo,ok,criado_em').eq('tipo','run').order('criado_em',{ascending:false}).limit(500);
+    const rr=runRows||[];
+    const durs=rr.map(r=>Number(r.latencia_ms)||0).filter(x=>x>0);
+    const tmedio=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
+    const tokens=rr.reduce((a,r)=>a+(Number(r.tokens)||0),0);
+    const custo=rr.reduce((a,r)=>a+iahCusto(r.modelo,r.tokens),0);
+    /* tools mais utilizadas */
+    const {data:tcRows}=await sb.from('ai_audit_log').select('tool,ok').eq('tipo','tool_call').order('criado_em',{ascending:false}).limit(2000);
+    const tc=tcRows||[]; const byTool={}; tc.forEach(r=>{ const t=r.tool||'—'; byTool[t]=(byTool[t]||0)+1; });
+    const topTools=Object.keys(byTool).map(t=>[t,byTool[t]]).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    /* base de conhecimento + memória */
+    const {data:kd}=await sb.from('ai_knowledge_docs').select('status'); const docs=kd||[];
+    const idx=docs.filter(d=>d.status==='indexado').length;
+    const {data:mm}=await sb.from('ai_memory').select('status'); const mem=mm||[];
+    const memBy=s=>mem.filter(m=>m.status===s).length;
+    const taxa=runsTot?Math.round(ok/runsTot*100):0;
+    const status=runsTot===0?'<span style="color:#777">Sem uso</span>':(err>runsTot*0.2?'<span style="color:#c0392b">Atenção</span>':'<span style="color:#0A6A30">Operacional</span>');
+    const kpis='<div class="ia-kpis">'
+      +iahKpi('Status',status,'saúde geral')
+      +iahKpi('Execuções',iahNum(runsTot),'runs do agente')
+      +iahKpi('Sucessos',iahNum(ok),taxa+'% de êxito')
+      +iahKpi('Erros',iahNum(err),'runs com falha')
+      +iahKpi('Tempo médio',iahDur(tmedio),'por run (amostra)')
+      +iahKpi('Tokens',iahNum(tokens),'amostra recente')
+      +iahKpi('Custo estimado',(tokens>0?('~US$ '+custo.toFixed(2)):'—'),'aprox. por modelo')
+      +iahKpi('Chamadas de tool',iahNum(tc.length),'amostra recente')
+      +'</div>';
+    const tt=topTools.length?('<table class="resp-cards"><thead><tr><th>Ferramenta</th><th>Usos</th></tr></thead><tbody>'+topTools.map(x=>'<tr><td>'+esc(x[0])+'</td><td>'+iahNum(x[1])+'</td></tr>').join('')+'</tbody></table>'):'<div class="cap">Sem chamadas de tool ainda.</div>';
+    body.innerHTML=
+      '<div class="panel"><h3>Indicadores da IA</h3>'+kpis
+      +'<div class="note" style="margin-top:8px">Fonte: <b>ai_audit_log</b> (run/tool_call), <b>ai_conversations</b>, <b>ai_messages</b>. Tempo/tokens/custo pela amostra recente. Custo é <b>estimativa</b> por modelo (não é fatura).</div></div>'
+      +'<div class="grid two">'
+        +'<div class="panel"><h3>Tools mais utilizadas</h3>'+tt+'</div>'
+        +'<div class="panel"><h3>Base de Conhecimento & Memória</h3>'
+          +'<div class="ia-kpis">'
+            +iahKpi('Documentos',iahNum(docs.length),idx+' indexados')
+            +iahKpi('Conversas',iahNum(convs),iahNum(msgs)+' mensagens')
+            +iahKpi('Memória validada',iahNum(memBy('VALIDATED')),'oficiais')
+            +iahKpi('Memória pendente',iahNum(memBy('PENDING_REVIEW')),'aguardando revisão')
+          +'</div></div>'
+      +'</div>';
+  }catch(e){ body.innerHTML='<div class="panel"><div class="cap">Erro ao carregar indicadores: '+esc(e.message||String(e))+'</div></div>'; }
+}
+async function iahubHistorico(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  body.innerHTML='<div class="panel"><h3>Histórico & Auditoria</h3><div class="cap">Carregando…</div></div>';
+  try{
+    const {data:runs,error}=await sb.from('ai_audit_log').select('conversation_id,user_id,ok,erro,latencia_ms,tokens,modelo,criado_em').eq('tipo','run').order('criado_em',{ascending:false}).limit(100);
+    if(error)throw error;
+    const rs=runs||[];
+    const convIds=[...new Set(rs.map(r=>r.conversation_id).filter(Boolean))];
+    const titulos={}; const toolsByConv={};
+    if(convIds.length){
+      try{ const {data:cv}=await sb.from('ai_conversations').select('id,titulo').in('id',convIds); (cv||[]).forEach(c=>{ titulos[c.id]=c.titulo; }); }catch(e){}
+      try{ const {data:tc}=await sb.from('ai_audit_log').select('conversation_id,tool').eq('tipo','tool_call').in('conversation_id',convIds); (tc||[]).forEach(t=>{ if(!toolsByConv[t.conversation_id])toolsByConv[t.conversation_id]=new Set(); if(t.tool)toolsByConv[t.conversation_id].add(t.tool); }); }catch(e){}
+    }
+    const meuEmail=(sbUser&&sbUser.email)||'';
+    if(!rs.length){ body.innerHTML='<div class="panel"><h3>Histórico & Auditoria</h3><div class="cap">Nenhuma execução registrada ainda.</div></div>'; return; }
+    const rows=rs.map(r=>{ const perg=titulos[r.conversation_id]||'—'; const tools=(toolsByConv[r.conversation_id]?[...toolsByConv[r.conversation_id]]:[]).join(', ')||'—';
+      const usr=(r.user_id&&sbUser&&r.user_id===sbUser.id)?meuEmail:(r.user_id?String(r.user_id).slice(0,8):'—');
+      const st=r.ok?'<span style="color:#0A6A30;font-weight:700">sucesso</span>':'<span style="color:#c0392b;font-weight:700">erro</span>'+(r.erro?' <span class="cap" title="'+esc(r.erro)+'">ⓘ</span>':'');
+      return '<tr><td>'+esc(iahData(r.criado_em))+'</td><td>'+esc(usr)+'</td><td>Copiloto DF AGRO</td><td>'+esc(perg)+'</td><td>'+esc(tools)+'</td><td>'+st+'</td><td>'+iahDur(r.latencia_ms)+'</td></tr>'; }).join('');
+    body.innerHTML='<div class="panel"><h3>Histórico & Auditoria</h3><div class="cap">Últimas 100 execuções (runs). Fonte: ai_audit_log + ai_conversations.</div>'
+      +'<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Data</th><th>Usuário</th><th>Agente</th><th>Pergunta</th><th>Tools</th><th>Resultado</th><th>Duração</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    try{ wrapTables(); }catch(e){}
+  }catch(e){ body.innerHTML='<div class="panel"><div class="cap">Erro: '+esc(e.message||String(e))+'</div></div>'; }
+}
+function iahubAgentes(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  const tools=['get_client','get_season','get_costs','get_collection_status','search_knowledge','recall_memory','propose_memory (SAFE_WRITE)','get_farm/get_field/get_soil_analysis (indisponíveis)'];
+  body.innerHTML='<div class="panel"><h3>Agentes — configurações disponíveis</h3>'
+    +'<div class="cap">Somente leitura. O <b>system prompt</b> e o <b>modelo</b> são geridos no <b>backend</b> (Edge Function/secrets) e <b>não são editáveis pela interface</b> — proteção contra alteração perigosa.</div>'
+    +'<div class="ia-agent">'
+      +'<div class="ia-arow"><span>Agente</span><b>Copiloto DF AGRO</b></div>'
+      +'<div class="ia-arow"><span>Provedor</span><b>Anthropic (Claude)</b></div>'
+      +'<div class="ia-arow"><span>Modelo</span><b>definido no backend (AI_MODEL) — não editável aqui</b></div>'
+      +'<div class="ia-arow"><span>Níveis</span><b>READ (todos) · SAFE_WRITE (memória; editor/admin)</b></div>'
+      +'<div class="ia-arow"><span>System prompt</span><b>🔒 protegido no backend (não editável)</b></div>'
+      +'<div class="ia-arow"><span>Ferramentas</span><b>'+tools.map(esc).join(', ')+'</b></div>'
+    +'</div>'
+    +'<div class="note" style="margin-top:10px">Para alterar prompt/modelo com segurança, use o fluxo de deploy do backend (fora desta UI). Nenhum campo editável é oferecido aqui de propósito.</div></div>';
+}
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
@@ -4679,6 +4848,21 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 #copDrawer .cop-foot textarea{flex:1;resize:none;border:1px solid var(--line,#ccc);border-radius:8px;padding:8px;font:inherit;max-height:120px;background:var(--soft,#fff);color:var(--ink,#111)}
 #copDrawer select#copRecentes{max-width:120px;font-size:12px}
 @media(max-width:520px){ #copDrawer{width:100vw} }
+/* Central de IA */
+.ia-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.ia-pill{border:1px solid var(--line,#ddd);background:var(--card,#fff);color:var(--ink,#111);border-radius:999px;padding:7px 12px;font:600 12.5px/1 var(--sans,inherit);cursor:pointer}
+.ia-pill.on{background:var(--tintG,#e6f2ea);border-color:#0A6A30;color:#0A6A30}
+.ia-badge{display:inline-block;background:#8C6A1E;color:#fff;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;vertical-align:middle}
+.ia-badge.sm{font-size:9px;padding:1px 5px;background:#9a6a00}
+.ia-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:6px}
+.ia-kpi{border:1px solid var(--line,#e5e5e5);border-radius:10px;background:var(--soft,#fafafa);padding:11px 13px}
+.ia-kpi-l{font-size:11px;color:var(--muted,#777);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.ia-kpi-v{font-size:20px;font-weight:800;color:var(--ink,#111);margin-top:3px}
+.ia-kpi-s{font-size:11px;color:var(--muted,#777);margin-top:2px}
+.ia-agent{border:1px solid var(--line,#e5e5e5);border-radius:10px;margin-top:10px;overflow:hidden}
+.ia-arow{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line,#eee);font-size:13px}
+.ia-arow:last-child{border-bottom:none}
+.ia-arow span{flex:0 0 130px;color:var(--muted,#777);font-weight:700}
 </style>
 <button id="copFab" title="Copiloto IA" aria-label="Abrir Copiloto" onclick="copToggle()">🤖</button>
 <div id="copDrawer" aria-hidden="true" aria-label="Copiloto DF AGRO">
