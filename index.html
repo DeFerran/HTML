@@ -654,6 +654,10 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="kpis" id="kColab"></div>
     <div class="panel"><h3>Custo real por colaborador — da base de lançamentos</h3><div class="cap">Junta o <b>fixo</b> (salário/encargos/benefícios recorrentes) com o <b>variável</b> (combustível, viagem, hospedagem, campo) de cada pessoa. A coluna <b>Custo/Receita</b> lê o custo <b>contra a receita que a pessoa gera</b> — gastar mais não é pior se produz mais. Preencha o colaborador nas despesas e cadastre os salários em <b>Lançamentos → Despesas → Custos recorrentes</b>.</div><div style="overflow-x:auto"><table id="tColab"></table></div></div>
 
+    <h3 class="secttl">Custo por veículo</h3>
+    <div class="kpis" id="kVei"></div>
+    <div class="panel"><h3>Custo real por veículo — da base de lançamentos</h3><div class="cap">Combustível, manutenção e demais custos de cada veículo (marque o <b>veículo</b> na despesa). Com o km rodado (odômetro inicial → atual, no cadastro em <b>Lançamentos → Despesas → Veículos</b>), o sistema calcula <b>custo/km</b> e <b>combustível/km</b>.</div><div style="overflow-x:auto"><table id="tVei"></table></div></div>
+
     <h3 class="secttl">Estrutura de custo — 7 grupos</h3>
     <div class="grid g32">
       <div class="panel"><h3>Composição do custo por grupo</h3><div class="cap">Onde o dinheiro está saindo. Laboratório e coleta vêm dos módulos abaixo; os demais você lança em Estrutura.</div><div class="chartbox tall"><canvas id="cEstrDonut"></canvas></div></div>
@@ -719,7 +723,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <button data-sec="op">Operação</button>
     </div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
-    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edMatrizCusto"></div></div>
+    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edVeiculos"></div><div class="edcard" id="edMatrizCusto"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
     <div class="edsec" data-sec="funil" style="display:none"><div class="edcard" id="edMetasSafra"></div><div class="edcard" id="edFunil"></div></div>
     <div class="edsec" data-sec="precos" style="display:none"><div class="edcard" id="edPrecos"></div></div>
@@ -2771,6 +2775,7 @@ function renderCustoColaborador(){
 function renderCustos(){
   if(baseGate('custos'))return;
   try{ renderCustoColaborador(); }catch(e){ console.warn('custoColab',e); }
+  try{ renderCustoVeiculo(); }catch(e){ console.warn('custoVei',e); }
   const eg=estrGrupos();
   const gruposNome=['Laboratório','Coleta'].concat(eg.outros.map(o=>o.nome));
   const gruposVal=[eg.labTot, eg.colTot].concat(eg.outros.map(o=>o.mes.reduce((a,b)=>a+b,0)));
@@ -3173,6 +3178,7 @@ function renderDespesas(){
   host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
   try{ renderRecorrencias(); }catch(e){}
+  try{ renderVeiculos(); }catch(e){}
   try{ renderMatrizCustos(); }catch(e){}
 }
 /* ===== motor de custos recorrentes: cadastra uma vez, gera os lançamentos de cada mês sozinho ===== */
@@ -3239,6 +3245,73 @@ function renderRecorrencias(){
   host.querySelectorAll('button.redit').forEach(b=>b.onclick=()=>editarRec(b.dataset.id));
   host.querySelectorAll('button.rrem').forEach(b=>b.onclick=()=>removerRec(b.dataset.id));
   host.querySelectorAll('button.rtog').forEach(b=>b.onclick=()=>toggleRec(b.dataset.id));
+}
+/* ===== cadastro de veículos + custo/km ===== */
+let _veiForm=null;
+function novoVeiForm(){ _veiForm={id:'',nome:'',placa:'',modelo:'',ano:'',centroCusto:'',responsavel:'',kmInicial:0,kmAtual:0,ativo:true}; renderVeiculos(); }
+function editarVei(id){ const v=(D.veiculos||[]).find(x=>x.id===id); if(v){ _veiForm=JSON.parse(JSON.stringify(v)); renderVeiculos(); } }
+function salvarVeiForm(){ const F=_veiForm; if(!F)return; if(!(F.nome||'').trim()){alert('Dê um nome ao veículo (ex.: Hilux 01).');return;}
+  F.kmInicial=+F.kmInicial||0; F.kmAtual=+F.kmAtual||0;
+  if(F.id){ const i=(D.veiculos||[]).findIndex(v=>v.id===F.id); if(i>=0)D.veiculos[i]=F; } else { F.id='v'+uidLanc(); D.veiculos.push(F); }
+  _veiForm=null; commit(); renderDespesas(); }
+function removerVei(id){ const v=(D.veiculos||[]).find(x=>x.id===id); if(!v)return; if(!confirm('Remover o veículo "'+(v.nome||'')+'" do cadastro? Os lançamentos ligados a ele continuam.'))return; D.veiculos=(D.veiculos||[]).filter(x=>x.id!==id); commit(); renderDespesas(); }
+function renderVeiculos(){
+  const host=document.getElementById('edVeiculos'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+(ph||'—')+'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const veis=D.veiculos||[];
+  let h='<div class="edhead"><h3>🚚 Veículos &amp; equipamentos</h3><p class="edhelp">Cadastre a frota. Ao marcar o <b>veículo</b> numa despesa (combustível, manutenção…), o custo entra automático no relatório de <b>custo/km</b> na aba Custos. Informe o odômetro <b>inicial</b> e <b>atual</b> para o km rodado.</p></div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="veiNovo">+ Novo veículo</button></div>';
+  if(_veiForm){ const F=_veiForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:130px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar veículo':'Novo veículo')+'</h3></div><div class="labprec" style="gap:10px 14px">'+
+      field('Nome',"<input class='edinp vcf' data-k='nome' value='"+esc(F.nome||'')+"' placeholder='Hilux 01'>")+
+      field('Placa',"<input class='edinp vcf' data-k='placa' value='"+esc(F.placa||'')+"'>")+
+      field('Modelo',"<input class='edinp vcf' data-k='modelo' value='"+esc(F.modelo||'')+"'>")+
+      field('Ano',"<input class='edinp vcf' data-k='ano' value='"+esc(F.ano||'')+"'>")+
+      field('Centro de custo',"<select class='edinp vcf' data-k='centroCusto'>"+sel(F.centroCusto,nomesCentros(),'—')+"</select>")+
+      field('Responsável',"<select class='edinp vcf' data-k='responsavel'>"+sel(F.responsavel,nomesColaboradores(),'—')+"</select>")+
+      field('Km inicial',"<input class='edinp num vcf' data-k='kmInicial' value='"+esc(F.kmInicial||'')+"'>")+
+      field('Km atual',"<input class='edinp num vcf' data-k='kmAtual' value='"+esc(F.kmAtual||'')+"'>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="veiSalvar">Salvar veículo</button><button class="edbtn ghost" id="veiCancelar">Cancelar</button></div></div>';
+  }
+  const custoVei=nome=>(D.lancamentos||[]).filter(l=>l&&l.veiculo===nome&&(l.status||'')!=='Cancelado').reduce((a,l)=>a+(+l.valor||0),0);
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Veículo</th><th>Placa</th><th>Modelo</th><th class="num">Km rodado</th><th class="num">Custo lançado</th><th></th></tr></thead><tbody>';
+  if(!veis.length)h+='<tr><td colspan="6" style="color:var(--muted);padding:14px 6px">Nenhum veículo cadastrado. Clique em <b>+ Novo veículo</b>.</td></tr>';
+  veis.forEach(v=>{ const km=Math.max(0,(+v.kmAtual||0)-(+v.kmInicial||0));
+    h+='<tr><td>'+esc(v.nome||'—')+'</td><td>'+esc(v.placa||'—')+'</td><td>'+esc(v.modelo||'—')+'</td><td class="num">'+fnum(km)+'</td><td class="num"><b>'+BRL(custoVei(v.nome))+'</b></td>'+
+      '<td style="white-space:nowrap;text-align:right"><button class="edbtn vedit" data-id="'+esc(v.id)+'">editar</button> <button class="edbtn ghost vrem" data-id="'+esc(v.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('veiNovo'); if(nv)nv.onclick=novoVeiForm;
+  const sv=document.getElementById('veiSalvar'); if(sv)sv.onclick=salvarVeiForm;
+  const cc=document.getElementById('veiCancelar'); if(cc)cc.onclick=()=>{ _veiForm=null; renderVeiculos(); };
+  host.querySelectorAll('input.vcf,select.vcf').forEach(inp=>{ inp.onchange=()=>{ if(!_veiForm)return; const k=inp.dataset.k; _veiForm[k]=(k==='kmInicial'||k==='kmAtual')?pnum(inp.value):inp.value; }; });
+  host.querySelectorAll('button.vedit').forEach(b=>b.onclick=()=>editarVei(b.dataset.id));
+  host.querySelectorAll('button.vrem').forEach(b=>b.onclick=()=>removerVei(b.dataset.id));
+}
+function renderCustoVeiculo(){
+  const tel=document.getElementById('tVei'); if(!tel)return;
+  const lanc=(D.lancamentos||[]).filter(l=>l&&(l.status||'')!=='Cancelado'&&(l.veiculo||'').trim());
+  const nomes=Array.from(new Set([...(D.veiculos||[]).map(v=>v.nome),...lanc.map(l=>l.veiculo)].filter(Boolean)));
+  const veiDe=nome=>(D.veiculos||[]).find(v=>v.nome===nome)||{};
+  const rows=nomes.map(nome=>{ const ls=lanc.filter(l=>l.veiculo===nome); const v=veiDe(nome);
+    const total=ls.reduce((a,l)=>a+(+l.valor||0),0);
+    const comb=ls.filter(l=>/combust/i.test(l.categoria||'')).reduce((a,l)=>a+(+l.valor||0),0);
+    const manut=ls.filter(l=>/manuten|pneu|[óo]leo|pe[çc]a|lava/i.test(l.categoria||'')).reduce((a,l)=>a+(+l.valor||0),0);
+    const km=Math.max(0,(+v.kmAtual||0)-(+v.kmInicial||0));
+    return {nome,placa:v.placa||'',km,total,comb,manut,custoKm:km>0?total/km:null,combKm:km>0?comb/km:null};
+  }).filter(r=>r.total>0).sort((a,b)=>b.total-a.total);
+  const totGeral=rows.reduce((a,r)=>a+r.total,0), semVei=(D.lancamentos||[]).filter(l=>l&&(l.status||'')!=='Cancelado'&&!(l.veiculo||'').trim()&&/combust|manuten|pneu|lava|pe[çc]a/i.test(l.categoria||'')).reduce((a,l)=>a+(+l.valor||0),0);
+  if(document.getElementById('kVei')) kpi('kVei',[
+    {lab:'Custo de frota lançado',val:BRLk(totGeral),sub:rows.length+' veículo(s)'},
+    {lab:'Custo de veículo sem placa',val:BRLk(semVei),c:semVei>0?'gold':'g',sub:'combustível/manutenção sem veículo marcado'},
+    {lab:'Maior custo/km',val:(rows.filter(r=>r.custoKm!=null).sort((a,b)=>b.custoKm-a.custoKm)[0]||{}).nome||'—',c:'gold',sub:'defina o km p/ comparar'},
+  ]);
+  let h='<thead><tr><th>Veículo</th><th>Placa</th><th class="num">Km rodado</th><th class="num">Custo total</th><th class="num">Combustível</th><th class="num">Manutenção</th><th class="num">Custo/km</th><th class="num">Comb/km</th></tr></thead><tbody>';
+  if(!rows.length)h+='<tr><td colspan="8" style="color:var(--muted);padding:14px 6px">Nenhum custo por veículo ainda. Marque o <b>veículo</b> nas despesas de combustível/manutenção e cadastre a frota em Lançamentos → Despesas → Veículos.</td></tr>';
+  const brl2=v=>'R$ '+(+v||0).toFixed(2).replace('.',',');
+  rows.forEach(r=>{ h+='<tr><td>'+esc(r.nome)+'</td><td style="color:var(--muted)">'+esc(r.placa||'—')+'</td><td class="num">'+(r.km?fnum(r.km):'—')+'</td><td class="num"><b>'+BRL(r.total)+'</b></td><td class="num">'+BRL(r.comb)+'</td><td class="num">'+BRL(r.manut)+'</td>'+
+    '<td class="num" style="font-weight:700">'+(r.custoKm==null?'—':brl2(r.custoKm)+'/km')+'</td><td class="num">'+(r.combKm==null?'—':brl2(r.combKm)+'/km')+'</td></tr>'; });
+  h+='</tbody>'; tel.innerHTML=h;
 }
 /* matriz mensal = RELATÓRIO calculado da base (item 19): dimensão × mês, com troca de visão */
 const MZ_MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -3602,7 +3675,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · custo-colaborador-18';
+const APP_VERSION='2026-08-12 · custo-veiculo-19';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
