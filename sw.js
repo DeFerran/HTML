@@ -3,7 +3,7 @@
    - Supabase NUNCA é cacheado (dados ao vivo, sempre rede).
    - Navegação: rede primeiro (pega atualizações) → cache se offline.
    - Demais GET: cache primeiro → rede (e cacheia). */
-const CACHE = 'dfagro-cache-v2';
+const CACHE = 'dfagro-cache-v3';
 const SHELL = [
   './',
   './index.html',
