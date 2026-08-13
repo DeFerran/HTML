@@ -465,6 +465,12 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
   .taxseg{display:flex;width:100%}
   .taxseg button{flex:1}
 }
+/* ===== 1ª coluna congelada em matrizes largas (rola serviços, mantém o cliente à vista) ===== */
+.hm table th.nm,.hm table td.nm,
+table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(--card);z-index:2;box-shadow:1px 0 0 var(--line)}
+.hm table thead th.nm,table.mxtab thead th.mxcat{z-index:3}
+/* dica visual de que a matriz rola para o lado */
+.hm{position:relative}
 /* ===== Fase 4: Lançamentos/Despesas no mobile ===== */
 .respfilt-toggle{display:none}
 @media(max-width:767px){
@@ -607,7 +613,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div style="overflow-x:auto"><table id="tNaoOper" class="resp-cards"></table></div>
       <div class="note" id="resultOperNote" style="margin-top:10px"></div>
     </div>
-    <div class="panel"><h3>Detalhe por serviço — sem mistura</h3><div class="cap">A média geral mistura ticket alto (Fertilidade Grid) com ticket baixo (SmartSeed, Coleta) e mascara o quadro. Aqui cada serviço aparece isolado: hectares, receita, <b>receita/ha</b>, <b>ticket médio por cliente</b> e a margem — de <b>contribuição</b> (antes da estrutura) e <b>líquida</b> (após ratear a estrutura por receita). A última linha é a média geral, para comparar.</div><div style="overflow-x:auto"><table id="tServGeral"></table></div><div id="servGeralNote"></div></div>
+    <div class="panel"><h3>Detalhe por serviço — sem mistura</h3><div class="cap">A média geral mistura ticket alto (Fertilidade Grid) com ticket baixo (SmartSeed, Coleta) e mascara o quadro. Aqui cada serviço aparece isolado: hectares, receita, <b>receita/ha</b>, <b>ticket médio por cliente</b> e a margem — de <b>contribuição</b> (antes da estrutura) e <b>líquida</b> (após ratear a estrutura por receita). A última linha é a média geral, para comparar.</div><div style="overflow-x:auto"><table id="tServGeral" class="resp-cards"></table></div><div id="servGeralNote"></div></div>
     <div class="toggle" id="tgOutros" onclick="toggleOutros()"><span class="sw"></span>
       <span>Tirar o <b>"Outros" (R$&nbsp;200k)</b> do custo da safra — lançamento pontual de maio, sem categoria <span class="badge">P1 · rastrear</span></span></div>
     <div class="grid g32">
@@ -4111,7 +4117,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · tema-escuro-padrao';
+const APP_VERSION='2026-08-14 · scroll-lateral-resolvido';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
