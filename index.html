@@ -715,7 +715,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <button data-sec="op">Operação</button>
     </div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
-    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edMatrizCusto"></div></div>
+    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edMatrizCusto"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
     <div class="edsec" data-sec="funil" style="display:none"><div class="edcard" id="edMetasSafra"></div><div class="edcard" id="edFunil"></div></div>
     <div class="edsec" data-sec="precos" style="display:none"><div class="edcard" id="edPrecos"></div></div>
@@ -3074,6 +3074,7 @@ function editarLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(l){ 
 function removerLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(!l)return; if(!confirm('Remover o lançamento "'+(l.descricao||'')+'" ('+BRL(+l.valor||0)+')?'))return; D.lancamentos=(D.lancamentos||[]).filter(x=>x.id!==id); commit(); renderDespesas(); }
 function renderDespesas(){
   const host=document.getElementById('edDespesas'); if(!host)return;
+  try{ gerarRecorrencias(); }catch(e){ console.warn('gerarRec',e); }
   const sel=(val,opts,ph)=>'<option value="">'+ (ph||'—') +'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
   const migrou=lancMigrado(), lanc=D.lancamentos||[], ledgerTotal=lanc.reduce((a,l)=>a+(+l.valor||0),0);
   let h='<div class="edhead"><h3>💸 Despesas — base única de lançamentos</h3><p class="edhelp">Lance cada despesa <b>uma vez</b>, com as suas dimensões (centro de custo, colaborador, categoria, natureza, cliente, veículo, serviço). Daqui saem todos os relatórios de custo — sem planilha paralela.</p></div>';
@@ -3138,7 +3139,73 @@ function renderDespesas(){
   host.querySelectorAll('.dfil').forEach(inp=>{ inp.oninput=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; inp.onchange=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; });
   host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
+  try{ renderRecorrencias(); }catch(e){}
   try{ renderMatrizCustos(); }catch(e){}
+}
+/* ===== motor de custos recorrentes: cadastra uma vez, gera os lançamentos de cada mês sozinho ===== */
+let _recForm=null;
+function mesesEntre(ini,fim){ const out=[]; if(!/^\d{4}-\d{2}$/.test(ini))return out;
+  let [y,m]=ini.split('-').map(Number);
+  const fimOk=/^\d{4}-\d{2}$/.test(fim); let fy=fimOk?+fim.slice(0,4):y, fm=fimOk?+fim.slice(5,7):12; // sem fim => dez do ano inicial
+  let n=0; while((y<fy||(y===fy&&m<=fm))&&n<120){ out.push(y+'-'+String(m).padStart(2,'0')); m++; if(m>12){m=1;y++;} n++; } return out; }
+function valorRecNoAno(rec,ano){ const iniY=+String(rec.dataInicio||'').slice(0,4)||ano; const r=+rec.reajuste||0; return (+rec.valor||0)*Math.pow(1+r/100,Math.max(0,ano-iniY)); }
+function gerarRecorrencias(){
+  D.lancamentos=Array.isArray(D.lancamentos)?D.lancamentos:[];
+  const geradas={}; D.lancamentos.forEach(l=>{ if(l&&l.origem==='recorrencia')geradas[(l.recorrenteId||'')+'|'+(l.competencia||'')]=l; });
+  const validas={};
+  (D.recorrencias||[]).filter(r=>r&&r.ativo!==false).forEach(rec=>{
+    mesesEntre(rec.dataInicio,rec.dataFim).forEach(comp=>{ const key=rec.id+'|'+comp; validas[key]=1;
+      const ano=+comp.slice(0,4), val=Math.round(valorRecNoAno(rec,ano)*100)/100;
+      const campos={descricao:rec.descricao||'(recorrência)',valor:val,natureza:rec.natureza||'Custo com pessoal',centroCusto:rec.centroCusto||'',categoria:rec.categoria||'',colaborador:rec.colaborador||'',formaPagamento:rec.formaPagamento||'',status:'Previsto',servico:'',cliente:'',veiculo:'',competencia:comp,data:comp+'-01',origem:'recorrencia',recorrenteId:rec.id};
+      const ex=geradas[key]; if(ex){ Object.assign(ex,campos); } else { campos.id=uidLanc(); campos.criadoEm=nowISO(); D.lancamentos.push(campos); } }); });
+  D.lancamentos=D.lancamentos.filter(l=>!(l&&l.origem==='recorrencia'&&!validas[(l.recorrenteId||'')+'|'+(l.competencia||'')])); // remove órfãs
+}
+function novoRecForm(){ _recForm={id:'',descricao:'',valor:0,natureza:'Custo com pessoal',centroCusto:'',categoria:'',colaborador:'',formaPagamento:'',dataInicio:(new Date().toISOString().slice(0,7)),dataFim:'',reajuste:0,periodicidade:'Mensal',ativo:true}; renderRecorrencias(); }
+function editarRec(id){ const r=(D.recorrencias||[]).find(x=>x.id===id); if(r){ _recForm=JSON.parse(JSON.stringify(r)); renderRecorrencias(); } }
+function salvarRecForm(){ const F=_recForm; if(!F)return; if(!(F.descricao||'').trim()){alert('Dê um nome à recorrência.');return;} if(!(+F.valor>0)){alert('Informe um valor mensal.');return;} if(!/^\d{4}-\d{2}$/.test(F.dataInicio)){alert('Informe o mês de início.');return;}
+  F.valor=+F.valor||0; F.reajuste=+F.reajuste||0;
+  if(F.id){ const i=(D.recorrencias||[]).findIndex(r=>r.id===F.id); if(i>=0)D.recorrencias[i]=F; } else { F.id='r'+uidLanc(); D.recorrencias.push(F); }
+  _recForm=null; gerarRecorrencias(); commit(); renderDespesas(); }
+function removerRec(id){ const r=(D.recorrencias||[]).find(x=>x.id===id); if(!r)return; if(!confirm('Remover a recorrência "'+(r.descricao||'')+'" e os lançamentos mensais que ela gerou?'))return; D.recorrencias=(D.recorrencias||[]).filter(x=>x.id!==id); gerarRecorrencias(); commit(); renderDespesas(); }
+function toggleRec(id){ const r=(D.recorrencias||[]).find(x=>x.id===id); if(r){ r.ativo=(r.ativo===false); gerarRecorrencias(); commit(); renderDespesas(); } }
+function renderRecorrencias(){
+  const host=document.getElementById('edRecorrencias'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+(ph||'—')+'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const recs=D.recorrencias||[]; const ativas=recs.filter(r=>r.ativo!==false); const mensalTot=ativas.reduce((a,r)=>a+(+r.valor||0),0);
+  const geradasN=(D.lancamentos||[]).filter(l=>l&&l.origem==='recorrencia').length;
+  let h='<div class="edhead"><h3>🔁 Custos recorrentes (fixos)</h3><p class="edhelp">Cadastre <b>uma vez</b> (salário, aluguel, plataformas, internet, contabilidade, seguros…) e o sistema <b>gera os lançamentos de cada mês automaticamente</b> — você não relança nada. Editar aqui atualiza todos os meses; o reajuste anual é aplicado sozinho.</p></div>';
+  h+='<div class="edcard" style="background:var(--soft);border:1px solid var(--line);margin-bottom:12px"><b>'+ativas.length+'</b> recorrência(s) ativa(s) · <b>'+BRL(mensalTot)+'/mês</b> · <b>'+geradasN+'</b> lançamentos gerados automaticamente</div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="recNovo">+ Nova recorrência</button></div>';
+  if(_recForm){ const F=_recForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar recorrência':'Nova recorrência')+'</h3></div><div class="labprec" style="gap:10px 14px">'+
+      field('Descrição',"<input class='edinp rcf' data-k='descricao' value='"+esc(F.descricao||'')+"' placeholder='ex.: Salário Bruno'>")+
+      field('Valor / mês (R$)',"<input class='edinp num rcf' data-k='valor' value='"+esc(F.valor?fmoney(F.valor):'')+"'>")+
+      field('Início',"<input type='month' class='edinp rcf' data-k='dataInicio' value='"+esc(F.dataInicio||'')+"'>")+
+      field('Fim (opcional)',"<input type='month' class='edinp rcf' data-k='dataFim' value='"+esc(F.dataFim||'')+"'>")+
+      field('Reajuste anual (%)',"<input class='edinp num rcf' data-k='reajuste' value='"+esc(F.reajuste||0)+"'>")+
+      field('Natureza',"<select class='edinp rcf' data-k='natureza'>"+sel(F.natureza,NATUREZAS,'—')+"</select>")+
+      field('Centro de custo',"<select class='edinp rcf' data-k='centroCusto'>"+sel(F.centroCusto,nomesCentros(),'—')+"</select>")+
+      field('Categoria',"<select class='edinp rcf' data-k='categoria'>"+sel(F.categoria,nomesCategorias(),'—')+"</select>")+
+      field('Colaborador',"<select class='edinp rcf' data-k='colaborador'>"+sel(F.colaborador,nomesColaboradores(),'—')+"</select>")+
+      field('Forma pgto',"<select class='edinp rcf' data-k='formaPagamento'>"+sel(F.formaPagamento,FORMAS_PGTO,'—')+"</select>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="recSalvar">Salvar recorrência</button><button class="edbtn ghost" id="recCancelar">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Descrição</th><th class="num">Valor/mês</th><th>Período</th><th class="num">Reajuste</th><th>Natureza</th><th>Colaborador</th><th class="num">Meses</th><th>Ativa</th><th></th></tr></thead><tbody>';
+  if(!recs.length)h+='<tr><td colspan="9" style="color:var(--muted);padding:14px 6px">Nenhuma recorrência. Clique em <b>+ Nova recorrência</b> para automatizar salários e custos fixos.</td></tr>';
+  recs.forEach(r=>{ const meses=mesesEntre(r.dataInicio,r.dataFim).length; const per=(r.dataInicio||'?')+' → '+(r.dataFim||'Dez/'+(r.dataInicio||'').slice(0,4));
+    h+='<tr'+(r.ativo===false?' style="opacity:.5"':'')+'><td>'+esc(r.descricao||'—')+'</td><td class="num"><b>'+BRL(+r.valor||0)+'</b></td><td>'+esc(per)+'</td><td class="num">'+(+r.reajuste||0)+'%</td><td>'+esc((r.natureza||'—').replace('Custo com ','').replace('Custo operacional ','OPEX '))+'</td><td>'+esc(r.colaborador||'—')+'</td><td class="num">'+meses+'</td>'+
+      '<td><button class="edbtn rtog" data-id="'+esc(r.id)+'">'+(r.ativo===false?'inativa':'ativa')+'</button></td>'+
+      '<td style="white-space:nowrap;text-align:right"><button class="edbtn redit" data-id="'+esc(r.id)+'">editar</button> <button class="edbtn ghost rrem" data-id="'+esc(r.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('recNovo'); if(nv)nv.onclick=novoRecForm;
+  const sv=document.getElementById('recSalvar'); if(sv)sv.onclick=salvarRecForm;
+  const cc=document.getElementById('recCancelar'); if(cc)cc.onclick=()=>{ _recForm=null; renderRecorrencias(); };
+  host.querySelectorAll('input.rcf,select.rcf').forEach(inp=>{ inp.onchange=()=>{ if(!_recForm)return; const k=inp.dataset.k; let v=inp.value; if(k==='valor'||k==='reajuste')v=pnum(inp.value); _recForm[k]=v;
+    if(k==='categoria'&&v&&!_recForm._natTouched){ _recForm.natureza=natDaCategoria(v); const ns=host.querySelector('select.rcf[data-k=natureza]'); if(ns)ns.value=_recForm.natureza; } if(k==='natureza')_recForm._natTouched=true; }; });
+  host.querySelectorAll('button.redit').forEach(b=>b.onclick=()=>editarRec(b.dataset.id));
+  host.querySelectorAll('button.rrem').forEach(b=>b.onclick=()=>removerRec(b.dataset.id));
+  host.querySelectorAll('button.rtog').forEach(b=>b.onclick=()=>toggleRec(b.dataset.id));
 }
 /* matriz mensal = RELATÓRIO calculado da base (item 19): dimensão × mês, com troca de visão */
 const MZ_MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -3502,7 +3569,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · custos-matriz-16';
+const APP_VERSION='2026-08-12 · custos-recorrencia-17';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
