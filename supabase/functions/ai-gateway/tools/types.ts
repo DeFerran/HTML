@@ -32,6 +32,20 @@ export interface KnowledgeHit {
   distancia: number;
 }
 
+/** Proposta de memória feita pela IA (nunca nasce validada). */
+export interface ProposeMemoryInput {
+  memory_type: string;
+  content: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  confidence?: number;
+}
+export interface ProposeMemoryResult {
+  id: string;
+  status: string;
+  exige_validacao: boolean;
+}
+
 /**
  * Contexto de execução da tool. Vem do gateway (nunca do modelo).
  * A IA JAMAIS fornece user_id/empresa — eles saem do JWT + config do backend.
@@ -39,11 +53,18 @@ export interface KnowledgeHit {
 export interface ToolContext {
   userId: string;
   empresa: string;
+  /** Papel do usuário (leitor/editor/admin) — gate de SAFE_WRITE. */
+  papel?: string;
   /**
    * Recuperação semântica (RAG). Injetada pelo gateway (embed + RPC sob RLS).
    * Ausente em contexto sem RAG. Só lê documentos aprovados/indexados do usuário.
    */
   retrieve?: (consulta: string, limite: number) => Promise<KnowledgeHit[]>;
+  /**
+   * Proposta de memória (SAFE_WRITE). Injetada pelo gateway; grava em ai_memory
+   * como PENDING_REVIEW (nunca oficial). Ausente = sem escrita de memória.
+   */
+  proposeMemory?: (m: ProposeMemoryInput) => Promise<ProposeMemoryResult>;
 }
 
 /** Resultado padronizado de toda READ tool. */
@@ -77,7 +98,7 @@ export interface ToolDef {
     required?: string[];
     additionalProperties: false;
   };
-  /** READ é o único nível permitido nesta fase. */
-  nivel: "READ";
+  /** Nível de permissão: READ (todos) ou SAFE_WRITE (editor/admin). */
+  nivel: "READ" | "SAFE_WRITE";
   handler: ToolHandler;
 }

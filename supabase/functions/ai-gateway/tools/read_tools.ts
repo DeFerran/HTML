@@ -20,6 +20,7 @@ import {
   ToolHandler,
   ToolResult,
 } from "./types.ts";
+import { isCriticalMemory } from "./memory_rules.ts";
 
 // ---- helpers -----------------------------------------------------------
 
@@ -345,6 +346,97 @@ const searchKnowledge: ToolHandler = async (_db, args, ctx) => {
   };
 };
 
+// ---- recall_memory (READ) — só memória VALIDADA ------------------------
+// Recupera memória contextual JÁ VALIDADA do próprio usuário (RLS). Nunca
+// devolve PENDING_REVIEW/INVALIDATED — o que não é oficial não vira contexto.
+
+const recallMemory: ToolHandler = async (db, args) => {
+  const consulta = str(args, "consulta");
+  const entity_id = str(args, "entity_id");
+  const limite = Math.min(Math.max(intOrNull(args, "limite") ?? 8, 1), 20);
+
+  let q = db
+    .from("ai_memory")
+    .select("entity_type, entity_id, memory_type, content, confidence")
+    .eq("status", "VALIDATED");
+  if (consulta) q = q.ilike("content", `%${likeLiteral(consulta)}%`);
+  if (entity_id) q = q.eq("entity_id", entity_id);
+
+  const rows = await q
+    .order("confidence", { ascending: false })
+    .limit(limite)
+    .then((r) => (r.error ? [] : (r.data ?? [])) as Record<string, unknown>[]);
+
+  if (!rows.length) {
+    return {
+      disponivel: true,
+      encontrado: false,
+      motivo: "Nenhuma memória validada relevante.",
+    };
+  }
+  return {
+    disponivel: true,
+    encontrado: true,
+    dados: {
+      memorias: rows.map((r) => ({
+        entity_type: r.entity_type ?? null,
+        entity_id: r.entity_id ?? null,
+        memory_type: String(r.memory_type),
+        content: String(r.content),
+        confidence: num(r.confidence),
+      })),
+    },
+  };
+};
+
+// ---- propose_memory (SAFE_WRITE) — a IA PROPÕE, nunca oficializa --------
+// Grava uma memória como PENDING_REVIEW. Tipos agronômicos críticos e toda
+// proposta da IA exigem validação humana (regra + trigger no banco).
+
+const proposeMemory: ToolHandler = async (_db, args, ctx) => {
+  const memory_type = str(args, "memory_type");
+  const content = str(args, "content");
+  const entity_type = str(args, "entity_type") || null;
+  const entity_id = str(args, "entity_id") || null;
+  const confRaw = intOrNull(args, "confidence");
+  const confidence = confRaw === null ? 0.5 : Math.min(Math.max(confRaw / 100, 0), 1);
+
+  if (!memory_type || !content) {
+    return {
+      disponivel: true,
+      encontrado: false,
+      motivo: "Informe memory_type e content.",
+    };
+  }
+  if (!ctx.proposeMemory) {
+    return {
+      disponivel: false,
+      encontrado: false,
+      motivo: "Escrita de memória indisponível neste contexto.",
+    };
+  }
+
+  const res = await ctx.proposeMemory({
+    memory_type,
+    content,
+    entity_type,
+    entity_id,
+    confidence,
+  });
+  return {
+    disponivel: true,
+    encontrado: true,
+    aviso: isCriticalMemory(memory_type)
+      ? "Memória agronômica: fica PENDENTE até validação humana."
+      : "Proposta registrada como PENDENTE — não é usada até ser validada.",
+    dados: {
+      id: res.id,
+      status: res.status,
+      exige_validacao: res.exige_validacao,
+    },
+  };
+};
+
 // ---- stubs honestos: entidades sem fonte de dados nesta plataforma -----
 
 const STUB_MOTIVO: Record<string, string> = {
@@ -441,6 +533,42 @@ export const READ_TOOLS: ToolDef[] = [
     handler: searchKnowledge,
   },
   {
+    name: "recall_memory",
+    description:
+      "Recupera MEMÓRIA VALIDADA (fatos/preferências confirmados) do usuário para contextualizar a resposta. Nunca traz memória pendente ou invalidada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        consulta: { type: "string", description: "Termos a buscar no conteúdo (opcional)." },
+        entity_id: { type: "string", description: "Entidade (ex.: nome do cliente) (opcional)." },
+        limite: { type: "integer", description: "Máx. de itens (1–20, padrão 8)." },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+    nivel: "READ",
+    handler: recallMemory,
+  },
+  {
+    name: "propose_memory",
+    description:
+      "PROPÕE uma nova memória (fato/preferência) para revisão humana. NÃO oficializa nada: fica PENDING_REVIEW. Informações agronômicas exigem validação. Use quando o usuário confirmar algo digno de lembrar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        memory_type: { type: "string", description: "Ex.: preferencia, fato, conhecimento, recomendacao_agronomica." },
+        content: { type: "string", description: "O que lembrar (texto)." },
+        entity_type: { type: "string", description: "Ex.: cliente, safra, servico (opcional)." },
+        entity_id: { type: "string", description: "Ex.: nome do cliente (opcional)." },
+        confidence: { type: "integer", description: "Confiança 0–100 (opcional)." },
+      },
+      required: ["memory_type", "content"],
+      additionalProperties: false,
+    },
+    nivel: "SAFE_WRITE",
+    handler: proposeMemory,
+  },
+  {
     name: "get_farm",
     description:
       "Dados de uma fazenda. INDISPONÍVEL nesta plataforma (não há cadastro de fazendas). Sempre retorna disponivel=false.",
@@ -484,6 +612,11 @@ export const READ_TOOLS: ToolDef[] = [
 export const READ_TOOLS_BY_NAME: Map<string, ToolDef> = new Map(
   READ_TOOLS.map((t) => [t.name, t]),
 );
+
+/** Nível de permissão de uma tool (READ por padrão se desconhecida). */
+export function toolNivel(name: string): "READ" | "SAFE_WRITE" {
+  return READ_TOOLS_BY_NAME.get(name)?.nivel ?? "READ";
+}
 
 /** Especificações no formato Anthropic (sem os handlers). */
 export function toolSpecs() {

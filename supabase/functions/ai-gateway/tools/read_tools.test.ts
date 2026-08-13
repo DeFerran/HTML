@@ -137,7 +137,7 @@ test("cross-tenant: args maliciosos (user_id/empresa) são IGNORADos", async () 
 test("nunca há SQL do modelo: schema não aceita campos livres perigosos", () => {
   for (const def of READ_TOOLS_BY_NAME.values()) {
     expect(def.input_schema.additionalProperties).toBe(false);
-    expect(def.nivel).toBe("READ");
+    expect(["READ", "SAFE_WRITE"]).toContain(def.nivel);
   }
 });
 
@@ -248,4 +248,69 @@ test("search_knowledge: consulta vazia → encontrado=false", async () => {
   const ctx = { ...CTX, retrieve: () => Promise.resolve(HITS) };
   const r = await runReadTool(db, "search_knowledge", { consulta: "  " }, ctx);
   expect(r.encontrado).toBe(false);
+});
+
+// ---------------------------------------------------------------- MEMÓRIA
+
+const MEM_SAMPLE = {
+  ai_memory: [
+    { entity_type: "cliente", entity_id: "Fazenda Boa Vista", memory_type: "preferencia", content: "Prefere relatório em PDF.", confidence: 0.9, status: "VALIDATED" },
+    { entity_type: "geral", entity_id: null, memory_type: "fato", content: "Reunião mensal na primeira segunda.", confidence: 0.7, status: "VALIDATED" },
+    { entity_type: "talhao", entity_id: "T1", memory_type: "recomendacao_agronomica", content: "Aplicar 2t/ha de calcário.", confidence: 0.8, status: "PENDING_REVIEW" },
+  ],
+};
+
+test("recall_memory: só devolve memória VALIDATED", async () => {
+  const { db } = makeDb(MEM_SAMPLE);
+  const r = await runReadTool(db, "recall_memory", {}, CTX);
+  expect(r.encontrado).toBe(true);
+  const d = r.dados as { memorias: Array<Record<string, unknown>> };
+  expect(d.memorias.length).toBe(2); // a pendente agronômica fica de fora
+  expect(d.memorias.every((m) => String(m.content).length > 0)).toBe(true);
+});
+
+test("recall_memory: filtra por consulta (ilike no conteúdo)", async () => {
+  const { db } = makeDb(MEM_SAMPLE);
+  const r = await runReadTool(db, "recall_memory", { consulta: "PDF" }, CTX);
+  const d = r.dados as { memorias: Array<Record<string, unknown>> };
+  expect(d.memorias.length).toBe(1);
+  expect(String(d.memorias[0].content)).toContain("PDF");
+});
+
+test("recall_memory: sem memória validada → encontrado=false", async () => {
+  const { db } = makeDb({ ai_memory: [] });
+  const r = await runReadTool(db, "recall_memory", {}, CTX);
+  expect(r.encontrado).toBe(false);
+});
+
+test("propose_memory: chama proposeMemory injetado e nunca oficializa", async () => {
+  const calls: unknown[] = [];
+  const ctx = {
+    ...CTX,
+    proposeMemory: (m: unknown) => {
+      calls.push(m);
+      return Promise.resolve({ id: "m1", status: "PENDING_REVIEW", exige_validacao: true });
+    },
+  };
+  const { db } = makeDb(MEM_SAMPLE);
+  const r = await runReadTool(db, "propose_memory", { memory_type: "preferencia", content: "gosta de X" }, ctx);
+  expect(r.encontrado).toBe(true);
+  expect((r.dados as { status: string }).status).toBe("PENDING_REVIEW");
+  expect(calls.length).toBe(1);
+});
+
+test("propose_memory: agronômico traz aviso de validação humana", async () => {
+  const ctx = {
+    ...CTX,
+    proposeMemory: () => Promise.resolve({ id: "m2", status: "PENDING_REVIEW", exige_validacao: true }),
+  };
+  const { db } = makeDb(MEM_SAMPLE);
+  const r = await runReadTool(db, "propose_memory", { memory_type: "recomendacao_agronomica", content: "aplicar calcário" }, ctx);
+  expect(String(r.aviso)).toContain("agronômica");
+});
+
+test("propose_memory: sem proposeMemory no contexto → disponivel=false", async () => {
+  const { db } = makeDb(MEM_SAMPLE);
+  const r = await runReadTool(db, "propose_memory", { memory_type: "fato", content: "x" }, CTX);
+  expect(r.disponivel).toBe(false);
 });

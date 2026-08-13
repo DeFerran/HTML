@@ -18,6 +18,8 @@ Claude e, quando útil, chama **ferramentas SOMENTE-LEITURA** sobre os espelhos
 | `get_costs` | `bi_custos_mensais` + `bi_custo_categoria` + `bi_proj_gastos` | real vs projetado. |
 | `get_collection_status` | `bi_operacao_situacao` + `bi_operacao_etapas` | só nível AGREGADO. |
 | `search_knowledge` | `ai_knowledge_*` (RAG) | busca semântica; retorna as **fontes** usadas (resposta traz `fontes[]`). |
+| `recall_memory` | `ai_memory` | READ — só memória **VALIDATED** do usuário. |
+| `propose_memory` | `ai_memory` | **SAFE_WRITE** (editor/admin) — PROPÕE memória (`PENDING_REVIEW`); nunca oficializa. Agronômico exige validação. |
 | `get_farm` | — | **stub**: `disponivel=false` (não há tabela). |
 | `get_field` | — | **stub**: `disponivel=false` (não há tabela). |
 | `get_soil_analysis` | — | **stub**: `disponivel=false` (não há tabela). |
@@ -25,6 +27,11 @@ Claude e, quando útil, chama **ferramentas SOMENTE-LEITURA** sobre os espelhos
 **Segurança das tools:** o modelo só escolhe *nome + args do schema*; nunca envia
 SQL. Toda consulta é parametrizada fixa sob o JWT do usuário (a RLS é a barreira
 de tenant). Tools sem dado retornam `disponivel=false` — nunca inventam valores.
+
+**Níveis:** tools `READ` liberadas a membro ativo; tools `SAFE_WRITE`
+(`propose_memory`) só executam para **editor/admin** (gate por `meu_papel()`) e
+nunca oficializam nada — gravam `PENDING_REVIEW`. O `ai_audit_log` registra o
+nível real de cada `tool_call`.
 
 ## Requisitos atendidos
 

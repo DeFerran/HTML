@@ -21,8 +21,9 @@ import {
   ProviderError,
   ToolResultBlock,
 } from "./provider.ts";
-import { runReadTool, toolSpecs } from "./tools/read_tools.ts";
-import { KnowledgeHit } from "./tools/types.ts";
+import { runReadTool, toolNivel, toolSpecs } from "./tools/read_tools.ts";
+import { KnowledgeHit, ProposeMemoryInput } from "./tools/types.ts";
+import { initialMemoryStatus } from "./tools/memory_rules.ts";
 
 // ---- configuração (backend) ----
 const EMPRESA = "DF AGRO"; // tenant único atual (ver docs/ai/01-AUDITORIA-ATUAL.md)
@@ -45,6 +46,10 @@ const SYSTEM_PROMPT =
   `Conhecimento) e SEMPRE cite ao final quais documentos (fontes) você utilizou. ` +
   `Se search_knowledge não achar nada, diga que não há documento aprovado sobre o ` +
   `tema — não invente. ` +
+  `Use recall_memory para lembrar de fatos/preferências JÁ VALIDADos do usuário. ` +
+  `Quando o usuário confirmar algo digno de lembrar, use propose_memory — isso ` +
+  `apenas PROPÕE (fica pendente de validação humana), nunca vira verdade oficial ` +
+  `sozinho; informações agronômicas sempre exigem validação. ` +
   `Algumas ferramentas (get_farm, get_field, get_soil_analysis) retornam ` +
   `disponivel=false porque esta plataforma NÃO tem esse cadastro — nesse caso, ` +
   `diga com clareza que a informação não existe na plataforma e NÃO invente nada. ` +
@@ -130,6 +135,14 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // papel (leitor/editor/admin) — gate das tools SAFE_WRITE.
+  let papel = "leitor";
+  try {
+    const { data: p } = await sb.rpc("meu_papel");
+    if (typeof p === "string" && p) papel = p;
+  } catch { /* mantém leitor por segurança */ }
+  const podeEscrever = papel === "editor" || papel === "admin";
+
   // (7) rate limiting simples por usuário (usa a infra já criada: ai_audit_log).
   const since = new Date(Date.now() - 60_000).toISOString();
   const { count: recent } = await sb
@@ -186,7 +199,40 @@ Deno.serve(async (req: Request) => {
       distancia: Number(h.distancia),
     }));
   };
-  const ctx = { userId, empresa: EMPRESA, retrieve };
+  // propose_memory (SAFE_WRITE): a IA PROPÕE; grava sempre PENDING_REVIEW.
+  // O trigger ai_memory_guard reforça isto no banco (defesa em profundidade).
+  const proposeMemory = async (m: ProposeMemoryInput) => {
+    const status = initialMemoryStatus(m.memory_type, "ia", false); // ia => PENDING
+    const { data, error } = await sb
+      .from("ai_memory")
+      .insert({
+        empresa: EMPRESA,
+        entity_type: m.entity_type ?? null,
+        entity_id: m.entity_id ?? null,
+        memory_type: m.memory_type,
+        content: m.content,
+        source: "ia",
+        confidence: typeof m.confidence === "number" ? m.confidence : 0.5,
+        status,
+        validated: false,
+      })
+      .select("id, status")
+      .single();
+    if (error) throw new Error(error.message);
+    return {
+      id: data.id as string,
+      status: data.status as string,
+      exige_validacao: true,
+    };
+  };
+
+  const ctx = {
+    userId,
+    empresa: EMPRESA,
+    papel,
+    retrieve,
+    proposeMemory,
+  };
 
   // documentos da Base de Conhecimento efetivamente usados nesta resposta.
   const fontesUsadas = new Map<string, { doc_id: string; titulo: string; fonte: string | null }>();
@@ -259,11 +305,23 @@ Deno.serve(async (req: Request) => {
       const toolResults: ToolResultBlock[] = [];
       for (const call of result.toolUses) {
         const tStart = Date.now();
+        const nivel = toolNivel(call.name);
         let ok = true;
         let erro: string | null = null;
         let payload: unknown;
         try {
-          payload = await runReadTool(sb, call.name, call.input, ctx);
+          // gate de permissão: SAFE_WRITE exige editor/admin.
+          if (nivel === "SAFE_WRITE" && !podeEscrever) {
+            ok = false;
+            erro = "forbidden: papel sem permissão de escrita";
+            payload = {
+              disponivel: false,
+              encontrado: false,
+              motivo: "Seu papel não permite gravar memória (apenas editor/admin).",
+            };
+          } else {
+            payload = await runReadTool(sb, call.name, call.input, ctx);
+          }
           // captura as fontes citáveis vindas do RAG.
           if (call.name === "search_knowledge") {
             const dados = (payload as { dados?: { fontes?: unknown } })?.dados;
@@ -295,13 +353,13 @@ Deno.serve(async (req: Request) => {
           is_error: !ok,
         });
 
-        // (4/8) registra o tool_call na auditoria (nível READ sempre).
+        // (4/8) registra o tool_call na auditoria com o nível real (READ/SAFE_WRITE).
         await sb.from("ai_audit_log").insert({
           empresa: EMPRESA,
           conversation_id: conversationId,
           tipo: "tool_call",
           tool: call.name,
-          nivel: "READ",
+          nivel,
           args_hash: argsHash(call.input),
           modelo: result.model,
           ok,

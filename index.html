@@ -643,6 +643,7 @@ header .htxt h1{display:none}
   <button data-v="op">Operação</button>
   <button data-v="edit">✎ Lançamentos</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
+  <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
   <button data-v="admin" id="tabAdmin" style="display:none">⚙ Administração</button>
 </nav>
 
@@ -1009,6 +1010,13 @@ header .htxt h1{display:none}
     <div class="lead"><h2>Inteligência Artificial — Conhecimento</h2>
       <p>Base de Conhecimento do Copiloto. Adicione documentos técnicos (texto ou arquivo <b>.txt/.md</b>), <b>aprove</b> os que devem alimentar a IA, acompanhe a indexação e pesquise. Só documentos <b>aprovados</b> e <b>indexados</b> entram nas respostas — nada é indexado automaticamente.</p></div>
     <div id="iaKB"><div class="cap">Carregando…</div></div>
+  </section>
+
+  <!-- INTELIGÊNCIA ARTIFICIAL · MEMÓRIA — aditivo, atrás de feature flag -->
+  <section class="view" id="v-iamem">
+    <div class="lead"><h2>Inteligência Artificial — Memória</h2>
+      <p>Memória contextual do Copiloto. Cada item tem um <b>estado</b>: <b>PENDING_REVIEW</b> (proposto, aguardando revisão), <b>VALIDATED</b> (confirmado — só este é usado nas respostas) e <b>INVALIDATED</b> (descartado, mas <b>nunca apagado</b>). A IA pode <b>propor</b> memórias; informações agronômicas <b>sempre</b> exigem validação humana.</p></div>
+    <div id="iaMem"><div class="cap">Carregando…</div></div>
   </section>
 
   <div class="foot">DF AGRO Consultoria Agrícola · Painel de gestão editável · Os dados são salvos automaticamente neste navegador.<span id="verInfo"></span></div>
@@ -2238,6 +2246,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
   if(b.dataset.v==='ia'){ try{renderIAConhecimento();}catch(e){} }
+  if(b.dataset.v==='iamem'){ try{renderIAMemoria();}catch(e){} }
   wrapTables();
   window.scrollTo({top:0,behavior:'smooth'});
 });
@@ -4294,7 +4303,8 @@ function aplicarPermissoes(){
   const logado=!!sbUser, aplicar=logado&&ehMembro;
   const ta=document.getElementById('tabAdmin'); if(ta) ta.style.display=ehAdmin?'':'none';
   const ti=document.getElementById('tabIA'); if(ti) ti.style.display=(aplicar&&kbEnabled())?'':'none';
-  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin'||v==='ia')return;
+  const tim=document.getElementById('tabIAMem'); if(tim) tim.style.display=(aplicar&&kbEnabled())?'':'none';
+  document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin'||v==='ia'||v==='iamem')return;
     b.style.display=(aplicar&&!abaLiberada(v))?'none':''; });
   const leitor=aplicar&&meuPapel==='leitor';
   document.body.classList.toggle('somente-leitura',leitor);
@@ -4401,6 +4411,91 @@ async function kbSearch(){ if(!sb)return; const q=(document.getElementById('kbBu
     out.innerHTML='<div class="cap"><b>Fontes:</b> '+(fl||'—')+'</div>'+res.map(r=>'<div class="panel" style="margin-top:8px"><div style="font-weight:700">'+esc(r.titulo)+'</div><div class="cap">'+esc(r.fonte||'—')+' · trecho #'+(r.idx)+'</div><div>'+esc(r.trecho)+'</div></div>').join('');
   }catch(e){ out.innerHTML='<div class="cap">Erro: '+esc(e.message||String(e))+'</div>'; }
 }
+/* ===================== IA · MEMÓRIA =====================
+   Aditivo e isolado. Fala só com a tabela ai_memory (RLS por usuário). Estados:
+   PENDING_REVIEW / VALIDATED / INVALIDATED. Nada é apagado (só invalidado).
+   Regra: tipos agronômicos críticos e propostas da IA nunca nascem VALIDATED
+   (o trigger ai_memory_guard no banco é a garantia final). */
+const MEM_CRITICOS=['recomendacao_agronomica','analise_solo','manejo','dose_aplicacao','fertilidade','calagem'];
+function memCritico(t){ return MEM_CRITICOS.indexOf(String(t||'').trim().toLowerCase())>=0; }
+let _memBusy=false, _memFiltro={status:'',tipo:'',q:''};
+function memMsg(t,cls){ const e=document.getElementById('memMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+function memBadge(s){ const map={VALIDATED:['#0A6A30','VALIDATED'],PENDING_REVIEW:['#9a6a00','PENDING_REVIEW'],INVALIDATED:['#777','INVALIDATED']}; const m=map[s]||['#777',s]; return '<span style="color:'+m[0]+';font-weight:700">'+m[1]+'</span>'; }
+function renderIAMemoria(){
+  const host=document.getElementById('iaMem'); if(!host)return;
+  if(!sb||!sbUser){ host.innerHTML='<div class="panel"><div class="cap">Entre na sua conta (nuvem) para usar a Memória.</div></div>'; return; }
+  host.innerHTML=
+    '<div class="panel"><h3>Adicionar memória</h3>'
+    +'<div class="cap">Tipos agronômicos (recomendação, análise de solo, manejo, dose, fertilidade, calagem) entram como <b>pendentes</b> mesmo que você marque validar.</div>'
+    +'<div class="edform">'
+      +'<label>Tipo<br><input id="memTipo" type="text" placeholder="preferencia / fato / recomendacao_agronomica"></label>'
+      +'<label>Entidade (opcional)<br><input id="memEntType" type="text" placeholder="cliente / safra / talhao"></label>'
+      +'<label>Referência (opcional)<br><input id="memEntId" type="text" placeholder="Ex.: nome do cliente"></label>'
+      +'<label>Confiança (0–100)<br><input id="memConf" type="number" min="0" max="100" value="70"></label>'
+    +'</div>'
+    +'<label style="display:block;margin-top:8px">Conteúdo<br><textarea id="memConteudo" rows="3" style="width:100%"></textarea></label>'
+    +'<label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px"><input id="memValidarChk" type="checkbox"> Validar agora (só vale para tipos não-agronômicos)</label>'
+    +'<div style="margin-top:10px"><button class="edbtn primary" id="memAddBtn">➕ Adicionar</button></div>'
+    +'<div class="authmsg" id="memMsg" style="margin-top:10px"></div></div>'
+    +'<div class="panel"><h3>Memórias</h3>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:8px">'
+        +'<label>Estado<br><select id="memFStatus"><option value="">Todos</option><option value="VALIDATED">VALIDATED</option><option value="PENDING_REVIEW">PENDING_REVIEW</option><option value="INVALIDATED">INVALIDATED</option></select></label>'
+        +'<label>Tipo<br><input id="memFTipo" type="text" placeholder="filtrar por tipo"></label>'
+        +'<label style="flex:1;min-width:180px">Buscar<br><input id="memFQ" type="text" placeholder="buscar no conteúdo"></label>'
+        +'<button class="edbtn" id="memFiltrarBtn">🔎 Filtrar</button><button class="edbtn" id="memRefreshBtn">↺ Atualizar</button>'
+      +'</div>'
+      +'<div style="overflow-x:auto"><table id="memTabela" class="resp-cards"></table></div></div>';
+  document.getElementById('memAddBtn').onclick=memAdd;
+  document.getElementById('memFiltrarBtn').onclick=()=>{ _memFiltro={status:document.getElementById('memFStatus').value,tipo:(document.getElementById('memFTipo').value||'').trim(),q:(document.getElementById('memFQ').value||'').trim()}; memList(); };
+  document.getElementById('memRefreshBtn').onclick=memList;
+  memList();
+}
+async function memAdd(){ if(_memBusy||!sb)return;
+  const memory_type=(document.getElementById('memTipo').value||'').trim();
+  const entity_type=(document.getElementById('memEntType').value||'').trim()||null;
+  const entity_id=(document.getElementById('memEntId').value||'').trim()||null;
+  const conf=Math.min(Math.max(parseInt(document.getElementById('memConf').value||'70',10)||70,0),100)/100;
+  const content=(document.getElementById('memConteudo').value||'').trim();
+  const validarAgora=document.getElementById('memValidarChk').checked;
+  if(!memory_type){ memMsg('Informe o tipo.','err'); return; }
+  if(!content){ memMsg('Informe o conteúdo.','err'); return; }
+  const critico=memCritico(memory_type);
+  const status=(!critico&&validarAgora)?'VALIDATED':'PENDING_REVIEW';
+  _memBusy=true; memMsg('Salvando…');
+  try{
+    const row={entity_type,entity_id,memory_type,content,source:'usuario',confidence:conf,status,validated:status==='VALIDATED'};
+    if(status==='VALIDATED'){ row.validado_por=sbUser.id; row.validado_em=new Date().toISOString(); }
+    const {error}=await sb.from('ai_memory').insert(row);
+    if(error)throw error;
+    memMsg(critico?'Memória agronômica adicionada como PENDENTE (exige validação).':'Memória adicionada.','ok');
+    document.getElementById('memTipo').value='';document.getElementById('memEntType').value='';document.getElementById('memEntId').value='';document.getElementById('memConteudo').value='';document.getElementById('memValidarChk').checked=false;
+    memList();
+  }catch(e){ memMsg('Erro: '+(e.message||e),'err'); }
+  _memBusy=false;
+}
+async function memList(){ const host=document.getElementById('memTabela'); if(!host||!sb)return;
+  host.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{
+    let q=sb.from('ai_memory').select('id,entity_type,entity_id,memory_type,content,source,confidence,status,updated_at');
+    if(_memFiltro.status) q=q.eq('status',_memFiltro.status);
+    if(_memFiltro.tipo) q=q.ilike('memory_type','%'+_memFiltro.tipo+'%');
+    if(_memFiltro.q) q=q.ilike('content','%'+_memFiltro.q+'%');
+    const {data,error}=await q.order('updated_at',{ascending:false}).limit(300);
+    if(error)throw error;
+    const rows=(data||[]);
+    if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Nenhuma memória.</td></tr></tbody>'; return; }
+    const head='<thead><tr><th>Conteúdo</th><th>Tipo</th><th>Entidade</th><th>Fonte</th><th>Conf.</th><th>Estado</th><th>Ações</th></tr></thead>';
+    const body=rows.map(m=>{ const ent=(m.entity_type||'')+(m.entity_id?(' · '+m.entity_id):''); const acts=[];
+      if(m.status!=='VALIDATED') acts.push('<button class="edbtn" onclick="memValidar(\''+m.id+'\')">✓ Validar</button>');
+      acts.push('<button class="edbtn" onclick="memEditar(\''+m.id+'\')">✎ Editar</button>');
+      if(m.status!=='INVALIDATED') acts.push('<button class="edbtn" onclick="memInvalidar(\''+m.id+'\')">⦸ Invalidar</button>');
+      return '<tr><td>'+esc(m.content)+'</td><td>'+esc(m.memory_type)+(memCritico(m.memory_type)?' <span class="cap" title="agronômico: exige validação">⚠</span>':'')+'</td><td>'+esc(ent||'—')+'</td><td>'+esc(m.source)+'</td><td>'+Math.round((Number(m.confidence)||0)*100)+'%</td><td>'+memBadge(m.status)+'</td><td>'+acts.join(' ')+'</td></tr>'; }).join('');
+    host.innerHTML=head+'<tbody>'+body+'</tbody>'; try{ wrapTables(); }catch(e){}
+  }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; }
+}
+async function memValidar(id){ if(!sb)return; try{ const {error}=await sb.from('ai_memory').update({status:'VALIDATED',validated:true,validado_por:sbUser.id,validado_em:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',id); if(error)throw error; memMsg('Memória validada.','ok'); memList(); }catch(e){ memMsg('Erro: '+(e.message||e),'err'); } }
+async function memInvalidar(id){ if(!sb)return; if(!confirm('Invalidar esta memória? Ela deixa de ser usada, mas não é apagada.'))return; try{ const {error}=await sb.from('ai_memory').update({status:'INVALIDATED',validated:false,updated_at:new Date().toISOString()}).eq('id',id); if(error)throw error; memMsg('Memória invalidada.','ok'); memList(); }catch(e){ memMsg('Erro: '+(e.message||e),'err'); } }
+async function memEditar(id){ if(!sb)return; try{ const {data,error}=await sb.from('ai_memory').select('content').eq('id',id).maybeSingle(); if(error)throw error; const atual=data&&data.content||''; const novo=prompt('Editar conteúdo da memória:',atual); if(novo===null)return; const t=(novo||'').trim(); if(!t){ memMsg('Conteúdo não pode ficar vazio.','err'); return; } const {error:e2}=await sb.from('ai_memory').update({content:t,updated_at:new Date().toISOString()}).eq('id',id); if(e2)throw e2; memMsg('Memória atualizada.','ok'); memList(); }catch(e){ memMsg('Erro: '+(e.message||e),'err'); } }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
