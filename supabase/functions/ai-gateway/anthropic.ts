@@ -1,12 +1,14 @@
-// Anthropic provider (Fase FOUNDATION).
+// Anthropic provider (Fase FOUNDATION + READ TOOLS).
 // Fala com a Messages API por fetch cru (sem SDK) — simples e sem dependências
 // no runtime edge. A API key vem SOMENTE do ambiente do backend (Deno.env).
 
 import {
   AIProvider,
+  ContentBlock,
   ProviderError,
   ProviderRequest,
   ProviderResult,
+  ToolUseBlock,
 } from "./provider.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -30,6 +32,14 @@ export class AnthropicProvider implements AIProvider {
   }
 
   async complete(req: ProviderRequest): Promise<ProviderResult> {
+    const payload: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: req.maxTokens,
+      system: req.system,
+      messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+    };
+    if (req.tools && req.tools.length > 0) payload.tools = req.tools;
+
     let resp: Response;
     try {
       resp = await fetch(ANTHROPIC_URL, {
@@ -39,15 +49,7 @@ export class AnthropicProvider implements AIProvider {
           "x-api-key": this.#apiKey,
           "anthropic-version": ANTHROPIC_VERSION,
         },
-        body: JSON.stringify({
-          model: this.model,
-          max_tokens: req.maxTokens,
-          system: req.system,
-          messages: req.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(req.timeoutMs),
       });
     } catch (e) {
@@ -99,14 +101,33 @@ export class AnthropicProvider implements AIProvider {
       );
     }
 
-    const text = (data.content ?? [])
-      .filter((b: { type?: string }) => b?.type === "text")
-      .map((b: { text?: string }) => b?.text ?? "")
+    const rawBlocks = (data.content ?? []) as Array<Record<string, unknown>>;
+    const content: ContentBlock[] = rawBlocks.map((b) => {
+      if (b.type === "tool_use") {
+        return {
+          type: "tool_use",
+          id: String(b.id),
+          name: String(b.name),
+          input: (b.input ?? {}) as Record<string, unknown>,
+        } as ToolUseBlock;
+      }
+      return { type: "text", text: String(b.text ?? "") };
+    });
+
+    const text = content
+      .filter((b): b is { type: "text"; text: string } => b.type === "text")
+      .map((b) => b.text)
       .join("")
       .trim();
 
+    const toolUses = content.filter(
+      (b): b is ToolUseBlock => b.type === "tool_use",
+    );
+
     return {
       text,
+      content,
+      toolUses,
       inputTokens: data.usage?.input_tokens ?? 0,
       outputTokens: data.usage?.output_tokens ?? 0,
       model: data.model ?? this.model,

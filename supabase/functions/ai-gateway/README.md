@@ -1,8 +1,29 @@
-# ai-gateway (Edge Function) — Fase FOUNDATION
+# ai-gateway (Edge Function) — FOUNDATION + READ TOOLS
 
 Único ponto de entrada da camada de IA. Conversa com um modelo Anthropic
-Claude, **sem ferramentas** e **sem escrever em dados de negócio**. Grava apenas
-nas tabelas `ai_*` (conversas, mensagens, auditoria).
+Claude e, quando útil, chama **ferramentas SOMENTE-LEITURA** sobre os espelhos
+`bi_*`. **Nunca escreve em dados de negócio** — grava apenas nas tabelas `ai_*`
+(conversas, mensagens, auditoria/tool_calls).
+
+## READ TOOLS (fase atual)
+
+`index.ts` roda um loop de tool-use limitado (`MAX_TOOL_ITERS`), sempre nível
+`READ`. As tools estão em `tools/read_tools.ts`; cada `tool_call` é registrado em
+`ai_audit_log` (`tipo='tool_call'`).
+
+| Tool | Fonte real | Observação |
+| ---- | ---------- | ---------- |
+| `get_client` | `bi_clientes` + `bi_visitas` + `bi_cross_sell` | busca por nome (ILIKE). |
+| `get_season` | `bi_safras` + `bi_servicos` | safra = rótulo global (24/25…27/28). |
+| `get_costs` | `bi_custos_mensais` + `bi_custo_categoria` + `bi_proj_gastos` | real vs projetado. |
+| `get_collection_status` | `bi_operacao_situacao` + `bi_operacao_etapas` | só nível AGREGADO. |
+| `get_farm` | — | **stub**: `disponivel=false` (não há tabela). |
+| `get_field` | — | **stub**: `disponivel=false` (não há tabela). |
+| `get_soil_analysis` | — | **stub**: `disponivel=false` (não há tabela). |
+
+**Segurança das tools:** o modelo só escolhe *nome + args do schema*; nunca envia
+SQL. Toda consulta é parametrizada fixa sob o JWT do usuário (a RLS é a barreira
+de tenant). Tools sem dado retornam `disponivel=false` — nunca inventam valores.
 
 ## Requisitos atendidos
 
@@ -49,9 +70,12 @@ apropriado (`401` sem token, `403` não-membro, `429` rate limit, `422` recusa,
 
 ## Arquivos
 
-- `index.ts` — gateway (auth, tenant, rate limit, timeout, logs, erros).
-- `provider.ts` — abstração de provedor de LLM (`AIProvider`).
-- `anthropic.ts` — provedor Anthropic (Messages API via fetch).
+- `index.ts` — gateway (auth, tenant, rate limit, timeout, logs, erros, loop de tools).
+- `provider.ts` — abstração de provedor de LLM (`AIProvider`, blocos de tool-use).
+- `anthropic.ts` — provedor Anthropic (Messages API via fetch, com tools).
+- `tools/types.ts` — contrato das READ tools (sem runtime; testável fora do Deno).
+- `tools/read_tools.ts` — as 7 READ tools + `runReadTool`/`toolSpecs`.
+- `tools/read_tools.test.ts` — testes (bun): cross-tenant + dados inexistentes.
 - `deno.json` — config do runtime.
 
 ## Rollback
