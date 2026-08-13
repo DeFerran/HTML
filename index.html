@@ -99,6 +99,11 @@ body.sidebar-collapsed .sidebar{width:64px}
 .sb-foot{border-top:1px solid var(--line);padding:12px 14px}
 .sb-foot a{font-size:11px;color:var(--muted);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .sb-foot a:hover{color:var(--head)}
+.snav-sub{font-size:12px;font-weight:600;padding:6px 12px 6px 40px;color:var(--muted)}
+.snav-sub .sb-ic{font-size:12.5px;width:16px}
+.snav-sub:hover{color:var(--head)}
+body.sidebar-collapsed .snav-sub{display:none}
+#dreGeral,#cTimeline,#reconPanel,#estrCusto{scroll-margin-top:104px}
 body.sidebar-collapsed .sb-brand .sb-mark,
 body.sidebar-collapsed .snav .sb-tx,
 body.sidebar-collapsed .sb-group,
@@ -443,16 +448,20 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <button class="snav" data-target="geral"><span class="sb-ic">📊</span><span class="sb-tx">Visão Geral</span></button>
     <div class="sb-group">Financeiro</div>
     <button class="snav" data-target="fin"><span class="sb-ic">💰</span><span class="sb-tx">Financeiro / Margem</span></button>
+    <button class="snav snav-sub" data-target="fin" data-scroll="cTimeline"><span class="sb-ic">💧</span><span class="sb-tx">Fluxo de Caixa</span></button>
+    <button class="snav snav-sub" data-target="geral" data-scroll="dreGeral"><span class="sb-ic">📄</span><span class="sb-tx">DRE da safra</span></button>
     <button class="snav" data-target="margem"><span class="sb-ic">🏷️</span><span class="sb-tx">Preços &amp; Margem</span></button>
     <div class="sb-group">Comercial</div>
     <button class="snav" data-target="cli"><span class="sb-ic">👥</span><span class="sb-tx">Clientes</span></button>
     <button class="snav" data-target="serv"><span class="sb-ic">🧪</span><span class="sb-tx">Serviços</span></button>
+    <button class="snav snav-sub" data-target="serv" data-scroll="reconPanel"><span class="sb-ic">🔗</span><span class="sb-tx">Conciliação</span></button>
     <button class="snav" data-target="funil"><span class="sb-ic">📈</span><span class="sb-tx">Funil &amp; Projeção</span></button>
     <div class="sb-group">Metas &amp; Equipe</div>
     <button class="snav" data-target="metas"><span class="sb-ic">🎯</span><span class="sb-tx">Metas &amp; Margem/ha</span></button>
     <button class="snav" data-target="equipe"><span class="sb-ic">🧑‍🌾</span><span class="sb-tx">Equipe &amp; Metas</span></button>
     <div class="sb-group">Operação</div>
     <button class="snav" data-target="custos"><span class="sb-ic">🧾</span><span class="sb-tx">Custos &amp; Coleta</span></button>
+    <button class="snav snav-sub" data-target="custos" data-scroll="estrCusto"><span class="sb-ic">📊</span><span class="sb-tx">Estrutura de Custo</span></button>
     <button class="snav" data-target="op"><span class="sb-ic">🚜</span><span class="sb-tx">Operação</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><span class="sb-ic">✎</span><span class="sb-tx">Lançamentos</span></button>
@@ -522,7 +531,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <span>Tirar o <b>"Outros" (R$&nbsp;200k)</b> do custo da safra — lançamento pontual de maio, sem categoria <span class="badge">P1 · rastrear</span></span></div>
     <div class="grid g32">
       <div class="panel"><h3>Resultado da safra 26/27 — do faturamento à margem</h3><div class="cap">Receita bruta → (−) imposto NF → (−) custo Real jan–jul → (−) custo ago–dez → (−) comissão 30/05/27 → margem líquida.</div><div class="chartbox tall"><canvas id="cWaterfall"></canvas></div></div>
-      <div class="panel"><h3>DRE da safra 26/27</h3><div class="cap">O mesmo raciocínio em números.</div><table class="dre" id="dreGeral"></table></div>
+      <div class="panel" id="dreGeral"><h3>DRE da safra 26/27</h3><div class="cap">O mesmo raciocínio em números.</div><table class="dre" id="dreGeral"></table></div>
     </div>
     <div class="grid two">
       <div class="panel"><h3>Margem % por safra</h3><div class="cap">A 26/27 já está líquida de imposto. O gatilho de comissão cheia é 30%.</div><div class="chartbox"><canvas id="cMargem"></canvas></div></div>
@@ -760,7 +769,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     </div>
     <div class="panel"><h3>Investimentos (CAPEX) — isolados da operação</h3><div class="cap">Compras de ativo não são custo de uma safra: aparecem aqui separadas, não misturadas nos indicadores operacionais. Marque a natureza <b>Investimento / CAPEX</b> na despesa.</div><div style="overflow-x:auto"><table id="tCapex"></table></div></div>
 
-    <h3 class="secttl">Estrutura de custo — 7 grupos</h3>
+    <h3 class="secttl" id="estrCusto">Estrutura de custo — 7 grupos</h3>
     <div class="grid g32">
       <div class="panel"><h3>Composição do custo por grupo</h3><div class="cap">Onde o dinheiro está saindo. Laboratório e coleta vêm dos módulos abaixo; os demais você lança em Estrutura.</div><div class="chartbox tall"><canvas id="cEstrDonut"></canvas></div></div>
       <div class="panel"><h3>Custo por grupo — mês a mês</h3><div class="cap">Evolução mensal empilhada. Ajuda a ver picos de desembolso (ex.: safra de coleta) e planejar caixa.</div><div class="chartbox tall"><canvas id="cEstrMes"></canvas></div></div>
@@ -2011,7 +2020,8 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
 function syncSidebar(v){
   if(typeof document==='undefined')return;
   let lbl='';
-  document.querySelectorAll('#sbNav .snav').forEach(b=>{
+  /* apenas os itens principais recebem estado ativo; sub-itens (deep-link) não */
+  document.querySelectorAll('#sbNav .snav:not(.snav-sub)').forEach(b=>{
     const on=b.dataset.target===v; b.classList.toggle('active',on);
     if(on){ const tx=b.querySelector('.sb-tx'); if(tx) lbl=tx.textContent; }
   });
@@ -2041,6 +2051,8 @@ function toggleSidebarCollapse(){
   document.querySelectorAll('#sbNav .snav').forEach(b=>b.addEventListener('click',()=>{
     const tab=document.querySelector('#tabs button[data-v="'+b.dataset.target+'"]');
     if(tab) tab.click();
+    const sc=b.dataset.scroll;
+    if(sc){ setTimeout(()=>{ const el=document.getElementById(sc); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); },80); }
   }));
   let on=true; try{ const v=localStorage.getItem('useNewSidebar'); if(v!==null) on=(v==='1'); }catch(e){}
   let col=false; try{ col=localStorage.getItem('sidebarCollapsed')==='1'; }catch(e){}
@@ -3931,7 +3943,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · sidebar-etapa6';
+const APP_VERSION='2026-08-13 · sidebar-etapa7';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
