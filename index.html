@@ -2438,7 +2438,14 @@ function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,
 
 /* -- autosave + re-render (debounced) -- */
 let _persistT=null,_dashT=null;
-function saveLocal(){ try{ localStorage.setItem(SKEY,JSON.stringify(D)); }catch(e){ console.warn('saveLocal',e); } }
+function saveLocal(){ try{ localStorage.setItem(SKEY,JSON.stringify(D)); _quotaWarned=false; }
+  catch(e){ console.warn('saveLocal',e);
+    const cheio = e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014 || /quota/i.test((e.message||'')));
+    if(cheio && !_quotaWarned){ _quotaWarned=true;
+      try{ setStatus('● Sem espaço no aparelho para salvar — sincronize com a nuvem','saving'); }catch(_){}
+      try{ alert('Não foi possível salvar no aparelho: o armazenamento do navegador está cheio.\n\nSuas últimas alterações podem se perder se você fechar o app. Sincronize com a nuvem (botão 🔄) ou libere espaço no navegador.'); }catch(_){}
+    }
+  } }
 function setStatus(txt,cls){ const e=document.getElementById('edStatus'); if(e){ e.textContent=txt; e.className='edstatus'+(cls?(' '+cls):''); } }
 function schedulePersist(){ setStatus('Salvando…','saving'); clearTimeout(_persistT);
   _persistT=setTimeout(()=>{ saveLocal(); if(typeof scheduleCloud==='function')scheduleCloud();
@@ -4081,7 +4088,7 @@ function recarregarArquivo(){
 /* ===================== NUVEM (Supabase) ===================== */
 const SB_URL='https://pvftibzzqcbpgdihfcmb.supabase.co';
 const SB_KEY='sb_publishable_Hup4kJP7j2qm4PtCIky47A_eBBqI61o';
-let sb=null, sbUser=null, _cloudT=null, _authMode='login', _lastSync=null, _syncing=false;
+let sb=null, sbUser=null, _cloudT=null, _authMode='login', _lastSync=null, _syncing=false, _pend=false, _quotaWarned=false;
 try{ if(window.supabase && window.supabase.createClient){ sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}); } }catch(e){ sb=null; }
 
 function cloudSet(txt){ const el=document.getElementById('cloudState'); if(el) el.textContent=txt;
@@ -4194,7 +4201,13 @@ async function cloudLoad(){ if(!sb||!sbUser)return;
   try{ const {data,error}=await sb.from('painel_estado').select('dados,atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle();
     if(error) throw error;
     if(data && data.dados && Object.keys(data.dados).length){
-      D=hydrate(data.dados); saveLocal(); try{renderEditors();}catch(e){} renderAll();
+      // se há edições locais ainda não enviadas, não as descarta em silêncio
+      if(_pend){
+        const qt=data.atualizado_em?new Date(data.atualizado_em).toLocaleString('pt-BR'):'desconhecida';
+        const baixar=confirm('Há alterações NESTE aparelho ainda não enviadas à nuvem.\n\nA nuvem tem uma versão de '+qt+'.\n\n• OK = baixar a nuvem (descarta as alterações locais não enviadas)\n• Cancelar = manter as alterações deste aparelho e enviá-las para a nuvem');
+        if(!baixar){ await cloudSave(false); return; }
+      }
+      D=hydrate(data.dados); _pend=false; saveLocal(); _pend=false; try{renderEditors();}catch(e){} renderAll();
       if(data.atualizado_em){ _lastSync=new Date(data.atualizado_em); syncStamp('done','Sincronizado às '+_lastSync.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})); }
       const q=data.atualizado_em?(' · '+new Date(data.atualizado_em).toLocaleString('pt-BR')):'';
       setStatus('● Carregado da nuvem'+q,'ok');
@@ -4202,12 +4215,12 @@ async function cloudLoad(){ if(!sb||!sbUser)return;
   }catch(e){ setStatus('● Falha ao ler nuvem: '+(e.message||e),'saving'); } }
 async function cloudSave(silent){ if(!sb||!sbUser)return;
   try{ const {error}=await sb.from('painel_estado').upsert({user_id:sbUser.id,empresa:'DF AGRO',dados:D},{onConflict:'user_id,empresa'});
-    if(error) throw error; _lastSync=new Date();
+    if(error) throw error; _lastSync=new Date(); _pend=false;
     const t=_lastSync.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     syncStamp('done','Sincronizado às '+t);
     if(!silent){ setStatus('● Sincronizado com a nuvem · '+t,'ok'); }
   }catch(e){ syncStamp('pend','Sincronização: pendente (sem conexão)'); setStatus('● Sem sincronizar (erro nuvem): '+(e.message||e),'saving'); } }
-function scheduleCloud(){ if(!sb||!sbUser)return; syncStamp('pend','Sincronização: pendente…'); clearTimeout(_cloudT); _cloudT=setTimeout(()=>{ cloudSave(false); },900); }
+function scheduleCloud(){ if(!sb||!sbUser)return; _pend=true; syncStamp('pend','Sincronização: pendente…'); clearTimeout(_cloudT); _cloudT=setTimeout(()=>{ cloudSave(false); },900); }
 function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); document.body.classList.remove('pre-login'); return; } // sem nuvem: libera offline
   cloudSet('Nuvem: entrar');
   sb.auth.getSession().then(({data})=>{ if(data && data.session && data.session.user){ onLogin(data.session.user); } else { showAuth(true); } });
@@ -4236,7 +4249,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · xss-hardening-logout';
+const APP_VERSION='2026-08-14 · integridade-sync';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
@@ -4323,9 +4336,13 @@ async function carregarHistorico(){ const tel=document.getElementById('tHistoric
     tel.innerHTML='<thead><tr><th>Data / hora</th><th>Origem</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3" style="color:var(--muted);padding:12px">Nenhuma versão ainda.</td></tr>')+'</tbody>';
     tel.querySelectorAll('button[data-hid]').forEach(btn=>btn.onclick=()=>restaurarVersao(+btn.dataset.hid));
   }catch(e){ tel.innerHTML='<tbody><tr><td>Erro: '+esc(e.message||e)+'</td></tr></tbody>'; } }
-async function restaurarVersao(id){ if(!sb||!sbUser)return; if(!confirm('Restaurar esta versão? Os dados atuais serão substituídos (o estado atual é guardado como versão antes).'))return;
-  try{ const {data,error}=await sb.from('painel_historico').select('dados').eq('id',id).maybeSingle(); if(error)throw error;
-    if(data&&data.dados){ D=hydrate(data.dados); saveLocal(); try{renderEditors();}catch(e){} renderAll(); if(typeof scheduleCloud==='function')scheduleCloud(); setStatus('● Versão restaurada','ok'); }
+async function restaurarVersao(id){ if(!sb||!sbUser)return; if(!confirm('Restaurar esta versão? Os dados atuais serão substituídos — o estado atual é guardado como uma versão no histórico antes de restaurar.'))return;
+  try{
+    // backup real do estado atual ANTES de sobrescrever (cumpre o que o aviso promete)
+    try{ const {error:eBak}=await sb.from('painel_historico').insert({user_id:sbUser.id,empresa:'DF AGRO',dados:D,origem:'auto'}); if(eBak)throw eBak; }
+    catch(eBak){ if(!confirm('Não consegui salvar um backup do estado atual ('+(eBak.message||eBak)+').\n\nRestaurar mesmo assim? O estado atual será perdido.'))return; }
+    const {data,error}=await sb.from('painel_historico').select('dados').eq('id',id).maybeSingle(); if(error)throw error;
+    if(data&&data.dados){ D=hydrate(data.dados); saveLocal(); try{renderEditors();}catch(e){} renderAll(); if(typeof scheduleCloud==='function')scheduleCloud(); try{carregarHistorico();}catch(e){} setStatus('● Versão restaurada (backup do estado anterior criado)','ok'); }
   }catch(e){ alert('Erro ao restaurar: '+(e.message||e)); } }
 aplicarPermissoes(); atualizarRodape();
 try{ authInit(); }catch(e){ console.warn('authInit',e); }
@@ -4333,8 +4350,23 @@ try{ authInit(); }catch(e){ console.warn('authInit',e); }
 /* B) registra o service worker (cacheia app + bibliotecas → abre/recarrega offline) */
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ try{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){} }); }
 /* A) re-sincroniza automaticamente quando a conexão volta */
-window.addEventListener('online',()=>{
-  try{ if(sbUser){ cloudSet('Nuvem: '+(sbUser.email||'conectado')); setStatus('● Conexão de volta · sincronizando…','saving'); if(typeof cloudSave==='function') Promise.resolve(cloudSave(false)).catch(()=>{}); } }catch(e){}
+window.addEventListener('online',async ()=>{
+  try{
+    if(!sbUser||!sb) return;
+    cloudSet('Nuvem: '+(sbUser.email||'conectado'));
+    if(!_pend){ setStatus('● Conexão de volta · tudo sincronizado','ok'); return; }
+    setStatus('● Conexão de volta · verificando a nuvem…','saving');
+    // a nuvem pode ter sido alterada em OUTRO dispositivo enquanto estávamos offline
+    let nuvemStamp=null;
+    try{ const {data}=await sb.from('painel_estado').select('atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle(); if(data&&data.atualizado_em) nuvemStamp=new Date(data.atualizado_em); }catch(e){}
+    const nuvemMudou = nuvemStamp && _lastSync && (nuvemStamp.getTime() > _lastSync.getTime()+1000);
+    if(nuvemMudou){
+      const manter=confirm('A nuvem foi atualizada em OUTRO dispositivo enquanto você estava offline, e você também tem alterações feitas aqui.\n\n• OK = manter as alterações DESTE aparelho (sobrescreve a nuvem)\n• Cancelar = baixar a versão da nuvem (descarta as alterações feitas offline aqui)');
+      if(manter){ await cloudSave(false); } else { await cloudLoad(); }
+    } else {
+      await cloudSave(false); // nuvem não mudou: envia o que foi feito offline
+    }
+  }catch(e){}
 });
 window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') syncStamp('pend','Sincronização: pendente (offline)'); if(sbUser) cloudSet('Nuvem: offline (salvando no aparelho)'); }catch(e){} });
 /* aviso se a biblioteca de gráficos não carregou (sem internet/CDN) — o resto do painel continua funcionando */
