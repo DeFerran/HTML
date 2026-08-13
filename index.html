@@ -329,6 +329,8 @@ table.edtab select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 
 .abachip input{width:16px;height:16px;margin:0;flex:none;accent-color:var(--leaf);cursor:pointer}
 .admselfnote{color:var(--muted);font-size:11.5px;font-style:italic}
 body.somente-leitura .edbtn,body.somente-leitura #btnSalvar{display:none!important}
+body.somente-leitura .edinp{opacity:.72;cursor:not-allowed}
+body.somente-leitura select.edinp{pointer-events:none}
 .acessobar{background:#8C6A1E;color:#fff;padding:10px 16px;font:600 12.5px/1.4 var(--sans);text-align:center}
 body.pre-login header,body.pre-login nav.tabs,body.pre-login main,body.pre-login .foot,body.pre-login #acessoBar{display:none!important}
 .admrole{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:capitalize}
@@ -4196,7 +4198,12 @@ async function doAuth(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return;
       const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
       if(error) throw error; onLogin(data.user);
     }
-  }catch(e){ authMsg(traduzErro(e.message||e),'err'); }
+  }catch(e){ const raw=String((e&&e.message)||e||'');
+    // não confirma existência de conta no cadastro (evita enumeração de usuários)
+    if(_authMode==='signup' && /already registered|already been registered|Email not confirmed/i.test(raw)){
+      authMsg('Não foi possível criar a conta com esse e-mail. Se você já tiver cadastro, use "Entrar" ou "Esqueci minha senha".','err');
+    } else { authMsg(traduzErro(raw),'err'); }
+  }
   finally{ if(btn) btn.disabled=false; } }
 async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null;
   // aparelho compartilhado: apaga os dados do usuário que saiu, para não vazarem
@@ -4206,6 +4213,13 @@ async function doLogout(){ try{ await sb.auth.signOut(); }catch(e){} sbUser=null
   try{ renderEditors&&renderEditors(); }catch(e){} try{ renderAll&&renderAll(); }catch(e){}
   cloudSet('Nuvem: entrar'); setStatus('● Desconectado da nuvem','ok'); try{ carregarPermissoes(); }catch(e){} document.body.classList.add('pre-login'); showAuth(true); }
 function authSkip(){ showAuth(false); cloudSet('Nuvem: offline'); }
+/* perfil "leitor": bloqueia a edição de fato. A nuvem já barra por RLS (pode_editar),
+   mas isto evita a edição LOCAL silenciosa que confundia. Inputs seguem visíveis,
+   porém read-only — à prova de re-render (listener em captura no documento). */
+document.addEventListener('beforeinput',function(e){
+  if(!document.body.classList.contains('somente-leitura'))return;
+  const t=e.target; if(t&&t.classList&&t.classList.contains('edinp')) e.preventDefault();
+},true);
 function onLogin(user){ if(!user)return; sbUser=user; document.body.classList.remove('pre-login'); showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); try{ carregarPermissoes(); }catch(e){} }
 async function cloudLoad(){ if(!sb||!sbUser)return;
   try{ const {data,error}=await sb.from('painel_estado').select('dados,atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle();
@@ -4259,7 +4273,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · calculos-regras-negocio';
+const APP_VERSION='2026-08-14 · higiene-leitor-rls';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
