@@ -4588,7 +4588,7 @@ const IAHUB_SUBS=[
   {k:'visao',t:'Visão Geral',ic:'📊'},
   {k:'copiloto',t:'Copiloto AP',ic:'🤖'},
   {k:'agentes',t:'Agentes',ic:'🧩'},
-  {k:'automacoes',t:'Automações',ic:'⚡',futuro:true},
+  {k:'automacoes',t:'Automações',ic:'⚡'},
   {k:'alertas',t:'Alertas Inteligentes',ic:'🔔',futuro:true},
   {k:'conhecimento',t:'Conhecimento',ic:'📚'},
   {k:'memoria',t:'Memória',ic:'🧠'},
@@ -4614,6 +4614,7 @@ function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
   if(k==='visao') return iahubVisao(body);
   if(k==='historico') return iahubHistorico(body);
   if(k==='agentes') return iahubAgentes(body);
+  if(k==='automacoes') return iahubAutomacoes(body);
   if(k==='copiloto'){ body.innerHTML='<div class="panel"><h3>Copiloto AP</h3><div class="cap">O Copiloto abre em um painel lateral.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="copOpen()">🤖 Abrir Copiloto</button></div></div>'; return; }
   if(k==='conhecimento'){ body.innerHTML='<div class="panel"><h3>Base de Conhecimento</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=ia]\').click()">📚 Abrir Conhecimento</button></div></div>'; return; }
   if(k==='memoria'){ body.innerHTML='<div class="panel"><h3>Memória</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=iamem]\').click()">🧠 Abrir Memória</button></div></div>'; return; }
@@ -4722,6 +4723,101 @@ function iahubAgentes(body){
     +'</div>'
     +'<div class="note" style="margin-top:10px">Para alterar prompt/modelo com segurança, use o fluxo de deploy do backend (fora desta UI). Nenhum campo editável é oferecido aqui de propósito.</div></div>';
 }
+/* ---------- Automações (Automation Engine) — admin ---------- */
+let _autoEditId=null;
+function autoMsg(t,cls){ const e=document.getElementById('autoMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+function autoVal(id){ const e=document.getElementById(id); return e?(e.value||'').trim():''; }
+function iahubAutomacoes(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  _autoEditId=null;
+  body.innerHTML=
+    '<div class="panel"><h3>Nova automação <span id="autoModo" class="cap"></span></h3>'
+    +'<div class="cap">Separe <b>TRIGGER</b> (quando), <b>CONDITION</b> (se) e <b>ACTION</b> (o quê). Sem ações financeiras; sem exclusões.</div>'
+    +'<div class="edform">'
+      +'<label>Nome<br><input id="aNome" type="text" placeholder="Ex.: Resumo AP diário"></label>'
+      +'<label>Trigger<br><select id="aTrig"><option value="manual">manual</option><option value="schedule">schedule</option><option value="database_event">database_event</option></select></label>'
+      +'<label>Frequência (schedule)<br><select id="aFreq"><option value="daily">diária</option><option value="hourly">horária</option></select></label>'
+      +'<label>Ação<br><select id="aAct" onchange="autoActUI()"><option value="generate_summary">generate_summary</option><option value="create_internal_alert">create_internal_alert</option><option value="run_agent">run_agent</option></select></label>'
+    +'</div>'
+    +'<div class="edform" id="aActCfg"></div>'
+    +'<div class="edform">'
+      +'<label>Condição — campo (opcional)<br><input id="aCondCampo" type="text" placeholder="receita / clientes / margem"></label>'
+      +'<label>Operador<br><select id="aCondOp"><option value=">">&gt;</option><option value=">=">&ge;</option><option value="<">&lt;</option><option value="<=">&le;</option><option value="==">=</option><option value="!=">&ne;</option><option value="contains">contém</option></select></label>'
+      +'<label>Valor<br><input id="aCondValor" type="text" placeholder="ex.: 100000"></label>'
+    +'</div>'
+    +'<div style="margin-top:10px"><button class="edbtn primary" id="aSaveBtn" onclick="autoSalvar()">➕ Criar</button> '
+      +'<button class="edbtn" onclick="autoDemo()">✨ Criar demo segura (Resumo AP diário)</button> '
+      +'<button class="edbtn" onclick="autoLimpar()">limpar</button></div>'
+    +'<div class="authmsg" id="autoMsg" style="margin-top:10px"></div></div>'
+    +'<div class="panel"><h3>Regras</h3><div style="margin-bottom:8px"><button class="edbtn" onclick="autoList()">↺ Atualizar</button></div>'
+      +'<div style="overflow-x:auto"><table id="autoTabela" class="resp-cards"></table></div></div>'
+    +'<div class="panel"><h3>Histórico de execuções</h3><div class="cap">Status, tentativa, duração, resultado e erro. Fonte: automation_runs.</div>'
+      +'<div style="margin-bottom:8px"><button class="edbtn" onclick="autoHist()">↺ Atualizar histórico</button></div>'
+      +'<div id="autoRunResult"></div>'
+      +'<div style="overflow-x:auto"><table id="autoHistTab" class="resp-cards"></table></div></div>';
+  autoActUI(); autoList(); autoHist();
+}
+function autoActUI(){ const host=document.getElementById('aActCfg'); if(!host)return; const a=autoVal('aAct');
+  if(a==='generate_summary') host.innerHTML='<label>Safra do resumo<br><input id="aSafra" type="text" value="26/27"></label>';
+  else if(a==='create_internal_alert') host.innerHTML='<label>Nível<br><select id="aNivel"><option value="info">info</option><option value="aviso">aviso</option></select></label><label>Mensagem<br><input id="aMsg" type="text" placeholder="Mensagem do alerta interno"></label>';
+  else if(a==='run_agent') host.innerHTML='<label>Prompt do agente<br><input id="aPrompt" type="text" placeholder="O que o agente deve produzir"></label>';
+}
+function autoLimpar(){ _autoEditId=null; ['aNome','aCondCampo','aCondValor'].forEach(id=>{ const e=document.getElementById(id); if(e)e.value=''; }); const b=document.getElementById('aSaveBtn'); if(b)b.textContent='➕ Criar'; const m=document.getElementById('autoModo'); if(m)m.textContent=''; autoMsg(''); }
+function autoBuild(){ const trigger_type=autoVal('aTrig'), action_type=autoVal('aAct');
+  const trigger_config = trigger_type==='schedule'?{frequencia:autoVal('aFreq')||'daily'}:(trigger_type==='database_event'?{tabela:'painel_estado',evento:'update'}:{});
+  let action_config={};
+  if(action_type==='generate_summary') action_config={safra:autoVal('aSafra')||'26/27'};
+  else if(action_type==='create_internal_alert') action_config={nivel:autoVal('aNivel')||'info',mensagem:autoVal('aMsg')||'Alerta interno.'};
+  else if(action_type==='run_agent') action_config={prompt:autoVal('aPrompt')||''};
+  let condition={}; const cc=autoVal('aCondCampo'); if(cc) condition={campo:cc,op:autoVal('aCondOp')||'>',valor:autoVal('aCondValor')};
+  return {nome:autoVal('aNome'),trigger_type,trigger_config,condition,action_type,action_config}; }
+async function autoSalvar(){ if(!sb||!ehAdmin)return; const r=autoBuild(); if(!r.nome){ autoMsg('Informe o nome.','err'); return; }
+  try{ if(_autoEditId){ const {error}=await sb.from('automation_rules').update({nome:r.nome,trigger_type:r.trigger_type,trigger_config:r.trigger_config,condition:r.condition,action_type:r.action_type,action_config:r.action_config,atualizado_em:new Date().toISOString()}).eq('id',_autoEditId); if(error)throw error; autoMsg('Automação atualizada.','ok'); }
+    else { const {error}=await sb.from('automation_rules').insert(Object.assign({ativo:true},r)); if(error)throw error; autoMsg('Automação criada.','ok'); }
+    autoLimpar(); autoList();
+  }catch(e){ autoMsg('Erro: '+(e.message||e),'err'); } }
+async function autoDemo(){ if(!sb||!ehAdmin)return;
+  try{ const {data}=await sb.from('automation_rules').select('id').eq('nome','Resumo AP diário').limit(1);
+    if(data&&data.length){ autoMsg('A automação de demonstração já existe.','ok'); autoList(); return; }
+    const {error}=await sb.from('automation_rules').insert({nome:'Resumo AP diário',descricao:'Gera um resumo interno diário (seguro). Sem ação financeira.',trigger_type:'schedule',trigger_config:{frequencia:'daily'},condition:{},action_type:'generate_summary',action_config:{safra:'26/27'},ativo:true});
+    if(error)throw error; autoMsg('Demo "Resumo AP diário" criada. Use "Executar" para ver o resumo agora.','ok'); autoList();
+  }catch(e){ autoMsg('Erro: '+(e.message||e),'err'); } }
+async function autoList(){ const host=document.getElementById('autoTabela'); if(!host||!sb)return; host.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{ const {data,error}=await sb.from('automation_rules').select('id,nome,trigger_type,action_type,ativo,ultima_exec').order('atualizado_em',{ascending:false}); if(error)throw error;
+    const rows=(data||[]); if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Nenhuma automação. Crie uma ou use a demo segura.</td></tr></tbody>'; return; }
+    const head='<thead><tr><th>Nome</th><th>Trigger</th><th>Ação</th><th>Ativa</th><th>Última exec</th><th>Ações</th></tr></thead>';
+    const b=rows.map(r=>{ const at=r.ativo?'<span style="color:#0A6A30;font-weight:700">sim</span>':'<span style="color:#9a6a00">não</span>';
+      const acts='<button class="edbtn" onclick="autoRun(\''+r.id+'\')">▶ Executar</button> '
+        +'<button class="edbtn" onclick="autoEdit(\''+r.id+'\')">✎ Editar</button> '
+        +'<button class="edbtn" onclick="autoToggle(\''+r.id+'\','+(r.ativo?'false':'true')+')">'+(r.ativo?'Desativar':'Ativar')+'</button> '
+        +'<button class="edbtn" onclick="autoHist(\''+r.id+'\')">🗂️ Histórico</button>';
+      return '<tr><td>'+esc(r.nome)+'</td><td>'+esc(r.trigger_type)+'</td><td>'+esc(r.action_type)+'</td><td>'+at+'</td><td>'+esc(r.ultima_exec?iahData(r.ultima_exec):'—')+'</td><td>'+acts+'</td></tr>'; }).join('');
+    host.innerHTML=head+'<tbody>'+b+'</tbody>'; try{ wrapTables(); }catch(e){}
+  }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
+async function autoToggle(id,ativo){ if(!sb||!ehAdmin)return; try{ const {error}=await sb.from('automation_rules').update({ativo:ativo,atualizado_em:new Date().toISOString()}).eq('id',id); if(error)throw error; autoList(); }catch(e){ autoMsg('Erro: '+(e.message||e),'err'); } }
+async function autoEdit(id){ if(!sb||!ehAdmin)return; try{ const {data,error}=await sb.from('automation_rules').select('*').eq('id',id).maybeSingle(); if(error)throw error; if(!data)return;
+  _autoEditId=id; const set=(i,v)=>{ const e=document.getElementById(i); if(e)e.value=v; };
+  set('aNome',data.nome||''); set('aTrig',data.trigger_type||'manual'); set('aAct',data.action_type||'generate_summary'); autoActUI();
+  if(data.trigger_config&&data.trigger_config.frequencia) set('aFreq',data.trigger_config.frequencia);
+  const ac=data.action_config||{}; if(data.action_type==='generate_summary') set('aSafra',ac.safra||'26/27'); else if(data.action_type==='create_internal_alert'){ set('aNivel',ac.nivel||'info'); set('aMsg',ac.mensagem||''); } else if(data.action_type==='run_agent') set('aPrompt',ac.prompt||'');
+  const cd=data.condition||{}; set('aCondCampo',cd.campo||''); if(cd.op)set('aCondOp',cd.op); set('aCondValor',cd.valor!=null?String(cd.valor):'');
+  const bt=document.getElementById('aSaveBtn'); if(bt)bt.textContent='💾 Salvar edição'; const m=document.getElementById('autoModo'); if(m)m.textContent='(editando)'; autoMsg('Editando "'+(data.nome||'')+'".'); window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){ autoMsg('Erro: '+(e.message||e),'err'); } }
+async function autoRun(id){ if(!sb||!ehAdmin)return; const out=document.getElementById('autoRunResult'); if(out)out.innerHTML='<div class="cap">Executando…</div>';
+  try{ const {data,error}=await sb.functions.invoke('ai-worker',{body:{action:'run_rule',rule_id:id}}); if(error)throw new Error(await kbFnError(error));
+    const proc=(data&&data.processados)||[]; let html='<div class="note">Execução disparada. '+esc(JSON.stringify(proc.map(p=>({job:String(p.job||'').slice(0,8),status:p.status})))) +'</div>';
+    out.innerHTML=html; autoList(); autoHist(id);
+  }catch(e){ if(out)out.innerHTML='<div class="cap">Erro ao executar: '+esc(e.message||String(e))+'</div>'; } }
+async function autoHist(ruleId){ const host=document.getElementById('autoHistTab'); if(!host||!sb)return; host.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{ let q=sb.from('automation_runs').select('rule_id,trigger_type,status,tentativa,duracao_ms,output,erro,criado_em'); if(ruleId) q=q.eq('rule_id',ruleId);
+    const {data,error}=await q.order('criado_em',{ascending:false}).limit(100); if(error)throw error;
+    const rows=(data||[]); if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Sem execuções ainda.</td></tr></tbody>'; return; }
+    const head='<thead><tr><th>Data</th><th>Trigger</th><th>Status</th><th>Tent.</th><th>Duração</th><th>Resultado / Erro</th></tr></thead>';
+    const b=rows.map(r=>{ let st=r.status==='ok'?'<span style="color:#0A6A30;font-weight:700">ok</span>':(r.status==='erro'?'<span style="color:#c0392b;font-weight:700">erro</span>':'<span style="color:#777">pulado</span>');
+      let det=''; if(r.status==='erro'&&r.erro) det=esc(r.erro); else if(r.output&&r.output.summary) det=esc(String(r.output.summary).slice(0,160)); else if(r.output&&r.output.alerta) det=esc('['+r.output.alerta.nivel+'] '+r.output.alerta.mensagem); else if(r.output&&r.output.reply) det=esc(String(r.output.reply).slice(0,160)); else det='—';
+      return '<tr><td>'+esc(iahData(r.criado_em))+'</td><td>'+esc(r.trigger_type||'—')+'</td><td>'+st+'</td><td>'+(r.tentativa||1)+'</td><td>'+iahDur(r.duracao_ms)+'</td><td>'+det+'</td></tr>'; }).join('');
+    host.innerHTML=head+'<tbody>'+b+'</tbody>'; try{ wrapTables(); }catch(e){}
+  }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
