@@ -4601,7 +4601,7 @@ const IAHUB_SUBS=[
   {k:'conhecimento',t:'Conhecimento',ic:'📚'},
   {k:'memoria',t:'Memória',ic:'🧠'},
   {k:'whatsapp',t:'WhatsApp',ic:'💬'},
-  {k:'aprovacoes',t:'Aprovações',ic:'✅',futuro:true},
+  {k:'aprovacoes',t:'Aprovações',ic:'✅'},
   {k:'historico',t:'Histórico & Auditoria',ic:'🗂️'},
   {k:'config',t:'Configurações',ic:'⚙',futuro:true}
 ];
@@ -4624,6 +4624,7 @@ function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
   if(k==='agentes') return iahubAgentes(body);
   if(k==='automacoes') return iahubAutomacoes(body);
   if(k==='whatsapp') return iahubWhatsapp(body);
+  if(k==='aprovacoes') return iahubAprovacoes(body);
   if(k==='copiloto'){ body.innerHTML='<div class="panel"><h3>Copiloto AP</h3><div class="cap">O Copiloto abre em um painel lateral.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="copOpen()">🤖 Abrir Copiloto</button></div></div>'; return; }
   if(k==='conhecimento'){ body.innerHTML='<div class="panel"><h3>Base de Conhecimento</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=ia]\').click()">📚 Abrir Conhecimento</button></div></div>'; return; }
   if(k==='memoria'){ body.innerHTML='<div class="panel"><h3>Memória</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=iamem]\').click()">🧠 Abrir Memória</button></div></div>'; return; }
@@ -4873,6 +4874,51 @@ async function waSalvar(){ if(!sb||!ehAdmin)return; const numero=(document.getEl
   try{ const {error}=await sb.from('whatsapp_config').upsert({numero,phone_number_id,ativo,atualizado_em:new Date().toISOString()},{onConflict:'user_id'}); if(error)throw error; waMsg('Conexão salva.','ok'); waCarregar(); }catch(e){ waMsg('Erro: '+(e.message||e),'err'); } }
 async function waEnviar(){ if(!sb||!ehAdmin)return; const to=(document.getElementById('waTo').value||'').trim(); const text=(document.getElementById('waText').value||'').trim(); const out=document.getElementById('waSendOut'); if(!to||!text){ out.innerHTML='<div class="cap">Informe número e texto.</div>'; return; } out.innerHTML='<div class="cap">Enviando…</div>';
   try{ const {data,error}=await sb.functions.invoke('ai-whatsapp',{body:{action:'send_message',to,text}}); if(error)throw new Error(await kbFnError(error)); if(data&&data.ok){ out.innerHTML='<div class="note">Enviada.</div>'; document.getElementById('waText').value=''; waCarregar(); } else { out.innerHTML='<div class="cap">Falha: '+esc((data&&data.erro)||'erro')+'</div>'; } }catch(e){ out.innerHTML='<div class="cap">Erro: '+esc(e.message||String(e))+'</div>'; } }
+/* ---------- Aprovações (Approval Engine) — admin ---------- */
+function apMsg(t,cls){ const e=document.getElementById('apMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+function apRisco(r){ const m={baixo:'#0A6A30',medio:'#9a6a00',alto:'#c0392b'}; return '<span style="color:'+(m[r]||'#777')+';font-weight:700">'+esc(r||'')+'</span>'; }
+function apStatus(s){ const m={pendente:'#9a6a00',aprovado:'#0A6A30',executado:'#0A6A30',rejeitado:'#777',erro:'#c0392b'}; return '<span style="color:'+(m[s]||'#777')+';font-weight:700">'+esc(s)+'</span>'; }
+function iahubAprovacoes(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  body.innerHTML=
+    '<div class="panel"><h3>Aprovações — ações sensíveis</h3>'
+    +'<div class="cap">Ações <b>SENSITIVE_WRITE</b> nunca executam sozinhas. A IA propõe; um <b>admin</b> analisa e decide. Decisões e execução ficam na auditoria.</div>'
+    +'<div style="margin-bottom:8px"><button class="edbtn" onclick="apList()">↺ Atualizar</button></div>'
+    +'<div style="overflow-x:auto"><table id="apTab" class="resp-cards"></table></div>'
+    +'<div class="authmsg" id="apMsg" style="margin-top:10px"></div></div>'
+    +'<div class="panel"><h3>Propor ação sensível (teste) — envio externo de WhatsApp</h3>'
+      +'<div class="cap">Cria uma <b>proposta pendente</b> (não envia nada até um admin aprovar).</div>'
+      +'<div class="edform"><label>Para (número)<br><input id="apTo" type="text" placeholder="5511..."></label><label style="flex:1;min-width:220px">Texto<br><input id="apText" type="text" placeholder="Mensagem a enviar"></label></div>'
+      +'<div style="margin-top:8px"><button class="edbtn" onclick="apPropor()">➕ Propor (pendente)</button></div></div>';
+  apList();
+}
+async function apList(){ const host=document.getElementById('apTab'); if(!host||!sb)return; host.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{ const {data,error}=await sb.from('ai_approvals').select('id,tool,agente,user_id,entity_type,entity_id,payload,risco,status,erro,criado_em').order('criado_em',{ascending:false}).limit(100); if(error)throw error;
+    const rows=(data||[]); if(!rows.length){ host.innerHTML='<tbody><tr><td class="cap">Nenhuma aprovação.</td></tr></tbody>'; return; }
+    const meuId=(sbUser&&sbUser.id)||''; const meuEmail=(sbUser&&sbUser.email)||'';
+    const head='<thead><tr><th>Ação</th><th>Agente</th><th>Solicitante</th><th>Entidade</th><th>Payload</th><th>Risco</th><th>Data</th><th>Status</th><th>Decisão</th></tr></thead>';
+    const b=rows.map(a=>{ const sol=(a.user_id===meuId?meuEmail:String(a.user_id||'').slice(0,8)); const ent=(a.entity_type||'')+(a.entity_id?(' · '+a.entity_id):'')||'—';
+      const pj=esc(JSON.stringify(a.payload||{})); const pshow='<span class="cap" title="'+pj+'">'+esc(JSON.stringify(a.payload||{}).slice(0,60))+'</span>';
+      let acts='—'; if(a.status==='pendente') acts='<button class="edbtn" onclick="apDecidir(\''+a.id+'\',\'approve\')">✓ Aprovar</button> '
+        +'<button class="edbtn" onclick="apEditar(\''+a.id+'\')">✎ Editar</button> '
+        +'<button class="edbtn" onclick="apDecidir(\''+a.id+'\',\'reject\')">✕ Rejeitar</button>';
+      else if(a.status==='erro'&&a.erro) acts='<span class="cap" title="'+esc(a.erro)+'">erro ⓘ</span>';
+      return '<tr><td>'+esc(a.tool)+'</td><td>'+esc(a.agente||'')+'</td><td>'+esc(sol||'—')+'</td><td>'+esc(ent)+'</td><td>'+pshow+'</td><td>'+apRisco(a.risco)+'</td><td>'+esc(iahData(a.criado_em))+'</td><td>'+apStatus(a.status)+'</td><td>'+acts+'</td></tr>'; }).join('');
+    host.innerHTML=head+'<tbody>'+b+'</tbody>'; try{ wrapTables(); }catch(e){}
+  }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
+async function apDecidir(id,decision){ if(!sb||!ehAdmin)return; if(decision==='reject'&&!confirm('Rejeitar esta proposta?'))return; apMsg(decision==='approve'?'Aprovando e executando…':'Processando…');
+  try{ const {data,error}=await sb.functions.invoke('ai-actions',{body:{action:'decide',approval_id:id,decision}}); if(error)throw new Error(await kbFnError(error));
+    apMsg('Resultado: '+esc((data&&data.status)||'ok'),'ok'); apList();
+  }catch(e){ apMsg('Erro: '+(e.message||e),'err'); } }
+async function apEditar(id){ if(!sb||!ehAdmin)return; try{ const {data}=await sb.from('ai_approvals').select('payload').eq('id',id).maybeSingle(); const atual=JSON.stringify((data&&data.payload)||{},null,0);
+  const novo=prompt('Editar payload (JSON):',atual); if(novo===null)return; let obj; try{ obj=JSON.parse(novo); }catch(e){ apMsg('JSON inválido.','err'); return; }
+  const {error}=await sb.functions.invoke('ai-actions',{body:{action:'decide',approval_id:id,decision:'edit',payload:obj}}); if(error)throw new Error(await kbFnError(error)); apMsg('Payload atualizado (segue pendente).','ok'); apList();
+  }catch(e){ apMsg('Erro: '+(e.message||e),'err'); } }
+async function apPropor(){ if(!sb||!ehAdmin)return; const to=(document.getElementById('apTo').value||'').trim(); const text=(document.getElementById('apText').value||'').trim();
+  if(!to||!text){ apMsg('Informe número e texto.','err'); return; }
+  try{ const {data,error}=await sb.functions.invoke('ai-actions',{body:{action:'propose',tool:'send_external_whatsapp_message',entity_type:'whatsapp',entity_id:to,payload:{to,text}}}); if(error)throw new Error(await kbFnError(error));
+    apMsg('Proposta criada (pendente de aprovação).','ok'); document.getElementById('apText').value=''; apList();
+  }catch(e){ apMsg('Erro: '+(e.message||e),'err'); } }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
