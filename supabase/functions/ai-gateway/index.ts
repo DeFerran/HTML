@@ -50,6 +50,11 @@ const SYSTEM_PROMPT =
   `Quando o usuário confirmar algo digno de lembrar, use propose_memory — isso ` +
   `apenas PROPÕE (fica pendente de validação humana), nunca vira verdade oficial ` +
   `sozinho; informações agronômicas sempre exigem validação. ` +
+  `Você pode executar ações internas SAFE_WRITE quando fizer sentido: ` +
+  `create_internal_alert, create_task, generate_report_draft. ` +
+  `Para enviar mensagem externa de WhatsApp use send_external_whatsapp_message — ` +
+  `isso NÃO envia: apenas cria uma PROPOSTA que um admin precisa aprovar; ` +
+  `deixe isso claro ao usuário. Nunca prometa que algo sensível foi feito sem aprovação. ` +
   `Algumas ferramentas (get_farm, get_field, get_soil_analysis) retornam ` +
   `disponivel=false porque esta plataforma NÃO tem esse cadastro — nesse caso, ` +
   `diga com clareza que a informação não existe na plataforma e NÃO invente nada. ` +
@@ -226,12 +231,31 @@ Deno.serve(async (req: Request) => {
     };
   };
 
+  // encaminha ações à ai-actions (fonte única: allowlist/guarda/auditoria/RLS),
+  // reusando o JWT do usuário → as permissões do próprio usuário se aplicam.
+  const ACTIONS_URL = `${supabaseUrl}/functions/v1/ai-actions`;
+  const callActions = async (b: Record<string, unknown>) => {
+    try {
+      const resp = await fetch(ACTIONS_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", "authorization": authHeader, "apikey": anonKey },
+        body: JSON.stringify(b),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const data = await resp.json().catch(() => ({}));
+      return { ok: resp.ok, status: resp.status, data: data as Record<string, unknown> };
+    } catch (e) {
+      return { ok: false, status: 0, data: { error: { message: (e as Error).message } } as Record<string, unknown> };
+    }
+  };
+
   const ctx = {
     userId,
     empresa: EMPRESA,
     papel,
     retrieve,
     proposeMemory,
+    callActions,
   };
 
   // documentos da Base de Conhecimento efetivamente usados nesta resposta.
@@ -310,14 +334,14 @@ Deno.serve(async (req: Request) => {
         let erro: string | null = null;
         let payload: unknown;
         try {
-          // gate de permissão: SAFE_WRITE exige editor/admin.
-          if (nivel === "SAFE_WRITE" && !podeEscrever) {
+          // gate de permissão: SAFE_WRITE e SENSITIVE_WRITE exigem editor/admin.
+          if ((nivel === "SAFE_WRITE" || nivel === "SENSITIVE_WRITE") && !podeEscrever) {
             ok = false;
             erro = "forbidden: papel sem permissão de escrita";
             payload = {
               disponivel: false,
               encontrado: false,
-              motivo: "Seu papel não permite gravar memória (apenas editor/admin).",
+              motivo: "Seu papel não permite esta ação (apenas editor/admin).",
             };
           } else {
             payload = await runReadTool(sb, call.name, call.input, ctx);

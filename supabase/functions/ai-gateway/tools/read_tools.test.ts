@@ -137,7 +137,7 @@ test("cross-tenant: args maliciosos (user_id/empresa) são IGNORADos", async () 
 test("nunca há SQL do modelo: schema não aceita campos livres perigosos", () => {
   for (const def of READ_TOOLS_BY_NAME.values()) {
     expect(def.input_schema.additionalProperties).toBe(false);
-    expect(["READ", "SAFE_WRITE"]).toContain(def.nivel);
+    expect(["READ", "SAFE_WRITE", "SENSITIVE_WRITE"]).toContain(def.nivel);
   }
 });
 
@@ -313,4 +313,56 @@ test("propose_memory: sem proposeMemory no contexto → disponivel=false", async
   const { db } = makeDb(MEM_SAMPLE);
   const r = await runReadTool(db, "propose_memory", { memory_type: "fato", content: "x" }, CTX);
   expect(r.disponivel).toBe(false);
+});
+
+// ---------------------------------------------------------------- ACTION TOOLS
+
+function ctxActions(calls: Array<Record<string, unknown>>, ok = true, data: Record<string, unknown> = { ok: true }) {
+  return {
+    ...CTX,
+    callActions: (b: Record<string, unknown>) => { calls.push(b); return Promise.resolve({ ok, status: ok ? 200 : 403, data }); },
+  };
+}
+
+test("create_task (SAFE_WRITE) → encaminha execute_safe", async () => {
+  const { db } = makeDb(SAMPLE);
+  const calls: Array<Record<string, unknown>> = [];
+  const r = await runReadTool(db, "create_task", { titulo: "Ligar para cliente" }, ctxActions(calls, true, { ok: true, id: "t1" }));
+  expect(r.encontrado).toBe(true);
+  expect(calls[0].action).toBe("execute_safe");
+  expect(calls[0].tool).toBe("create_task");
+});
+
+test("create_internal_alert e generate_report_draft usam execute_safe", async () => {
+  const { db } = makeDb(SAMPLE);
+  const calls: Array<Record<string, unknown>> = [];
+  const ctx = ctxActions(calls);
+  await runReadTool(db, "create_internal_alert", { mensagem: "estoque baixo" }, ctx);
+  await runReadTool(db, "generate_report_draft", { conteudo: "rascunho" }, ctx);
+  expect(calls.map((c) => c.action)).toEqual(["execute_safe", "execute_safe"]);
+  expect(calls.map((c) => c.tool)).toEqual(["create_internal_alert", "generate_report_draft"]);
+});
+
+test("send_external_whatsapp_message (SENSITIVE) só PROPÕE, nunca executa", async () => {
+  const { db } = makeDb(SAMPLE);
+  const calls: Array<Record<string, unknown>> = [];
+  const r = await runReadTool(db, "send_external_whatsapp_message", { to: "5511", text: "oi" }, ctxActions(calls, true, { ok: true, approval_id: "ap1" }));
+  expect(r.encontrado).toBe(true);
+  expect(calls[0].action).toBe("propose"); // nunca execute_safe/execute
+  expect(calls[0].tool).toBe("send_external_whatsapp_message");
+  expect((r.dados as { status: string }).status).toBe("pendente");
+  expect(String(r.aviso)).toContain("aguarda");
+});
+
+test("action tools sem callActions no contexto → disponivel=false", async () => {
+  const { db } = makeDb(SAMPLE);
+  const r = await runReadTool(db, "create_task", { titulo: "x" }, CTX);
+  expect(r.disponivel).toBe(false);
+});
+
+test("nivel das action tools no registro", () => {
+  expect(READ_TOOLS_BY_NAME.get("create_internal_alert")?.nivel).toBe("SAFE_WRITE");
+  expect(READ_TOOLS_BY_NAME.get("create_task")?.nivel).toBe("SAFE_WRITE");
+  expect(READ_TOOLS_BY_NAME.get("generate_report_draft")?.nivel).toBe("SAFE_WRITE");
+  expect(READ_TOOLS_BY_NAME.get("send_external_whatsapp_message")?.nivel).toBe("SENSITIVE_WRITE");
 });

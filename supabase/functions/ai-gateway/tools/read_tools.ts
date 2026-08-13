@@ -437,6 +437,67 @@ const proposeMemory: ToolHandler = async (_db, args, ctx) => {
   };
 };
 
+// ---- ACTION TOOLS (encaminham para ai-actions: allowlist/guarda/auditoria/RLS)
+// SAFE_WRITE executam direto (editor/admin). SENSITIVE_WRITE só PROPÕEM (criam
+// uma aprovação pendente) — nunca executam aqui; a execução exige aprovação de admin.
+
+async function callSafe(ctx: ToolContext, tool: string, payload: Record<string, unknown>): Promise<ToolResult> {
+  if (!ctx.callActions) return { disponivel: false, encontrado: false, motivo: "Ações indisponíveis neste contexto." };
+  const r = await ctx.callActions({ action: "execute_safe", tool, payload });
+  if (!r.ok) {
+    const msg = ((r.data?.error as { message?: string } | undefined)?.message) ?? "Não foi possível executar a ação.";
+    return { disponivel: true, encontrado: false, motivo: msg };
+  }
+  return { disponivel: true, encontrado: true, aviso: "Ação SAFE_WRITE executada.", dados: r.data };
+}
+
+const actAlert: ToolHandler = (_db, args, ctx) =>
+  callSafe(ctx, "create_internal_alert", {
+    nivel: str(args, "nivel") || "info",
+    titulo: str(args, "titulo") || null,
+    mensagem: str(args, "mensagem") || null,
+    entity_type: str(args, "entity_type") || null,
+    entity_id: str(args, "entity_id") || null,
+  });
+
+const actTask: ToolHandler = (_db, args, ctx) => {
+  const titulo = str(args, "titulo");
+  if (!titulo) return Promise.resolve({ disponivel: true, encontrado: false, motivo: "Informe o título da tarefa." });
+  return callSafe(ctx, "create_task", {
+    titulo,
+    descricao: str(args, "descricao") || null,
+    prioridade: str(args, "prioridade") || "media",
+    entity_type: str(args, "entity_type") || null,
+    entity_id: str(args, "entity_id") || null,
+  });
+};
+
+const actReport: ToolHandler = (_db, args, ctx) =>
+  callSafe(ctx, "generate_report_draft", {
+    titulo: str(args, "titulo") || "Rascunho de relatório",
+    conteudo: str(args, "conteudo") || "",
+    entity_type: str(args, "entity_type") || null,
+    entity_id: str(args, "entity_id") || null,
+  });
+
+const actSendWa: ToolHandler = async (_db, args, ctx) => {
+  if (!ctx.callActions) return { disponivel: false, encontrado: false, motivo: "Ações indisponíveis neste contexto." };
+  const to = str(args, "to");
+  const text = str(args, "text");
+  if (!to || !text) return { disponivel: true, encontrado: false, motivo: "Informe 'to' e 'text'." };
+  const r = await ctx.callActions({ action: "propose", tool: "send_external_whatsapp_message", entity_type: "whatsapp", entity_id: to, payload: { to, text } });
+  if (!r.ok) {
+    const msg = ((r.data?.error as { message?: string } | undefined)?.message) ?? "Não foi possível propor o envio.";
+    return { disponivel: true, encontrado: false, motivo: msg };
+  }
+  return {
+    disponivel: true,
+    encontrado: true,
+    aviso: "Proposta criada — aguarda APROVAÇÃO de um admin. Nada foi enviado ainda.",
+    dados: { approval_id: r.data?.approval_id ?? null, status: "pendente" },
+  };
+};
+
 // ---- stubs honestos: entidades sem fonte de dados nesta plataforma -----
 
 const STUB_MOTIVO: Record<string, string> = {
@@ -567,6 +628,78 @@ export const READ_TOOLS: ToolDef[] = [
     },
     nivel: "SAFE_WRITE",
     handler: proposeMemory,
+  },
+  {
+    name: "create_internal_alert",
+    description:
+      "SAFE_WRITE: cria um alerta INTERNO (não envia nada para fora). Use para registrar algo que merece atenção. Requer editor/admin.",
+    input_schema: {
+      type: "object",
+      properties: {
+        titulo: { type: "string" },
+        mensagem: { type: "string" },
+        nivel: { type: "string", description: "info | aviso | critico" },
+        entity_type: { type: "string" },
+        entity_id: { type: "string" },
+      },
+      required: ["mensagem"],
+      additionalProperties: false,
+    },
+    nivel: "SAFE_WRITE",
+    handler: actAlert,
+  },
+  {
+    name: "create_task",
+    description:
+      "SAFE_WRITE: cria uma TAREFA interna. Requer editor/admin.",
+    input_schema: {
+      type: "object",
+      properties: {
+        titulo: { type: "string" },
+        descricao: { type: "string" },
+        prioridade: { type: "string", description: "baixa | media | alta" },
+        entity_type: { type: "string" },
+        entity_id: { type: "string" },
+      },
+      required: ["titulo"],
+      additionalProperties: false,
+    },
+    nivel: "SAFE_WRITE",
+    handler: actTask,
+  },
+  {
+    name: "generate_report_draft",
+    description:
+      "SAFE_WRITE: salva um RASCUNHO de relatório (interno, não oficial). Requer editor/admin.",
+    input_schema: {
+      type: "object",
+      properties: {
+        titulo: { type: "string" },
+        conteudo: { type: "string" },
+        entity_type: { type: "string" },
+        entity_id: { type: "string" },
+      },
+      required: ["conteudo"],
+      additionalProperties: false,
+    },
+    nivel: "SAFE_WRITE",
+    handler: actReport,
+  },
+  {
+    name: "send_external_whatsapp_message",
+    description:
+      "SENSITIVE_WRITE: PROPÕE enviar uma mensagem externa de WhatsApp. NÃO envia — cria uma aprovação PENDENTE que um admin deve aprovar. Use só quando o usuário pedir explicitamente para enviar algo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "Número de destino." },
+        text: { type: "string", description: "Texto a enviar." },
+      },
+      required: ["to", "text"],
+      additionalProperties: false,
+    },
+    nivel: "SENSITIVE_WRITE",
+    handler: actSendWa,
   },
   {
     name: "get_farm",

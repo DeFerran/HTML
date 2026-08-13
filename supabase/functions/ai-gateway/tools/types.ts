@@ -65,6 +65,13 @@ export interface ToolContext {
    * como PENDING_REVIEW (nunca oficial). Ausente = sem escrita de memória.
    */
   proposeMemory?: (m: ProposeMemoryInput) => Promise<ProposeMemoryResult>;
+  /**
+   * Encaminha ações à Edge Function ai-actions (fonte única de execução SAFE_WRITE
+   * e de propostas SENSITIVE_WRITE, com allowlist/guarda/auditoria e RLS).
+   */
+  callActions?: (
+    body: Record<string, unknown>,
+  ) => Promise<{ ok: boolean; status: number; data: Record<string, unknown> }>;
 }
 
 /** Resultado padronizado de toda READ tool. */
@@ -98,7 +105,7 @@ export interface ToolDef {
     required?: string[];
     additionalProperties: false;
   };
-  /** Nível de permissão: READ (todos) ou SAFE_WRITE (editor/admin). */
-  nivel: "READ" | "SAFE_WRITE";
+  /** Nível: READ (todos) · SAFE_WRITE (editor/admin) · SENSITIVE_WRITE (aprovação admin). */
+  nivel: "READ" | "SAFE_WRITE" | "SENSITIVE_WRITE";
   handler: ToolHandler;
 }

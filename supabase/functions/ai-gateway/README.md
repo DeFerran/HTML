@@ -20,6 +20,8 @@ Claude e, quando útil, chama **ferramentas SOMENTE-LEITURA** sobre os espelhos
 | `search_knowledge` | `ai_knowledge_*` (RAG) | busca semântica; retorna as **fontes** usadas (resposta traz `fontes[]`). |
 | `recall_memory` | `ai_memory` | READ — só memória **VALIDATED** do usuário. |
 | `propose_memory` | `ai_memory` | **SAFE_WRITE** (editor/admin) — PROPÕE memória (`PENDING_REVIEW`); nunca oficializa. Agronômico exige validação. |
+| `create_internal_alert` / `create_task` / `generate_report_draft` | `ai-actions` → `ai_alerts`/`ai_tasks`/`ai_report_drafts` | **SAFE_WRITE** (editor/admin) — executam direto via `ai-actions`. |
+| `send_external_whatsapp_message` | `ai-actions` → `ai_approvals` | **SENSITIVE_WRITE** — **só PROPÕE** (aprovação de admin); nunca envia pelo gateway. |
 | `get_farm` | — | **stub**: `disponivel=false` (não há tabela). |
 | `get_field` | — | **stub**: `disponivel=false` (não há tabela). |
 | `get_soil_analysis` | — | **stub**: `disponivel=false` (não há tabela). |
