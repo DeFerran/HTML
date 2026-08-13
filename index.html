@@ -455,6 +455,16 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
   .grid{gap:14px}
   .taxbar{padding:11px 13px;gap:9px}
 }
+/* Fase 3: alvos de toque confortáveis no mobile (controles segmentados/pílulas) */
+@media(max-width:900px){
+  .edpills button,.taxseg button{padding:10px 16px;font-size:13px;min-height:44px}
+  .edbtn{padding:11px 14px;font-size:13px;min-height:44px}
+  .toggle{padding:11px 14px;min-height:44px}
+  .simctrl{gap:12px}
+  /* segmentado de imposto ocupa a largura no mobile p/ toque */
+  .taxseg{display:flex;width:100%}
+  .taxseg button{flex:1}
+}
 </style>
 <script>try{if((localStorage.getItem('dfagro_theme')||'claro')==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}</script>
 </head>
@@ -4052,7 +4062,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · responsivo-fase2';
+const APP_VERSION='2026-08-13 · responsivo-fase3';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
