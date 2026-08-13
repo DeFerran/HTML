@@ -650,6 +650,10 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
 
     <div class="kpis" id="kCustos"></div>
 
+    <h3 class="secttl">Custo por colaborador</h3>
+    <div class="kpis" id="kColab"></div>
+    <div class="panel"><h3>Custo real por colaborador — da base de lançamentos</h3><div class="cap">Junta o <b>fixo</b> (salário/encargos/benefícios recorrentes) com o <b>variável</b> (combustível, viagem, hospedagem, campo) de cada pessoa. A coluna <b>Custo/Receita</b> lê o custo <b>contra a receita que a pessoa gera</b> — gastar mais não é pior se produz mais. Preencha o colaborador nas despesas e cadastre os salários em <b>Lançamentos → Despesas → Custos recorrentes</b>.</div><div style="overflow-x:auto"><table id="tColab"></table></div></div>
+
     <h3 class="secttl">Estrutura de custo — 7 grupos</h3>
     <div class="grid g32">
       <div class="panel"><h3>Composição do custo por grupo</h3><div class="cap">Onde o dinheiro está saindo. Laboratório e coleta vêm dos módulos abaixo; os demais você lança em Estrutura.</div><div class="chartbox tall"><canvas id="cEstrDonut"></canvas></div></div>
@@ -2736,8 +2740,37 @@ function estrGrupos(){
 }
 
 let _colSel=0;
+function renderCustoColaborador(){
+  const tel=document.getElementById('tColab'); if(!tel)return;
+  const lanc=(D.lancamentos||[]).filter(l=>l&&(l.status||'')!=='Cancelado');
+  const ehFixo=l=>l.origem==='recorrencia'||l.natureza==='Custo com pessoal';
+  const nomes=Array.from(new Set([...(D.colaboradores||[]).map(c=>c.nome),...lanc.map(l=>l.colaborador)].filter(Boolean)));
+  const cargoDe=nome=>{ const c=(D.colaboradores||[]).find(x=>x.nome===nome); return c?(c.cargo||''):''; };
+  const recVend=nome=>{ const pat=(nome||'').toLowerCase(); if(!pat)return 0; return (D.clientes||[]).reduce((a,c)=>a+(((c.vendedor||'').toLowerCase().indexOf(pat)>=0)?(+c.receita||0):0),0); };
+  const rows=nomes.map(nome=>{ const ls=lanc.filter(l=>l.colaborador===nome);
+    const fixo=ls.filter(ehFixo).reduce((a,l)=>a+(+l.valor||0),0);
+    const varv=ls.filter(l=>!ehFixo(l)).reduce((a,l)=>a+(+l.valor||0),0);
+    const total=fixo+varv, rec=recVend(nome);
+    return {nome,cargo:cargoDe(nome),fixo,varv,total,rec,ratio:rec>0?total/rec:null};
+  }).filter(r=>r.total>0||r.rec>0).sort((a,b)=>b.total-a.total);
+  const semColab=lanc.filter(l=>!l.colaborador).reduce((a,l)=>a+(+l.valor||0),0);
+  const totalPessoas=rows.reduce((a,r)=>a+r.total,0);
+  if(document.getElementById('kColab')) kpi('kColab',[
+    {lab:'Custo alocado a pessoas',val:BRLk(totalPessoas),sub:rows.length+' colaborador(es)'},
+    {lab:'Ainda sem colaborador',val:BRLk(semColab),c:semColab>0?'gold':'g',sub:'lançamentos a atribuir'},
+    {lab:'Maior custo',val:rows[0]?rows[0].nome:'—',c:'gold',sub:rows[0]?BRLk(rows[0].total)+(rows[0].rec?' · '+Math.round(rows[0].ratio*100)+'% da receita':''):'—'},
+  ]);
+  let h='<thead><tr><th>Colaborador</th><th>Cargo</th><th class="num">Fixo</th><th class="num">Variável</th><th class="num">Custo total</th><th class="num">Receita gerada</th><th class="num">Custo/Receita</th></tr></thead><tbody>';
+  if(!rows.length) h+='<tr><td colspan="7" style="color:var(--muted);padding:14px 6px">Nenhum custo por colaborador ainda. Atribua o <b>colaborador</b> nas despesas (Lançamentos → Despesas) e cadastre os salários em <b>Custos recorrentes</b>.</td></tr>';
+  rows.forEach(r=>{ const rc=r.ratio, cor=rc==null?'':(rc<=0.5?'var(--green)':(rc<=1?'var(--gold,#B8801F)':'var(--red)'));
+    h+='<tr><td>'+esc(r.nome)+'</td><td style="color:var(--muted)">'+esc(r.cargo||'—')+'</td><td class="num">'+BRL(r.fixo)+'</td><td class="num">'+BRL(r.varv)+'</td><td class="num"><b>'+BRL(r.total)+'</b></td><td class="num">'+(r.rec?BRLk(r.rec):'—')+'</td><td class="num" style="color:'+cor+';font-weight:700">'+(rc==null?'—':Math.round(rc*100)+'%')+'</td></tr>'; });
+  const tF=rows.reduce((a,r)=>a+r.fixo,0), tV=rows.reduce((a,r)=>a+r.varv,0), tR=rows.reduce((a,r)=>a+r.rec,0);
+  h+='</tbody><tfoot><tr><td class="mxcat">Total</td><td></td><td class="num">'+BRL(tF)+'</td><td class="num">'+BRL(tV)+'</td><td class="num mxgrand">'+BRL(totalPessoas)+'</td><td class="num">'+(tR?BRLk(tR):'—')+'</td><td class="num">'+(tR?Math.round(totalPessoas/tR*100)+'%':'—')+'</td></tr></tfoot>';
+  tel.innerHTML=h;
+}
 function renderCustos(){
   if(baseGate('custos'))return;
+  try{ renderCustoColaborador(); }catch(e){ console.warn('custoColab',e); }
   const eg=estrGrupos();
   const gruposNome=['Laboratório','Coleta'].concat(eg.outros.map(o=>o.nome));
   const gruposVal=[eg.labTot, eg.colTot].concat(eg.outros.map(o=>o.mes.reduce((a,b)=>a+b,0)));
@@ -3569,7 +3602,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · custos-recorrencia-17';
+const APP_VERSION='2026-08-12 · custo-colaborador-18';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
