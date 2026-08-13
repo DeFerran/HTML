@@ -658,6 +658,14 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="kpis" id="kVei"></div>
     <div class="panel"><h3>Custo real por veículo — da base de lançamentos</h3><div class="cap">Combustível, manutenção e demais custos de cada veículo (marque o <b>veículo</b> na despesa). Com o km rodado (odômetro inicial → atual, no cadastro em <b>Lançamentos → Despesas → Veículos</b>), o sistema calcula <b>custo/km</b> e <b>combustível/km</b>.</div><div style="overflow-x:auto"><table id="tVei"></table></div></div>
 
+    <h3 class="secttl">Orçamento, alertas &amp; investimentos</h3>
+    <div class="kpis" id="kOrcResumo"></div>
+    <div class="grid two">
+      <div class="panel"><h3>Orçamento × realizado</h3><div class="cap">Metas definidas em <b>Lançamentos → Despesas → Orçamentos</b>, comparadas com o realizado da base. Verde ≤ 90% · amarelo 90–100% · vermelho acima do orçamento.</div><div style="overflow-x:auto"><table id="tOrcamento"></table></div></div>
+      <div class="panel"><h3>Alertas</h3><div class="cap">Sinais que merecem atenção — sempre com contexto, não só "gastou mais".</div><div id="alertasBox"></div></div>
+    </div>
+    <div class="panel"><h3>Investimentos (CAPEX) — isolados da operação</h3><div class="cap">Compras de ativo não são custo de uma safra: aparecem aqui separadas, não misturadas nos indicadores operacionais. Marque a natureza <b>Investimento / CAPEX</b> na despesa.</div><div style="overflow-x:auto"><table id="tCapex"></table></div></div>
+
     <h3 class="secttl">Estrutura de custo — 7 grupos</h3>
     <div class="grid g32">
       <div class="panel"><h3>Composição do custo por grupo</h3><div class="cap">Onde o dinheiro está saindo. Laboratório e coleta vêm dos módulos abaixo; os demais você lança em Estrutura.</div><div class="chartbox tall"><canvas id="cEstrDonut"></canvas></div></div>
@@ -723,7 +731,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <button data-sec="op">Operação</button>
     </div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
-    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edVeiculos"></div><div class="edcard" id="edMatrizCusto"></div></div>
+    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edVeiculos"></div><div class="edcard" id="edOrcamentos"></div><div class="edcard" id="edMatrizCusto"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
     <div class="edsec" data-sec="funil" style="display:none"><div class="edcard" id="edMetasSafra"></div><div class="edcard" id="edFunil"></div></div>
     <div class="edsec" data-sec="precos" style="display:none"><div class="edcard" id="edPrecos"></div></div>
@@ -2776,6 +2784,9 @@ function renderCustos(){
   if(baseGate('custos'))return;
   try{ renderCustoColaborador(); }catch(e){ console.warn('custoColab',e); }
   try{ renderCustoVeiculo(); }catch(e){ console.warn('custoVei',e); }
+  try{ renderOrcamentoReport(); }catch(e){ console.warn('orcReport',e); }
+  try{ renderAlertas(); }catch(e){ console.warn('alertas',e); }
+  try{ renderInvestimentos(); }catch(e){ console.warn('invest',e); }
   const eg=estrGrupos();
   const gruposNome=['Laboratório','Coleta'].concat(eg.outros.map(o=>o.nome));
   const gruposVal=[eg.labTot, eg.colTot].concat(eg.outros.map(o=>o.mes.reduce((a,b)=>a+b,0)));
@@ -3179,6 +3190,7 @@ function renderDespesas(){
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
   try{ renderRecorrencias(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
+  try{ renderOrcamentos(); }catch(e){}
   try{ renderMatrizCustos(); }catch(e){}
 }
 /* ===== motor de custos recorrentes: cadastra uma vez, gera os lançamentos de cada mês sozinho ===== */
@@ -3245,6 +3257,93 @@ function renderRecorrencias(){
   host.querySelectorAll('button.redit').forEach(b=>b.onclick=()=>editarRec(b.dataset.id));
   host.querySelectorAll('button.rrem').forEach(b=>b.onclick=()=>removerRec(b.dataset.id));
   host.querySelectorAll('button.rtog').forEach(b=>b.onclick=()=>toggleRec(b.dataset.id));
+}
+/* ===== orçamentos (metas de gasto) ===== */
+const ORC_ESCOPOS=[['categoria','Categoria'],['centroCusto','Centro de custo'],['natureza','Natureza'],['colaborador','Colaborador']];
+function orcRefOpts(esc){ return esc==='categoria'?nomesCategorias():esc==='centroCusto'?nomesCentros():esc==='natureza'?NATUREZAS:esc==='colaborador'?nomesColaboradores():[]; }
+function orcLabelEscopo(esc){ const e=ORC_ESCOPOS.find(x=>x[0]===esc); return e?e[1]:esc; }
+function realizadoOrc(o){ const ano=String(o.ano||''); return (D.lancamentos||[]).filter(l=>l&&(l.status||'')!=='Cancelado'&&l[o.escopo]===o.ref&&String(l.competencia||'').indexOf(ano)===0).reduce((a,l)=>a+(+l.valor||0),0); }
+let _orcForm=null;
+function novoOrcForm(){ _orcForm={id:'',escopo:'categoria',ref:'',ano:String((new Date()).getFullYear()),meta:0}; renderOrcamentos(); }
+function editarOrc(id){ const o=(D.orcamentos||[]).find(x=>x.id===id); if(o){ _orcForm=JSON.parse(JSON.stringify(o)); renderOrcamentos(); } }
+function salvarOrcForm(){ const F=_orcForm; if(!F)return; if(!F.ref){alert('Escolha o item do orçamento.');return;} if(!(+F.meta>0)){alert('Informe a meta de gasto.');return;}
+  F.meta=+F.meta||0; F.ano=String(F.ano||'');
+  if(F.id){ const i=(D.orcamentos||[]).findIndex(o=>o.id===F.id); if(i>=0)D.orcamentos[i]=F; } else { F.id='o'+uidLanc(); D.orcamentos.push(F); }
+  _orcForm=null; commit(); renderDespesas(); if(document.getElementById('v-custos'))try{renderCustos();}catch(e){} }
+function removerOrc(id){ D.orcamentos=(D.orcamentos||[]).filter(o=>o.id!==id); commit(); renderDespesas(); if(document.getElementById('v-custos'))try{renderCustos();}catch(e){} }
+function orcStatus(pct){ return pct>1?['var(--red)','acima']:(pct>=0.9?['var(--gold,#B8801F)','no limite']:['var(--green)','ok']); }
+function renderOrcamentos(){
+  const host=document.getElementById('edOrcamentos'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+(ph||'—')+'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const orcs=D.orcamentos||[];
+  let h='<div class="edhead"><h3>🎯 Orçamentos &amp; metas de gasto</h3><p class="edhelp">Defina um teto de gasto por categoria, centro, natureza ou colaborador. O sistema compara com o realizado da base e alerta quando estoura. Aparece na aba <b>Custos</b>.</p></div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="orcNovo">+ Novo orçamento</button></div>';
+  if(_orcForm){ const F=_orcForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="labprec" style="gap:10px 14px">'+
+      field('Tipo',"<select class='edinp ocf' data-k='escopo'>"+ORC_ESCOPOS.map(e=>'<option value="'+e[0]+'"'+(F.escopo===e[0]?' selected':'')+'>'+e[1]+'</option>').join('')+"</select>")+
+      field('Item',"<select class='edinp ocf' data-k='ref'>"+sel(F.ref,orcRefOpts(F.escopo),'—')+"</select>")+
+      field('Ano',"<input class='edinp ocf' data-k='ano' value='"+esc(F.ano||'')+"'>")+
+      field('Meta de gasto (R$)',"<input class='edinp num ocf' data-k='meta' value='"+esc(F.meta?fmoney(F.meta):'')+"'>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="orcSalvar">Salvar</button><button class="edbtn ghost" id="orcCancelar">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Tipo</th><th>Item</th><th>Ano</th><th class="num">Meta</th><th class="num">Realizado</th><th class="num">Desvio</th><th>Status</th><th></th></tr></thead><tbody>';
+  if(!orcs.length)h+='<tr><td colspan="8" style="color:var(--muted);padding:14px 6px">Nenhum orçamento. Clique em <b>+ Novo orçamento</b>.</td></tr>';
+  orcs.forEach(o=>{ const rz=realizadoOrc(o), meta=+o.meta||0, pct=meta?rz/meta:0, dev=rz-meta, st=orcStatus(pct);
+    h+='<tr><td>'+esc(orcLabelEscopo(o.escopo))+'</td><td>'+esc(o.ref||'—')+'</td><td>'+esc(o.ano||'')+'</td><td class="num">'+BRL(meta)+'</td><td class="num"><b>'+BRL(rz)+'</b></td>'+
+      '<td class="num" style="color:'+st[0]+'">'+(dev>0?'+':'')+BRL(dev)+'</td><td><span style="color:'+st[0]+';font-weight:700">'+Math.round(pct*100)+'% · '+st[1]+'</span></td>'+
+      '<td style="white-space:nowrap;text-align:right"><button class="edbtn oedit" data-id="'+esc(o.id)+'">editar</button> <button class="edbtn ghost orem" data-id="'+esc(o.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('orcNovo'); if(nv)nv.onclick=novoOrcForm;
+  const sv=document.getElementById('orcSalvar'); if(sv)sv.onclick=salvarOrcForm;
+  const cc=document.getElementById('orcCancelar'); if(cc)cc.onclick=()=>{ _orcForm=null; renderOrcamentos(); };
+  host.querySelectorAll('.ocf').forEach(inp=>{ inp.onchange=()=>{ if(!_orcForm)return; const k=inp.dataset.k; _orcForm[k]=(k==='meta')?pnum(inp.value):inp.value; if(k==='escopo')_orcForm.ref=''; renderOrcamentos(); }; });
+  host.querySelectorAll('button.oedit').forEach(b=>b.onclick=()=>editarOrc(b.dataset.id));
+  host.querySelectorAll('button.orem').forEach(b=>b.onclick=()=>removerOrc(b.dataset.id));
+}
+/* relatório de orçamento + alertas + investimentos (aba Custos) */
+function renderOrcamentoReport(){
+  const tel=document.getElementById('tOrcamento'); const orcs=D.orcamentos||[];
+  const linhas=orcs.map(o=>{ const rz=realizadoOrc(o), meta=+o.meta||0; return {o,rz,meta,pct:meta?rz/meta:0}; }).sort((a,b)=>b.pct-a.pct);
+  const totMeta=linhas.reduce((a,l)=>a+l.meta,0), totRz=linhas.reduce((a,l)=>a+l.rz,0), acima=linhas.filter(l=>l.pct>1).length;
+  if(document.getElementById('kOrcResumo')) kpi('kOrcResumo',[
+    {lab:'Orçado (linhas definidas)',val:BRLk(totMeta),sub:linhas.length+' orçamento(s)'},
+    {lab:'Realizado nessas linhas',val:BRLk(totRz),c:totRz>totMeta?'r':'g',sub:totMeta?Math.round(totRz/totMeta*100)+'% do orçado':'defina orçamentos'},
+    {lab:'Acima do orçamento',val:String(acima),c:acima?'r':'g',sub:acima?'itens estourados':'tudo dentro'},
+  ]);
+  if(tel){ let h='<thead><tr><th>Item</th><th class="num">Meta</th><th class="num">Realizado</th><th class="num">%</th><th>Status</th></tr></thead><tbody>';
+    if(!linhas.length)h+='<tr><td colspan="5" style="color:var(--muted);padding:12px 6px">Nenhum orçamento definido. Crie em Lançamentos → Despesas → Orçamentos.</td></tr>';
+    linhas.forEach(l=>{ const st=orcStatus(l.pct); h+='<tr><td>'+esc(l.o.ref||'—')+' <span style="color:var(--muted);font-size:11px">('+esc(orcLabelEscopo(l.o.escopo))+')</span></td><td class="num">'+BRL(l.meta)+'</td><td class="num"><b>'+BRL(l.rz)+'</b></td><td class="num" style="color:'+st[0]+';font-weight:700">'+Math.round(l.pct*100)+'%</td><td><span style="color:'+st[0]+'">'+st[1]+'</span></td></tr>'; });
+    h+='</tbody>'; tel.innerHTML=h; }
+}
+function renderAlertas(){
+  const box=document.getElementById('alertasBox'); if(!box)return;
+  const lanc=(D.lancamentos||[]).filter(l=>l&&(l.status||'')!=='Cancelado');
+  const tot=lanc.reduce((a,l)=>a+(+l.valor||0),0)||1;
+  const al=[];
+  (D.orcamentos||[]).forEach(o=>{ const rz=realizadoOrc(o), meta=+o.meta||0; if(meta&&rz>meta) al.push(['r','<b>'+esc(o.ref)+'</b> estourou o orçamento: '+BRL(rz)+' de '+BRL(meta)+' ('+Math.round(rz/meta*100)+'%).']); });
+  const semCentro=lanc.filter(l=>!(l.centroCusto||'').trim()).reduce((a,l)=>a+(+l.valor||0),0);
+  if(semCentro>0) al.push(['gold',BRL(semCentro)+' em despesas <b>sem centro de custo</b> — atribua para o rateio ficar completo.']);
+  const outros=lanc.filter(l=>/^outros$/i.test(l.categoria||'')).reduce((a,l)=>a+(+l.valor||0),0);
+  if(outros/tot>0.10) al.push(['gold','Categoria <b>"Outros"</b> representa '+Math.round(outros/tot*100)+'% do custo ('+BRL(outros)+') — vale detalhar em categorias reais.']);
+  const capex=lanc.filter(l=>/CAPEX/.test(l.natureza||'')).reduce((a,l)=>a+(+l.valor||0),0);
+  if(capex>0) al.push(['navy',BRL(capex)+' classificado como <b>investimento (CAPEX)</b> — corretamente fora da margem operacional (veja Visão Geral).']);
+  const varSemColab=lanc.filter(l=>l.origem!=='recorrencia'&&l.natureza!=='Custo com pessoal'&&!(l.colaborador||'').trim()&&/combust|hospedagem|viagem|alimenta|di[áa]ria/i.test(l.categoria||'')).reduce((a,l)=>a+(+l.valor||0),0);
+  if(varSemColab>0) al.push(['gold',BRL(varSemColab)+' de despesa variável (combustível/viagem/hospedagem) <b>sem colaborador</b> — atribua para o custo por pessoa ficar real.']);
+  if(!al.length){ box.innerHTML='<div class="note" style="color:var(--green)"><b>✓ Nenhum alerta.</b> Orçamentos dentro do limite e lançamentos bem atribuídos.</div>'; return; }
+  box.innerHTML=al.map(a=>'<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)"><span class="tag '+(a[0]==='r'?'lo':(a[0]==='gold'?'md':'hi'))+'" style="flex:none;margin-top:2px">•</span><div style="font-size:13px;color:var(--ink-soft)">'+a[1]+'</div></div>').join('');
+}
+function renderInvestimentos(){
+  const tel=document.getElementById('tCapex'); if(!tel)return;
+  const lanc=(D.lancamentos||[]).filter(l=>l&&(l.status||'')!=='Cancelado');
+  const capex=lanc.filter(l=>/CAPEX/.test(l.natureza||''));
+  const totCapex=capex.reduce((a,l)=>a+(+l.valor||0),0), totOpex=lanc.filter(l=>!/CAPEX/.test(l.natureza||'')).reduce((a,l)=>a+(+l.valor||0),0);
+  let h='<thead><tr><th>Competência</th><th>Ativo / descrição</th><th>Categoria</th><th>Centro</th><th class="num">Valor</th></tr></thead><tbody>';
+  if(!capex.length)h+='<tr><td colspan="5" style="color:var(--muted);padding:12px 6px">Nenhum investimento (CAPEX) lançado. Marque a natureza "Investimento / CAPEX" numa despesa de compra de ativo.</td></tr>';
+  capex.slice().sort((a,b)=>(b.competencia||'').localeCompare(a.competencia||'')).forEach(l=>{ h+='<tr><td>'+esc(l.competencia||'—')+'</td><td>'+esc(l.descricao||'—')+'</td><td>'+esc(l.categoria||'—')+'</td><td>'+esc(l.centroCusto||'—')+'</td><td class="num"><b>'+BRL(+l.valor||0)+'</b></td></tr>'; });
+  const somaTot=totCapex+totOpex||1;
+  h+='</tbody><tfoot><tr><td class="mxcat">CAPEX total</td><td colspan="3" style="color:var(--muted)">'+Math.round(totCapex/somaTot*100)+'% do custo · OPEX: '+BRLk(totOpex)+'</td><td class="num mxgrand">'+BRL(totCapex)+'</td></tr></tfoot>';
+  tel.innerHTML=h;
 }
 /* ===== cadastro de veículos + custo/km ===== */
 let _veiForm=null;
@@ -3675,7 +3774,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · custo-veiculo-19';
+const APP_VERSION='2026-08-12 · orcamento-capex-20';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
