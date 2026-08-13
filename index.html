@@ -376,6 +376,10 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
 .authmsg.err{color:var(--red)}.authmsg.ok{color:var(--leaf)}
 .authalt{text-align:center;font-size:12px;color:var(--muted);margin-top:14px}
 .authalt a{color:var(--head);font-weight:700;cursor:pointer;text-decoration:underline}
+.acctmenu{position:fixed;z-index:120;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);padding:8px;min-width:200px;display:flex;flex-direction:column;gap:2px}
+.acctmenu .acctmail{font-size:11px;color:var(--muted);padding:6px 10px 8px;border-bottom:1px solid var(--line);margin-bottom:4px;word-break:break-all}
+.acctmenu button{background:none;border:none;text-align:left;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:8px}
+.acctmenu button:hover{background:var(--soft);color:var(--head)}
 #cloudState{cursor:default}
 .synctag{display:inline-block;margin-top:2px;font-size:10.5px;opacity:.85}
 .synctag.pend{color:var(--orangeD);font-weight:700}
@@ -428,14 +432,18 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     <div class="authlogo">DF AGRO 360 · nuvem</div>
     <h3 id="authTitle">Entrar na sua conta</h3>
     <p class="authsub" id="authSub">Seus dados ficam salvos na nuvem e acessíveis de qualquer computador.</p>
-    <label for="authEmail">E-mail</label>
-    <input id="authEmail" type="email" autocomplete="username" placeholder="voce@empresa.com">
-    <label for="authPass">Senha</label>
+    <div id="authEmailWrap">
+      <label for="authEmail">E-mail</label>
+      <input id="authEmail" type="email" autocomplete="username" placeholder="voce@empresa.com">
+    </div>
+    <label for="authPass" id="authPassLbl">Senha</label>
     <input id="authPass" type="password" autocomplete="current-password" placeholder="mínimo 8 caracteres, com letras e números">
     <div class="authmsg" id="authMsg"></div>
     <button class="btn authbtn" id="authGo" onclick="doAuth()">Entrar</button>
-    <div class="authalt"><span id="authSwitchTxt">Ainda não tem conta?</span> <a id="authSwitch" onclick="authToggleMode()">Criar conta</a></div>
-    <div class="authalt" style="font-size:11px;color:var(--muted);line-height:1.5">Acesso restrito. Se ainda não tem acesso, peça ao administrador para liberar seu e-mail.</div>
+    <div class="authalt" id="authForgotRow"><a id="authForgot" onclick="doForgot()">Esqueci minha senha</a></div>
+    <div class="authalt" id="authCancelRow" style="display:none"><a onclick="authCancel()">Cancelar</a></div>
+    <div class="authalt" id="authSwitchRow"><span id="authSwitchTxt">Ainda não tem conta?</span> <a id="authSwitch" onclick="authToggleMode()">Criar conta</a></div>
+    <div class="authalt" id="authNote" style="font-size:11px;color:var(--muted);line-height:1.5">Acesso restrito. Se ainda não tem acesso, peça ao administrador para liberar seu e-mail.</div>
   </div>
 </div>
 
@@ -3859,24 +3867,67 @@ function syncNow(){ if(!sb){ alert('A nuvem não carregou (verifique a internet)
   Promise.resolve(cloudSave(false)).then(()=>{}).catch(()=>{}).then(()=>{ _syncing=false; if(sy) sy.classList.remove('spin'); }); }
 function authMsg(txt,cls){ const el=document.getElementById('authMsg'); if(!el)return; el.textContent=txt||''; el.className='authmsg'+(cls?(' '+cls):''); }
 function showAuth(show){ const ov=document.getElementById('authOverlay'); if(!ov)return; ov.classList.toggle('show',!!show); if(show){ authMsg(''); const em=document.getElementById('authEmail'); if(em) setTimeout(()=>em.focus(),40); } }
-function authToggleMode(){ _authMode = _authMode==='login'?'signup':'login'; const login=_authMode==='login';
+function applyAuthMode(){
   const q=(id)=>document.getElementById(id);
-  if(q('authTitle')) q('authTitle').textContent = login?'Entrar na sua conta':'Criar sua conta';
-  if(q('authGo')) q('authGo').textContent = login?'Entrar':'Criar conta';
+  const m=_authMode, login=m==='login', signup=m==='signup', reset=(m==='recovery'||m==='change');
+  if(q('authEmailWrap')) q('authEmailWrap').style.display = reset?'none':'';
+  if(q('authForgotRow')) q('authForgotRow').style.display = login?'':'none';
+  if(q('authCancelRow')) q('authCancelRow').style.display = reset?'':'none';
+  if(q('authSwitchRow')) q('authSwitchRow').style.display = reset?'none':'';
+  if(q('authNote')) q('authNote').style.display = reset?'none':'';
+  if(q('authTitle')) q('authTitle').textContent = login?'Entrar na sua conta':signup?'Criar sua conta':(m==='change'?'Trocar sua senha':'Definir nova senha');
+  if(q('authSub')) q('authSub').textContent = reset?'Escolha uma nova senha — mínimo 8 caracteres, com letras e números.':(login?'Seus dados ficam salvos na nuvem e acessíveis de qualquer computador.':'Crie um acesso para guardar o painel na nuvem com segurança.');
+  if(q('authGo')) q('authGo').textContent = login?'Entrar':signup?'Criar conta':'Salvar nova senha';
+  if(q('authPassLbl')) q('authPassLbl').textContent = reset?'Nova senha':'Senha';
   if(q('authSwitchTxt')) q('authSwitchTxt').textContent = login?'Ainda não tem conta?':'Já tem conta?';
   if(q('authSwitch')) q('authSwitch').textContent = login?'Criar conta':'Entrar';
-  if(q('authSub')) q('authSub').textContent = login?'Seus dados ficam salvos na nuvem e acessíveis de qualquer computador.':'Crie um acesso para guardar o painel na nuvem com segurança.';
-  if(q('authPass')) q('authPass').setAttribute('autocomplete', login?'current-password':'new-password');
+  if(q('authPass')){ q('authPass').value=''; q('authPass').setAttribute('autocomplete', reset?'new-password':(login?'current-password':'new-password')); }
   authMsg(''); }
+function authToggleMode(){ _authMode = _authMode==='login'?'signup':'login'; applyAuthMode(); }
+function setAuthMode(m){ _authMode=m; applyAuthMode(); }
+function authCancel(){ showAuth(false); if(_authMode!=='change') setAuthMode('login'); }
+async function doForgot(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return; }
+  const email=(document.getElementById('authEmail').value||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite seu e-mail acima para receber o link de redefinição.','err'); return; }
+  const btn=document.getElementById('authGo'); if(btn) btn.disabled=true; authMsg('Enviando link…');
+  try{ const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.href.split('#')[0]}); if(error) throw error;
+    authMsg('Se este e-mail tiver conta, enviamos um link para redefinir a senha. Verifique sua caixa de entrada (e o spam).','ok');
+  }catch(e){ authMsg(traduzErro(e.message||e),'err'); }
+  finally{ if(btn) btn.disabled=false; } }
+async function doSetPassword(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return; }
+  const pass=(document.getElementById('authPass').value||'');
+  if(pass.length<8 || !(/[A-Za-z]/.test(pass) && /[0-9]/.test(pass))){ authMsg('Senha fraca: use ao menos 8 caracteres com letras e números.','err'); return; }
+  const btn=document.getElementById('authGo'); if(btn) btn.disabled=true; authMsg('Salvando…');
+  try{ const {error}=await sb.auth.updateUser({password:pass}); if(error) throw error;
+    authMsg('Senha atualizada com sucesso!','ok');
+    const change=_authMode==='change';
+    setTimeout(()=>{ showAuth(false); if(!change) setAuthMode('login'); },1300);
+  }catch(e){ authMsg(traduzErro(e.message||e),'err'); }
+  finally{ if(btn) btn.disabled=false; } }
+function openRecovery(){ setAuthMode('recovery'); showAuth(true); }
+function trocarSenha(){ const m=document.getElementById('acctMenu'); if(m)m.remove(); setAuthMode('change'); showAuth(true); }
+function accountMenu(){
+  let m=document.getElementById('acctMenu');
+  if(m){ m.remove(); document.removeEventListener('click',closeAcct); return; }
+  m=document.createElement('div'); m.id='acctMenu'; m.className='acctmenu';
+  m.innerHTML='<div class="acctmail">'+esc(sbUser&&sbUser.email||'')+'</div>'+
+    '<button onclick="trocarSenha()">🔑 Trocar senha</button>'+
+    '<button onclick="doLogout()">↩ Sair da conta</button>';
+  document.body.appendChild(m);
+  const btn=document.getElementById('cloudBtn'); const r=btn.getBoundingClientRect();
+  m.style.top=(r.bottom+8)+'px'; m.style.right=Math.max(8,(window.innerWidth-r.right))+'px';
+  setTimeout(()=>document.addEventListener('click',closeAcct),0); }
+function closeAcct(e){ const m=document.getElementById('acctMenu'); if(m && !m.contains(e.target) && e.target.id!=='cloudBtn'){ m.remove(); document.removeEventListener('click',closeAcct); } }
 function cloudBtnClick(){ if(!sb){ alert('A conexão com a nuvem não carregou (verifique a internet). O painel continua salvando neste computador.'); return; }
-  if(sbUser){ if(confirm('Sair da conta '+(sbUser.email||'')+' neste computador? Os dados continuam salvos na nuvem.')) doLogout(); }
-  else { _authMode='login'; authToggleMode(); _authMode='login'; authToggleMode(); showAuth(true); } }
+  if(sbUser){ accountMenu(); }
+  else { setAuthMode('login'); showAuth(true); } }
 function traduzErro(m){ m=String(m||''); if(/Invalid login/i.test(m))return'E-mail ou senha incorretos.';
   if(/already registered|already been registered/i.test(m))return'Este e-mail já tem conta. Use "Entrar".';
   if(/Email not confirmed/i.test(m))return'Confirme seu e-mail antes de entrar (verifique a caixa de entrada).';
   if(/Password should be at least/i.test(m))return'A senha precisa ter ao menos 8 caracteres.';
   if(/rate limit|too many/i.test(m))return'Muitas tentativas. Aguarde alguns minutos.'; return m; }
 async function doAuth(){ if(!sb){ authMsg('Nuvem indisponível.','err'); return; }
+  if(_authMode==='recovery' || _authMode==='change'){ return doSetPassword(); }
   const email=(document.getElementById('authEmail').value||'').trim();
   const pass=(document.getElementById('authPass').value||'');
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ authMsg('Digite um e-mail válido.','err'); return; }
@@ -3919,7 +3970,8 @@ function scheduleCloud(){ if(!sb||!sbUser)return; syncStamp('pend','Sincronizaç
 function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); document.body.classList.remove('pre-login'); return; } // sem nuvem: libera offline
   cloudSet('Nuvem: entrar');
   sb.auth.getSession().then(({data})=>{ if(data && data.session && data.session.user){ onLogin(data.session.user); } else { showAuth(true); } });
-  sb.auth.onAuthStateChange((_ev,session)=>{ if(session && session.user){ if(!sbUser) onLogin(session.user); }
+  sb.auth.onAuthStateChange((_ev,session)=>{ if(_ev==='PASSWORD_RECOVERY'){ openRecovery(); return; }
+    if(session && session.user){ if(!sbUser) onLogin(session.user); }
     else { sbUser=null; cloudSet('Nuvem: entrar'); meuPapel=null;minhasAbas=[];ehAdmin=false;ehMembro=false; document.body.classList.add('pre-login'); showAuth(true); try{aplicarPermissoes();}catch(e){} } }); }
 
 (function(){ let _t='claro'; try{ _t=localStorage.getItem(THKEY)||'claro'; }catch(e){} applyTheme(_t,true); })();
@@ -3943,7 +3995,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · sidebar-final';
+const APP_VERSION='2026-08-13 · troca-senha';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
