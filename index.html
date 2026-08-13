@@ -702,6 +702,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
     </div>
     <div class="edpills" id="edPills">
       <button class="on" data-sec="cli">Clientes e vendas</button>
+      <button data-sec="desp">💸 Despesas (base única)</button>
       <button data-sec="serv">Serviços</button>
       <button data-sec="funil">Funil de vendas</button>
       <button data-sec="precos">Preços por safra</button>
@@ -714,6 +715,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <button data-sec="op">Operação</button>
     </div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
+    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
     <div class="edsec" data-sec="funil" style="display:none"><div class="edcard" id="edMetasSafra"></div><div class="edcard" id="edFunil"></div></div>
     <div class="edsec" data-sec="precos" style="display:none"><div class="edcard" id="edPrecos"></div></div>
@@ -899,6 +901,33 @@ function hydrate(d){
   // metas de margem líquida geral (4 níveis)
   if(!Array.isArray(d.metasMargemLiq)||d.metasMargemLiq.length!==4) d.metasMargemLiq=[0.20,0.25,0.30,0.35];
   d.metasMargemLiq=d.metasMargemLiq.map(v=>+v||0);
+  /* ===== módulo de custos: base única de lançamentos + cadastros de dimensão ===== */
+  if(!Array.isArray(d.lancamentos)) d.lancamentos=[];
+  if(!Array.isArray(d.centrosCusto)||!d.centrosCusto.length)
+    d.centrosCusto=['Diretoria','Administrativo','Financeiro','Consultoria Técnica','Agricultura de Precisão','Coleta','Pesquisa & Inovação','Tecnologia / TI','Comercial','Operações'].map((n,i)=>({id:'cc'+(i+1),nome:n,ativo:true}));
+  if(!Array.isArray(d.veiculos)) d.veiculos=[];
+  if(!Array.isArray(d.equipamentos)) d.equipamentos=[];
+  if(!Array.isArray(d.recorrencias)) d.recorrencias=[];
+  if(!Array.isArray(d.orcamentos)) d.orcamentos=[];
+  // colaboradores: deriva da Equipe quando ainda vazio (sem nomes fixos no código)
+  if(!Array.isArray(d.colaboradores)) d.colaboradores=[];
+  if(!d.colaboradores.length && d.equipe && Array.isArray(d.equipe.colaboradores))
+    d.colaboradores=d.equipe.colaboradores.map((c,i)=>({id:'col'+(i+1),nome:c.nome||('Colaborador '+(i+1)),cargo:c.papel||'',centroCusto:'',ativo:true}));
+  // categorias: deriva das categorias de custo já existentes (migração 1:1), com natureza inferida
+  if(!Array.isArray(d.categorias)||!d.categorias.length){
+    const nats=(cat)=>{ const c=(cat||'').toLowerCase();
+      if(/manuten[çc]|loca[çc]|combust/.test(c))return'Custo operacional direto';           // manutenção/locação/combustível são OPEX, mesmo de veículo/ativo
+      if(/compra de ativo|invest|computador|coletor|m[óo]vel|infraestrutura|equipamento|ve[íi]cul/.test(c))return'Investimento / CAPEX'; // só compra de ativo
+      if(/sal[áa]rio|encargo|benef[íi]c|comiss|di[áa]ria|bonific|adiantamento/.test(c))return'Custo com pessoal';
+      if(/imposto|tributo/.test(c))return'Tributos';
+      if(/plataforma|sistema|licen[çc]a|internet|telefone|escrit[óo]rio|contab|aluguel|energia/.test(c))return'Despesa administrativa';
+      if(/marketing|represent|brinde/.test(c))return'Despesa comercial';
+      if(/juros|banc|financ/.test(c))return'Despesa financeira';
+      if(/combust[íi]|manuten[çc]|coleta|an[áa]lise|material|ped[áa]g|hospedagem|frete|viagem|lava|guincho|loca[çc]|deslocamento|transporte|alimenta/.test(c))return'Custo operacional direto';
+      return'Outros'; };
+    const chaves=Object.keys(d.custoCategoria2026||{});
+    d.categorias=chaves.map((k,i)=>({id:'cat'+(i+1),nome:k,natureza:nats(k),ativo:true}));
+  }
   return d;
 }
 let SEED={}; try{ SEED=JSON.parse(b64d(document.getElementById('seed').textContent.trim())); }catch(e){ console.warn('seed',e); }
@@ -3007,8 +3036,112 @@ function renderCliEditor(){
     newRow:()=>({nome:'',grupo:'fert',servico:'',vendedor:'A definir',mes:'',ha:0,precoHa:0,receita:0,ultimaColeta:'',cicloColeta:0}),
     onchange:()=>{ D.clientes.forEach(r=>{ r.receita=(+r.ha||0)*(+r.precoHa||0); }); }});
 }
+/* ===================== MÓDULO DE CUSTOS · base única de lançamentos ===================== */
+const NATUREZAS=['Custo operacional direto','Custo operacional indireto','Despesa administrativa','Despesa comercial','Despesa financeira','Investimento / CAPEX','Custo com pessoal','Tributos','Outros'];
+const FORMAS_PGTO=['Pix','Boleto','Cartão','Transferência','Dinheiro','Débito automático'];
+const STATUS_LANC=['Previsto','Aprovado','Pago','Pendente','Cancelado'];
+function uidLanc(){ return 'l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function nowISO(){ try{ return new Date().toISOString(); }catch(e){ return ''; } }
+function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
+function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
+function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
+function natDaCategoria(cat){ const c=(D.categorias||[]).find(x=>x.nome===cat); return c?c.natureza:'Outros'; }
+let _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''};
+let _despForm=null; // objeto do lançamento em edição (null = form fechado)
+function lancFiltradas(){ const f=_despFiltro;
+  return (D.lancamentos||[]).filter(l=>l&&(!f.comp||(l.competencia||'').indexOf(f.comp)===0)&&(!f.centro||l.centroCusto===f.centro)&&(!f.nat||l.natureza===f.nat)&&(!f.cat||l.categoria===f.cat)&&(!f.colab||l.colaborador===f.colab)); }
+function lancMigrado(){ return (D.lancamentos||[]).some(l=>l&&l.origem==='migracao'); }
+function migrarCustos(){
+  D.lancamentos=Array.isArray(D.lancamentos)?D.lancamentos:[];
+  if(lancMigrado())return {ja:true,n:0,total:0};
+  const cc=D.custoCategoria2026||{}; let n=0,total=0;
+  Object.keys(cc).forEach(cat=>{ const v=+cc[cat]||0; if(v<=0)return;
+    D.lancamentos.push({id:uidLanc(),data:'',competencia:'2026',descricao:cat,valor:v,natureza:natDaCategoria(cat),
+      centroCusto:'',categoria:cat,colaborador:'',cliente:'',veiculo:'',servico:'',formaPagamento:'',status:'Pago',
+      obs:'Importado do consolidado 2026',origem:'migracao',criadoEm:nowISO()}); n++; total+=v; });
+  commit(); return {ja:false,n:n,total:total};
+}
+function salvarLancForm(){ const F=_despForm; if(!F)return;
+  if(!(+F.valor>0)){ alert('Informe um valor maior que zero.'); return; }
+  F.valor=+F.valor||0; if(F.data&&!F.competencia) F.competencia=String(F.data).slice(0,7);
+  if(!F.competencia)F.competencia=(new Date().toISOString().slice(0,7));
+  if(F.id){ const i=(D.lancamentos||[]).findIndex(l=>l.id===F.id); if(i>=0){ F.atualizadoEm=nowISO(); D.lancamentos[i]=F; } }
+  else { F.id=uidLanc(); F.criadoEm=nowISO(); F.criadoPor=(sbUser&&sbUser.email)||''; D.lancamentos.push(F); }
+  _despForm=null; commit(); renderDespesas();
+}
+function novoLancForm(){ _despForm={id:'',data:'',competencia:'',descricao:'',valor:0,natureza:'Custo operacional direto',centroCusto:'',categoria:'',colaborador:'',cliente:'',veiculo:'',servico:'',formaPagamento:'',status:'Pago',obs:''}; renderDespesas(); }
+function editarLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(l){ _despForm=JSON.parse(JSON.stringify(l)); renderDespesas(); } }
+function removerLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(!l)return; if(!confirm('Remover o lançamento "'+(l.descricao||'')+'" ('+BRL(+l.valor||0)+')?'))return; D.lancamentos=(D.lancamentos||[]).filter(x=>x.id!==id); commit(); renderDespesas(); }
+function renderDespesas(){
+  const host=document.getElementById('edDespesas'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+ (ph||'—') +'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const migrou=lancMigrado(), lanc=D.lancamentos||[], ledgerTotal=lanc.reduce((a,l)=>a+(+l.valor||0),0);
+  let h='<div class="edhead"><h3>💸 Despesas — base única de lançamentos</h3><p class="edhelp">Lance cada despesa <b>uma vez</b>, com as suas dimensões (centro de custo, colaborador, categoria, natureza, cliente, veículo, serviço). Daqui saem todos os relatórios de custo — sem planilha paralela.</p></div>';
+  // barra topo: migração / conciliação + novo
+  h+='<div class="edcard" style="background:var(--soft);border:1px solid var(--line);margin-bottom:14px">';
+  if(!migrou){ const cc=D.custoCategoria2026||{}; const nCat=Object.keys(cc).filter(k=>+cc[k]>0).length; const tot=Object.keys(cc).reduce((a,k)=>a+(+cc[k]||0),0);
+    h+='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><b>Comece importando seus custos atuais:</b> '+nCat+' categorias · '+BRL(tot)+' do consolidado 2026 viram lançamentos editáveis. <button class="edbtn primary" id="despMigrar">↧ Importar custos atuais</button></div>';
+  } else {
+    const custoAtual=(typeof custoRawTotal==='function')?custoRawTotal():0; const proj=custoAtual-ledgerTotal;
+    h+='<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><span><b>'+lanc.length+'</b> lançamentos · realizado lançado <b>'+BRL(ledgerTotal)+'</b></span>'+
+      '<span style="color:var(--muted)">projeção do ano: '+BRLk(custoAtual)+(proj>1?(' · faltam <b style="color:var(--gold)">'+BRL(proj)+'</b> de meses projetados (ago–dez) a lançar'):(Math.abs(proj)<=1?' · <b style="color:var(--green)">concilia ✓</b>':'')) +'</span></div>';
+  }
+  h+='</div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="despNovo">+ Nova despesa</button></div>';
+  // formulário
+  if(_despForm){ const F=_despForm;
+    const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar lançamento':'Nova despesa')+'</h3></div>'+
+      '<div class="labprec" style="gap:10px 14px">'+
+      field('Data',"<input type='date' class='edinp dpf' data-k='data' value='"+esc(F.data||'')+"'>")+
+      field('Descrição',"<input class='edinp dpf' data-k='descricao' value='"+esc(F.descricao||'')+"' placeholder='ex.: Diesel Hilux 01'>")+
+      field('Valor (R$)',"<input class='edinp num dpf' data-k='valor' value='"+esc(F.valor?fmoney(F.valor):'')+"'>")+
+      field('Natureza',"<select class='edinp dpf' data-k='natureza'>"+sel(F.natureza,NATUREZAS,'—')+"</select>")+
+      field('Centro de custo',"<select class='edinp dpf' data-k='centroCusto'>"+sel(F.centroCusto,nomesCentros(),'—')+"</select>")+
+      field('Categoria',"<select class='edinp dpf' data-k='categoria'>"+sel(F.categoria,nomesCategorias(),'—')+"</select>")+
+      field('Colaborador',"<select class='edinp dpf' data-k='colaborador'>"+sel(F.colaborador,nomesColaboradores(),'—')+"</select>")+
+      field('Cliente',"<select class='edinp dpf' data-k='cliente'>"+sel(F.cliente,(D.clientes||[]).map(c=>c.nome).filter(Boolean),'—')+"</select>")+
+      field('Serviço',"<select class='edinp dpf' data-k='servico'>"+sel(F.servico,(D.servicos||[]).map(s=>s.nome).filter(Boolean),'—')+"</select>")+
+      field('Veículo',"<select class='edinp dpf' data-k='veiculo'>"+sel(F.veiculo,(D.veiculos||[]).map(v=>v.nome).filter(Boolean),'—')+"</select>")+
+      field('Forma pgto',"<select class='edinp dpf' data-k='formaPagamento'>"+sel(F.formaPagamento,FORMAS_PGTO,'—')+"</select>")+
+      field('Status',"<select class='edinp dpf' data-k='status'>"+sel(F.status,STATUS_LANC,'—')+"</select>")+
+      field('Observação',"<input class='edinp dpf' data-k='obs' value='"+esc(F.obs||'')+"'>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="despSalvar">Salvar lançamento</button><button class="edbtn ghost" id="despCancelar">Cancelar</button></div></div>';
+  }
+  // filtros
+  h+='<div class="labprec" style="gap:8px 12px;margin-bottom:10px">'+
+    '<label class="lpf"><span>Competência</span><input class="edinp dfil" data-f="comp" value="'+esc(_despFiltro.comp)+'" placeholder="2026 ou 2026-05"></label>'+
+    '<label class="lpf"><span>Centro</span><select class="edinp dfil" data-f="centro">'+sel(_despFiltro.centro,nomesCentros(),'todos')+'</select></label>'+
+    '<label class="lpf"><span>Natureza</span><select class="edinp dfil" data-f="nat">'+sel(_despFiltro.nat,NATUREZAS,'todas')+'</select></label>'+
+    '<label class="lpf"><span>Categoria</span><select class="edinp dfil" data-f="cat">'+sel(_despFiltro.cat,nomesCategorias(),'todas')+'</select></label>'+
+    '<label class="lpf"><span>Colaborador</span><select class="edinp dfil" data-f="colab">'+sel(_despFiltro.colab,nomesColaboradores(),'todos')+'</select></label>'+
+  '</div>';
+  // tabela
+  const rows=lancFiltradas().slice().sort((a,b)=>(b.competencia||'').localeCompare(a.competencia||'')||(+b.valor||0)-(+a.valor||0));
+  const totFil=rows.reduce((a,l)=>a+(+l.valor||0),0);
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Competência</th><th>Descrição</th><th>Categoria</th><th>Natureza</th><th>Centro</th><th>Colaborador</th><th class="num">Valor</th><th></th></tr></thead><tbody>';
+  if(!rows.length) h+='<tr><td colspan="8" style="color:var(--muted);padding:14px 6px">Nenhum lançamento'+(lanc.length?' com esses filtros':' ainda')+'. Clique em <b>+ Nova despesa</b>'+(migrou?'':' ou importe os custos atuais')+'.</td></tr>';
+  rows.forEach(l=>{ h+='<tr><td>'+esc(l.competencia||'—')+'</td><td>'+esc(l.descricao||'—')+'</td><td>'+esc(l.categoria||'—')+'</td>'+
+    '<td>'+(/CAPEX/.test(l.natureza||'')?'<span class="badge bnovo">CAPEX</span>':'<span class="badge">'+esc((l.natureza||'—').replace('Custo operacional ','OPEX ').replace('Despesa ','').replace('Custo com ',''))+'</span>')+'</td>'+
+    '<td>'+esc(l.centroCusto||'—')+'</td><td>'+esc(l.colaborador||'—')+'</td><td class="num"><b>'+BRL(+l.valor||0)+'</b></td>'+
+    '<td style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
+  h+='</tbody><tfoot><tr><td class="mxcat">Total filtrado</td><td></td><td></td><td></td><td></td><td></td><td class="num mxgrand">'+BRL(totFil)+'</td><td></td></tr></tfoot></table></div>';
+  host.innerHTML=h;
+  // handlers
+  const mg=document.getElementById('despMigrar'); if(mg)mg.onclick=()=>{ const r=migrarCustos(); if(r.ja)alert('Os custos já foram importados.'); else { setStatus('● '+r.n+' custos importados para a base ('+BRL(r.total)+')','ok'); } renderDespesas(); };
+  const nv=document.getElementById('despNovo'); if(nv)nv.onclick=novoLancForm;
+  const sv=document.getElementById('despSalvar'); if(sv)sv.onclick=salvarLancForm;
+  const cc=document.getElementById('despCancelar'); if(cc)cc.onclick=()=>{ _despForm=null; renderDespesas(); };
+  host.querySelectorAll('input.dpf,select.dpf').forEach(inp=>{ inp.onchange=()=>{ if(!_despForm)return; const k=inp.dataset.k; let v=inp.value; if(k==='valor')v=pnum(inp.value); _despForm[k]=v;
+    if(k==='categoria' && v && !_despForm._natTouched){ _despForm.natureza=natDaCategoria(v); const ns=host.querySelector('select.dpf[data-k=natureza]'); if(ns)ns.value=_despForm.natureza; }
+    if(k==='natureza')_despForm._natTouched=true; }; });
+  host.querySelectorAll('.dfil').forEach(inp=>{ inp.oninput=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; inp.onchange=()=>{ _despFiltro[inp.dataset.f]=inp.value; renderDespesas(); }; });
+  host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
+  host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
+}
 function renderEditors(){
   renderLabEditor();
+  try{ renderDespesas(); }catch(e){ console.warn('despesas',e); }
   renderColetaEditor();
   renderEstruturaEditor();
   renderCustoMensal();
@@ -3338,7 +3471,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-12 · result-operacional-14';
+const APP_VERSION='2026-08-12 · custos-ledger-15';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
