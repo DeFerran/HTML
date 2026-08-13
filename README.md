@@ -51,7 +51,7 @@ público no navegador; o acesso real é protegido pelas políticas de RLS.
 
 ## Camada de BI (relacional)
 
-Além do documento JSON, o banco tem **15 tabelas `bi_*`** que espelham os dados
+Além do documento JSON, o banco tem **16 tabelas `bi_*`** que espelham os dados
 em formato relacional, para consulta por SQL / ferramentas de BI. Elas são
 **somente-leitura** para os usuários (populadas por ETL) e protegidas por RLS
 por usuário.
@@ -73,6 +73,7 @@ por usuário.
 | `bi_operacao_situacao`    | Situação das operações                          |
 | `bi_operacao_etapas`      | Etapas das operações (andamento/pendente)       |
 | `bi_cross_sell`           | Matriz de venda cruzada (cliente × serviço)     |
+| `bi_lancamentos`          | Base única de custos por lançamento (todas as dimensões: competência, natureza OPEX/CAPEX, centro de custo, colaborador, categoria, cliente, serviço, veículo, valor) |
 
 ### Sincronização (ETL)
 
