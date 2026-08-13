@@ -122,12 +122,16 @@ body.has-sidebar header .logo,
 body.has-sidebar header .htxt{display:none}
 body.has-sidebar header .topcur{display:block}
 body.has-sidebar header{padding:13px 24px}
-/* em telas pequenas volta o cabeçalho original (sidebar oculta) */
+/* Etapa 6: no modo sidebar o menu horizontal é ocultado (permanece no DOM,
+   pois a sidebar delega para ele; volta no layout clássico e em telas pequenas) */
+body.has-sidebar:not(.pre-login) nav.tabs{display:none}
+/* em telas pequenas volta o cabeçalho original + menu horizontal (sidebar oculta) */
 @media(max-width:900px){
   body.has-sidebar header .logo,
   body.has-sidebar header .htxt{display:flex}
   body.has-sidebar header .htxt{display:block}
   body.has-sidebar header .topcur{display:none}
+  body.has-sidebar:not(.pre-login) nav.tabs{display:flex}
 }
 /* layout */
 main{max-width:1240px;margin:0 auto;padding:26px 22px 60px}
@@ -3927,7 +3931,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · sidebar-etapa3';
+const APP_VERSION='2026-08-13 · sidebar-etapa6';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
