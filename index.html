@@ -4304,6 +4304,8 @@ function aplicarPermissoes(){
   const ta=document.getElementById('tabAdmin'); if(ta) ta.style.display=ehAdmin?'':'none';
   const ti=document.getElementById('tabIA'); if(ti) ti.style.display=(aplicar&&kbEnabled())?'':'none';
   const tim=document.getElementById('tabIAMem'); if(tim) tim.style.display=(aplicar&&kbEnabled())?'':'none';
+  const cf=document.getElementById('copFab'); if(cf) cf.style.display=(aplicar&&kbEnabled())?'':'none';
+  if(!(aplicar&&kbEnabled())){ try{ copClose(); }catch(e){} }
   document.querySelectorAll('#tabs button').forEach(b=>{ const v=b.dataset.v; if(v==='admin'||v==='ia'||v==='iamem')return;
     b.style.display=(aplicar&&!abaLiberada(v))?'none':''; });
   const leitor=aplicar&&meuPapel==='leitor';
@@ -4496,6 +4498,61 @@ async function memList(){ const host=document.getElementById('memTabela'); if(!h
 async function memValidar(id){ if(!sb)return; try{ const {error}=await sb.from('ai_memory').update({status:'VALIDATED',validated:true,validado_por:sbUser.id,validado_em:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',id); if(error)throw error; memMsg('Memória validada.','ok'); memList(); }catch(e){ memMsg('Erro: '+(e.message||e),'err'); } }
 async function memInvalidar(id){ if(!sb)return; if(!confirm('Invalidar esta memória? Ela deixa de ser usada, mas não é apagada.'))return; try{ const {error}=await sb.from('ai_memory').update({status:'INVALIDATED',validated:false,updated_at:new Date().toISOString()}).eq('id',id); if(error)throw error; memMsg('Memória invalidada.','ok'); memList(); }catch(e){ memMsg('Erro: '+(e.message||e),'err'); } }
 async function memEditar(id){ if(!sb)return; try{ const {data,error}=await sb.from('ai_memory').select('content').eq('id',id).maybeSingle(); if(error)throw error; const atual=data&&data.content||''; const novo=prompt('Editar conteúdo da memória:',atual); if(novo===null)return; const t=(novo||'').trim(); if(!t){ memMsg('Conteúdo não pode ficar vazio.','err'); return; } const {error:e2}=await sb.from('ai_memory').update({content:t,updated_at:new Date().toISOString()}).eq('id',id); if(e2)throw e2; memMsg('Memória atualizada.','ok'); memList(); }catch(e){ memMsg('Erro: '+(e.message||e),'err'); } }
+/* ===================== COPILOTO (chat) =====================
+   Aditivo e isolado. Botão global + drawer. Fala só com a Edge Function
+   ai-gateway (READ tools + RAG + memória, tudo sob RLS/JWT do usuário).
+   Contexto automático da página vai embutido na mensagem (aba, safra, empresa).
+   A plataforma NÃO tem talhão/fazenda: o Copiloto diz isso com clareza. */
+let copConv=null, copMsgs=[], copBusy=false, _copBound=false;
+function copContexto(){ let aba=''; try{ const t=document.querySelector('#tabs button.active'); aba=t?t.textContent.trim():''; }catch(e){}
+  let safra=''; try{ safra=(typeof safraAtual==='function')?safraAtual():''; }catch(e){}
+  return { tenant_id:'DF AGRO', company_id:'DF AGRO', empresa:'DF AGRO', aba, season_id:safra }; }
+function copContextoLinha(c){ const p=[]; if(c&&c.aba)p.push('aba '+c.aba); if(c&&c.season_id)p.push('safra '+c.season_id); p.push('empresa DF AGRO'); return p.join('; '); }
+function copToggle(){ const d=document.getElementById('copDrawer'); if(!d)return; if(d.classList.contains('open'))copClose(); else copOpen(); }
+function copClose(){ const d=document.getElementById('copDrawer'); if(d){ d.classList.remove('open'); d.setAttribute('aria-hidden','true'); } }
+function copOpen(){ const d=document.getElementById('copDrawer'); if(!d)return; if(!sb||!sbUser)return;
+  d.classList.add('open'); d.setAttribute('aria-hidden','false');
+  const ctx=document.getElementById('copCtx'); if(ctx) ctx.textContent='Contexto: '+copContextoLinha(copContexto());
+  if(!_copBound){ const inp=document.getElementById('copInput'); if(inp){ inp.addEventListener('keydown',(ev)=>{ if(ev.key==='Enter'&&!ev.shiftKey){ ev.preventDefault(); copSend(); } }); } _copBound=true; }
+  try{ if(!copConv){ const saved=localStorage.getItem('df_cop_conv'); if(saved)copConv=saved; } }catch(e){}
+  if(copConv&&!copMsgs.length) copLoadConv(copConv); else if(!copMsgs.length) copSaudacao(); else copRender();
+  copCarregarRecentes();
+  const inp=document.getElementById('copInput'); if(inp) setTimeout(()=>inp.focus(),60);
+}
+function copSaudacao(){ copMsgs=[{role:'ai',content:'Olá! Sou o Copiloto da DF AGRO. Posso consultar clientes, safras, custos, operação, a Base de Conhecimento e memórias validadas. Como posso ajudar?'}]; copRender(); }
+function copNova(){ copConv=null; copMsgs=[]; try{ localStorage.removeItem('df_cop_conv'); }catch(e){} const s=document.getElementById('copRecentes'); if(s)s.value=''; copSaudacao(); const inp=document.getElementById('copInput'); if(inp)inp.focus(); }
+function copRender(){ const host=document.getElementById('copMsgs'); if(!host)return;
+  host.innerHTML=copMsgs.map(m=>{ const cls=m.role==='user'?'user':'ai'; let extra='';
+    if(m.fontes&&m.fontes.length){ extra='<div class="cop-src">Fontes: '+m.fontes.map(f=>esc(f.titulo||f.fonte||'documento')).join(', ')+'</div>'; }
+    return '<div class="cop-b '+cls+(m.erro?' erro':'')+'">'+esc(m.content)+extra+'</div>'; }).join('');
+  host.scrollTop=host.scrollHeight; }
+function copSetSending(on){ const b=document.getElementById('copSendBtn'); if(b){ b.disabled=on; b.textContent=on?'…':'➤'; } }
+async function copSend(){ if(copBusy||!sb||!sbUser)return; const inp=document.getElementById('copInput'); if(!inp)return;
+  const text=(inp.value||'').trim(); if(!text)return;
+  copMsgs.push({role:'user',content:text}); copRender(); inp.value='';
+  copBusy=true; copSetSending(true);
+  const c=copContexto(); const linha=copContextoLinha(c);
+  const message=(linha?('(Contexto da página: '+linha+')\n\n'):'')+text;
+  try{
+    const {data,error}=await sb.functions.invoke('ai-gateway',{body:{message,conversation_id:copConv,contexto:c}});
+    if(error) throw new Error(await kbFnError(error));
+    if(data&&data.conversation_id){ copConv=data.conversation_id; try{ localStorage.setItem('df_cop_conv',copConv); }catch(e){} }
+    copMsgs.push({role:'ai',content:(data&&data.reply)||'(sem resposta)',fontes:(data&&data.fontes)||[]}); copRender(); copCarregarRecentes();
+  }catch(e){ let m=e.message||String(e); if(/not_configured/i.test(m)) m='O Copiloto ainda não está configurado (falta a chave da IA no backend). A base de conhecimento e a memória já funcionam.'; copMsgs.push({role:'ai',content:'⚠ '+m,erro:true}); copRender(); }
+  copBusy=false; copSetSending(false);
+  const ctx=document.getElementById('copCtx'); if(ctx) ctx.textContent='Contexto: '+copContextoLinha(copContexto());
+}
+async function copLoadConv(id){ if(!sb||!id)return; copConv=id; try{ localStorage.setItem('df_cop_conv',id); }catch(e){}
+  const host=document.getElementById('copMsgs'); if(host)host.innerHTML='<div class="cap" style="padding:14px">Carregando…</div>';
+  try{ const {data,error}=await sb.from('ai_messages').select('papel,conteudo').eq('conversation_id',id).order('criado_em',{ascending:true}).limit(100);
+    if(error)throw error;
+    copMsgs=(data||[]).filter(m=>m.papel==='user'||m.papel==='assistant').map(m=>({role:m.papel==='user'?'user':'ai',content:String(m.conteudo||'').replace(/^\(Contexto da página:[^\)]*\)\n\n/,'')}));
+    if(!copMsgs.length) copSaudacao(); else copRender();
+  }catch(e){ copSaudacao(); } }
+async function copCarregarRecentes(){ const s=document.getElementById('copRecentes'); if(!s||!sb)return;
+  try{ const {data}=await sb.from('ai_conversations').select('id,titulo').order('atualizado_em',{ascending:false}).limit(10);
+    const opts=['<option value="">Recentes…</option>'].concat((data||[]).map(c=>'<option value="'+c.id+'"'+(c.id===copConv?' selected':'')+'>'+esc((c.titulo||'Conversa').slice(0,32))+'</option>'));
+    s.innerHTML=opts.join(''); }catch(e){} }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
@@ -4602,5 +4659,41 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
   const h=document.querySelector('header'); if(h&&h.parentNode) h.parentNode.insertBefore(bar,h.nextSibling);
 }catch(e){} })();
 </script>
+
+<!-- COPILOTO (chat) — aditivo, atrás de feature flag; controlado por aplicarPermissoes -->
+<style>
+#copFab{position:fixed;right:18px;bottom:18px;z-index:1200;width:56px;height:56px;border-radius:50%;background:#0A6A30;color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.28);font-size:24px;cursor:pointer;display:none}
+#copFab:hover{filter:brightness(1.08)}
+#copDrawer{position:fixed;right:0;top:0;height:100%;width:400px;max-width:100vw;background:var(--soft,#fff);z-index:1201;box-shadow:-6px 0 24px rgba(0,0,0,.18);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease}
+#copDrawer.open{transform:translateX(0)}
+#copDrawer .cop-head{display:flex;align-items:center;gap:6px;padding:12px 14px;border-bottom:1px solid var(--line,#e5e5e5);background:var(--card,#fff)}
+#copDrawer .cop-head h3{margin:0;font-size:15px;flex:1;color:var(--ink,#111)}
+#copDrawer .cop-ctx{font-size:11px;color:var(--muted,#777);padding:6px 14px;border-bottom:1px solid var(--line,#eee)}
+#copDrawer .cop-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg,#fafafa)}
+#copDrawer .cop-b{max-width:86%;padding:9px 12px;border-radius:12px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+#copDrawer .cop-b.user{align-self:flex-end;background:#0A6A30;color:#fff;border-bottom-right-radius:3px}
+#copDrawer .cop-b.ai{align-self:flex-start;background:var(--card,#fff);color:var(--ink,#111);border:1px solid var(--line,#e5e5e5);border-bottom-left-radius:3px}
+#copDrawer .cop-b.erro{background:#fbe9e7;color:#8a1c10;border-color:#f3c0b8}
+#copDrawer .cop-src{font-size:11px;color:var(--muted,#777);margin-top:4px}
+#copDrawer .cop-foot{border-top:1px solid var(--line,#e5e5e5);padding:10px;display:flex;gap:8px;background:var(--card,#fff)}
+#copDrawer .cop-foot textarea{flex:1;resize:none;border:1px solid var(--line,#ccc);border-radius:8px;padding:8px;font:inherit;max-height:120px;background:var(--soft,#fff);color:var(--ink,#111)}
+#copDrawer select#copRecentes{max-width:120px;font-size:12px}
+@media(max-width:520px){ #copDrawer{width:100vw} }
+</style>
+<button id="copFab" title="Copiloto IA" aria-label="Abrir Copiloto" onclick="copToggle()">🤖</button>
+<div id="copDrawer" aria-hidden="true" aria-label="Copiloto DF AGRO">
+  <div class="cop-head">
+    <h3>🤖 Copiloto</h3>
+    <select id="copRecentes" title="Conversas recentes" onchange="copLoadConv(this.value)"></select>
+    <button class="edbtn" type="button" onclick="copNova()">＋ Nova</button>
+    <button class="edbtn" type="button" onclick="copClose()" aria-label="Fechar">✕</button>
+  </div>
+  <div class="cop-ctx" id="copCtx"></div>
+  <div class="cop-msgs" id="copMsgs"></div>
+  <div class="cop-foot">
+    <textarea id="copInput" rows="1" placeholder="Pergunte sobre clientes, safras, custos, conhecimento…"></textarea>
+    <button class="edbtn primary" id="copSendBtn" type="button" onclick="copSend()" aria-label="Enviar">➤</button>
+  </div>
+</div>
 </body>
 </html>
