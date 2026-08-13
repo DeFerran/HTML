@@ -4600,7 +4600,7 @@ const IAHUB_SUBS=[
   {k:'alertas',t:'Alertas Inteligentes',ic:'🔔',futuro:true},
   {k:'conhecimento',t:'Conhecimento',ic:'📚'},
   {k:'memoria',t:'Memória',ic:'🧠'},
-  {k:'whatsapp',t:'WhatsApp',ic:'💬',futuro:true},
+  {k:'whatsapp',t:'WhatsApp',ic:'💬'},
   {k:'aprovacoes',t:'Aprovações',ic:'✅',futuro:true},
   {k:'historico',t:'Histórico & Auditoria',ic:'🗂️'},
   {k:'config',t:'Configurações',ic:'⚙',futuro:true}
@@ -4623,6 +4623,7 @@ function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
   if(k==='historico') return iahubHistorico(body);
   if(k==='agentes') return iahubAgentes(body);
   if(k==='automacoes') return iahubAutomacoes(body);
+  if(k==='whatsapp') return iahubWhatsapp(body);
   if(k==='copiloto'){ body.innerHTML='<div class="panel"><h3>Copiloto AP</h3><div class="cap">O Copiloto abre em um painel lateral.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="copOpen()">🤖 Abrir Copiloto</button></div></div>'; return; }
   if(k==='conhecimento'){ body.innerHTML='<div class="panel"><h3>Base de Conhecimento</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=ia]\').click()">📚 Abrir Conhecimento</button></div></div>'; return; }
   if(k==='memoria'){ body.innerHTML='<div class="panel"><h3>Memória</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=iamem]\').click()">🧠 Abrir Memória</button></div></div>'; return; }
@@ -4826,6 +4827,52 @@ async function autoHist(ruleId){ const host=document.getElementById('autoHistTab
       return '<tr><td>'+esc(iahData(r.criado_em))+'</td><td>'+esc(r.trigger_type||'—')+'</td><td>'+st+'</td><td>'+(r.tentativa||1)+'</td><td>'+iahDur(r.duracao_ms)+'</td><td>'+det+'</td></tr>'; }).join('');
     host.innerHTML=head+'<tbody>'+b+'</tbody>'; try{ wrapTables(); }catch(e){}
   }catch(e){ host.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
+/* ---------- WhatsApp (Central de IA) — admin ---------- */
+function waMsg(t,cls){ const e=document.getElementById('waMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+function iahubWhatsapp(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  const url=(typeof SB_URL!=='undefined'?SB_URL:'')+'/functions/v1/ai-whatsapp';
+  body.innerHTML=
+    '<div class="panel"><h3>Conexão <span id="waStatus" class="cap"></span></h3>'
+    +'<div class="cap">Integração inicial (WhatsApp Cloud API). <b>Somente leitura</b>: consultas, respostas e resumos. Ações sensíveis <b>não</b> são permitidas via WhatsApp.</div>'
+    +'<div class="edform">'
+      +'<label>Número exibido<br><input id="waNumero" type="text" placeholder="Ex.: +55 ..."></label>'
+      +'<label>phone_number_id<br><input id="waPnid" type="text" placeholder="ID do número (Cloud API)"></label>'
+      +'<label style="display:flex;align-items:center;gap:6px;margin-top:22px"><input id="waAtivo" type="checkbox"> Conexão ativa</label>'
+    +'</div>'
+    +'<div style="margin-top:10px"><button class="edbtn primary" onclick="waSalvar()">💾 Salvar conexão</button> <button class="edbtn" onclick="iahubWhatsapp(document.getElementById(\'iahubBody\'))">↺ Atualizar</button></div>'
+    +'<div class="note" style="margin-top:10px"><b>Webhook:</b> <code>'+esc(url)+'</code> — configure no app da Meta. Os segredos (<code>WHATSAPP_VERIFY_TOKEN</code>, <code>WHATSAPP_APP_SECRET</code>, <code>WHATSAPP_ACCESS_TOKEN</code>) ficam <b>só no backend</b> (nunca aqui).</div>'
+    +'<div class="authmsg" id="waMsg" style="margin-top:10px"></div></div>'
+    +'<div class="panel"><h3>Enviar mensagem de teste</h3><div class="cap">Envio manual (admin). Requer os segredos configurados no backend.</div>'
+      +'<div class="edform"><label>Para (número)<br><input id="waTo" type="text" placeholder="5511..."></label><label style="flex:1;min-width:220px">Texto<br><input id="waText" type="text" placeholder="Mensagem"></label></div>'
+      +'<div style="margin-top:8px"><button class="edbtn" onclick="waEnviar()">📤 Enviar</button></div><div id="waSendOut" style="margin-top:8px"></div></div>'
+    +'<div class="grid two">'
+      +'<div class="panel"><h3>Conversas</h3><div style="overflow-x:auto"><table id="waConvTab" class="resp-cards"></table></div></div>'
+      +'<div class="panel"><h3>Logs & erros</h3><div style="overflow-x:auto"><table id="waLogTab" class="resp-cards"></table></div></div>'
+    +'</div>'
+    +'<div class="panel"><h3>Mensagens recentes</h3><div style="overflow-x:auto"><table id="waMsgTab" class="resp-cards"></table></div></div>';
+  waCarregar();
+}
+async function waCarregar(){ if(!sb)return;
+  try{ const {data:cfg}=await sb.from('whatsapp_config').select('numero,phone_number_id,ativo,ultimo_evento_em').maybeSingle();
+    if(cfg){ const set=(i,v)=>{ const e=document.getElementById(i); if(e)e.value=v||''; }; set('waNumero',cfg.numero); set('waPnid',cfg.phone_number_id); const a=document.getElementById('waAtivo'); if(a)a.checked=!!cfg.ativo;
+      const st=document.getElementById('waStatus'); if(st) st.innerHTML=cfg.ativo?'<span style="color:#0A6A30;font-weight:700">● conectado</span>'+(cfg.ultimo_evento_em?(' · último evento '+iahData(cfg.ultimo_evento_em)):''):'<span style="color:#9a6a00">● inativo</span>'; }
+    else { const st=document.getElementById('waStatus'); if(st) st.innerHTML='<span style="color:#777">● não configurado</span>'; }
+  }catch(e){ waMsg('Erro ao ler config: '+(e.message||e),'err'); }
+  // conversas
+  try{ const {data}=await sb.from('whatsapp_conversations').select('wa_id,status,atualizado_em').order('atualizado_em',{ascending:false}).limit(50); const h=document.getElementById('waConvTab');
+    const rows=(data||[]); h.innerHTML=rows.length?('<thead><tr><th>Contato</th><th>Status</th><th>Atualizada</th></tr></thead><tbody>'+rows.map(c=>'<tr><td>'+esc(c.wa_id||'—')+'</td><td>'+esc(c.status||'')+'</td><td>'+esc(iahData(c.atualizado_em))+'</td></tr>').join('')+'</tbody>'):'<tbody><tr><td class="cap">Sem conversas.</td></tr></tbody>'; }catch(e){}
+  // logs
+  try{ const {data}=await sb.from('whatsapp_logs').select('tipo,nivel,mensagem,criado_em').order('criado_em',{ascending:false}).limit(50); const h=document.getElementById('waLogTab');
+    const rows=(data||[]); h.innerHTML=rows.length?('<thead><tr><th>Data</th><th>Tipo</th><th>Nível</th><th>Mensagem</th></tr></thead><tbody>'+rows.map(l=>{ const c=l.nivel==='erro'?'#c0392b':(l.nivel==='aviso'?'#9a6a00':'#0A6A30'); return '<tr><td>'+esc(iahData(l.criado_em))+'</td><td>'+esc(l.tipo)+'</td><td><span style="color:'+c+';font-weight:700">'+esc(l.nivel)+'</span></td><td>'+esc(l.mensagem||'')+'</td></tr>'; }).join('')+'</tbody>'):'<tbody><tr><td class="cap">Sem logs.</td></tr></tbody>'; }catch(e){}
+  // mensagens
+  try{ const {data}=await sb.from('whatsapp_messages').select('direcao,texto,status,erro,criado_em').order('criado_em',{ascending:false}).limit(60); const h=document.getElementById('waMsgTab');
+    const rows=(data||[]); h.innerHTML=rows.length?('<thead><tr><th>Data</th><th>Direção</th><th>Texto</th><th>Status</th></tr></thead><tbody>'+rows.map(m=>{ const dir=m.direcao==='in'?'recebida':'enviada'; const st=m.status==='erro'?('<span style="color:#c0392b" title="'+esc(m.erro||'')+'">erro</span>'):esc(m.status); return '<tr><td>'+esc(iahData(m.criado_em))+'</td><td>'+dir+'</td><td>'+esc(String(m.texto||'').slice(0,120))+'</td><td>'+st+'</td></tr>'; }).join('')+'</tbody>'):'<tbody><tr><td class="cap">Sem mensagens.</td></tr></tbody>'; }catch(e){}
+}
+async function waSalvar(){ if(!sb||!ehAdmin)return; const numero=(document.getElementById('waNumero').value||'').trim()||null; const phone_number_id=(document.getElementById('waPnid').value||'').trim()||null; const ativo=document.getElementById('waAtivo').checked;
+  try{ const {error}=await sb.from('whatsapp_config').upsert({numero,phone_number_id,ativo,atualizado_em:new Date().toISOString()},{onConflict:'user_id'}); if(error)throw error; waMsg('Conexão salva.','ok'); waCarregar(); }catch(e){ waMsg('Erro: '+(e.message||e),'err'); } }
+async function waEnviar(){ if(!sb||!ehAdmin)return; const to=(document.getElementById('waTo').value||'').trim(); const text=(document.getElementById('waText').value||'').trim(); const out=document.getElementById('waSendOut'); if(!to||!text){ out.innerHTML='<div class="cap">Informe número e texto.</div>'; return; } out.innerHTML='<div class="cap">Enviando…</div>';
+  try{ const {data,error}=await sb.functions.invoke('ai-whatsapp',{body:{action:'send_message',to,text}}); if(error)throw new Error(await kbFnError(error)); if(data&&data.ok){ out.innerHTML='<div class="note">Enviada.</div>'; document.getElementById('waText').value=''; waCarregar(); } else { out.innerHTML='<div class="cap">Falha: '+esc((data&&data.erro)||'erro')+'</div>'; } }catch(e){ out.innerHTML='<div class="cap">Erro: '+esc(e.message||String(e))+'</div>'; } }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
