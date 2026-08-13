@@ -654,7 +654,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Receita lançada por serviço</h3><div class="cap">Receita dos clientes somada pelo <b>Serviço</b> marcado em cada venda. Preencha a coluna Serviço em Lançamentos › Clientes.</div><div class="chartbox"><canvas id="cRecServCli"></canvas></div><div class="note" id="noteRecServ"></div></div>
     </div>
     <div class="panel"><h3>Matriz de cross-sell — serviços contratados por cliente</h3><div class="cap">Verde = já contrata. Vazio = oportunidade de venda.</div><div class="hm" id="heat"></div></div>
-    <div class="panel"><h3>Pipeline de recompra — reamostragem prevista</h3><div class="cap">Quando cada cliente deve <b>reamostrar</b> (Última coleta + Ciclo, definidos em Lançamentos › Clientes). É a receita <b>recorrente</b> da sua carteira: planeje a venda antes do concorrente. Clientes de Fertilidade Grid já vêm com ciclo de 2 anos.</div><div class="kpis" id="kRecompra" style="margin-bottom:14px"></div><div style="overflow-x:auto"><table id="tRecompra"></table></div></div>
+    <div class="panel"><h3>Pipeline de recompra — reamostragem prevista</h3><div class="cap">Quando cada cliente deve <b>reamostrar</b> (Última coleta + Ciclo, definidos em Lançamentos › Clientes). É a receita <b>recorrente</b> da sua carteira: planeje a venda antes do concorrente. Clientes de Fertilidade Grid já vêm com ciclo de 2 anos.</div><div class="kpis" id="kRecompra" style="margin-bottom:14px"></div><div style="overflow-x:auto"><table id="tRecompra" class="resp-cards"></table></div></div>
   </section>
 
   <!-- SERVIÇOS -->
@@ -666,7 +666,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Receita por serviço — 26/27 vs 25/26</h3><div class="cap">Comparação entre safras. Atenção ao que caiu.</div><div class="chartbox tall"><canvas id="cServ"></canvas></div></div>
       <div class="panel"><h3>Mix de receita 26/27</h3><div class="cap">Concentração por linha de serviço.</div><div class="chartbox tall"><canvas id="cServPie"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Detalhe por serviço</h3><div class="cap">Ticket por hectare = receita ÷ ha vendidos.</div><div style="overflow-x:auto"><table id="tServ"></table></div></div>
+    <div class="panel"><h3>Detalhe por serviço</h3><div class="cap">Ticket por hectare = receita ÷ ha vendidos.</div><div style="overflow-x:auto"><table id="tServ" class="resp-cards"></table></div></div>
     <div class="panel" id="reconPanel"><h3>Reconciliação &amp; completude de dados</h3><div class="cap">Confere as duas fontes de receita — o <b>agregado por serviço</b> (esta aba, Visão Geral) contra as <b>vendas por cliente</b> (aba Clientes). Não altera nenhum número; só mostra onde divergem e o que falta lançar para as abas ficarem 100% coerentes.</div>
       <div class="kpis" id="kRecon" style="margin-bottom:14px"></div>
       <div style="overflow-x:auto"><table id="tRecon"></table></div>
@@ -767,7 +767,7 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
       <div class="panel"><h3>Quem precisa vender — por vendedor</h3><div class="cap">Pipeline ponderado sob responsabilidade de cada vendedor. Cruze com as metas por colaborador na aba Equipe.</div><div class="chartbox tall"><canvas id="cFunilVend"></canvas></div></div>
       <div class="panel"><h3>Quando entra — por mês previsto</h3><div class="cap">Distribuição da projeção ponderada ao longo do tempo. Ajuda a planejar caixa, coleta e capacidade da equipe.</div><div class="chartbox tall"><canvas id="cFunilMes"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Oportunidades da safra</h3><div class="cap">Lista completa do funil da safra selecionada, ordenada por valor ponderado. Edite em <b>Lançamentos → Funil de vendas</b>.</div><div style="overflow-x:auto"><table id="tFunil"></table></div></div>
+    <div class="panel"><h3>Oportunidades da safra</h3><div class="cap">Lista completa do funil da safra selecionada, ordenada por valor ponderado. Edite em <b>Lançamentos → Funil de vendas</b>.</div><div style="overflow-x:auto"><table id="tFunil" class="resp-cards"></table></div></div>
   </section>
 
   <!-- PREÇOS & MARGEM -->
@@ -1611,9 +1611,9 @@ function renderRecompra(){
   ]);
   const tel=document.getElementById('tRecompra'); if(!tel)return;
   if(!lista.length){ tel.innerHTML='<tbody><tr><td style="padding:14px 6px;color:var(--muted);line-height:1.5">Defina a <b>Última coleta</b> (safra) e o <b>Ciclo (anos)</b> de cada cliente em Lançamentos › Clientes para montar o pipeline de recompra. Clientes de Fertilidade Grid já vêm pré-preenchidos com ciclo de 2 anos.</td></tr></tbody>'; return; }
-  const rows=lista.map(x=>{ const prox=x.proxima===proxSafra; return '<tr><td>'+esc(x.nome)+'</td><td>'+esc(x.servico||'—')+'</td><td class="num">'+fnum(x.ha)+'</td>'+
-    '<td>'+esc(x.ultima)+'</td><td class="num">'+x.ciclo+' ano(s)</td><td'+(prox?' style="font-weight:800;color:var(--leaf)"':'')+'>'+esc(x.proxima)+'</td>'+
-    '<td class="num">'+BRL(x.estimativa)+'</td></tr>'; }).join('');
+  const rows=lista.map(x=>{ const prox=x.proxima===proxSafra; return '<tr><td data-label="Cliente" class="cardttl">'+esc(x.nome)+'</td><td data-label="Serviço">'+esc(x.servico||'—')+'</td><td class="num" data-label="Área (ha)">'+fnum(x.ha)+'</td>'+
+    '<td data-label="Última coleta">'+esc(x.ultima)+'</td><td class="num" data-label="Ciclo">'+x.ciclo+' ano(s)</td><td data-label="Próxima"'+(prox?' style="font-weight:800;color:var(--leaf)"':'')+'>'+esc(x.proxima)+'</td>'+
+    '<td class="num" data-label="Receita estimada">'+BRL(x.estimativa)+'</td></tr>'; }).join('');
   tel.innerHTML='<thead><tr><th>Cliente</th><th>Serviço</th><th class="num">Área (ha)</th><th>Última coleta</th><th class="num">Ciclo</th><th>Próxima</th><th class="num">Receita estimada</th></tr></thead><tbody>'+rows+'</tbody>';
 }
 function renderCli(){
@@ -1677,7 +1677,7 @@ function renderServ(){
       tooltip:{callbacks:{label:c=>c.label+': '+BRL(c.raw)+' ('+PCT(c.raw/rec)+')'}}}}});
   let t='<thead><tr><th>Serviço</th><th>Ha 26/27</th><th>Receita 26/27</th><th>Clientes</th><th>R$/ha</th><th>Receita 25/26</th><th>Var.</th></tr></thead><tbody>';
   sv.forEach(s=>{const th=s.ha2627?s.rec2627/s.ha2627:0;const var_=s.rec2526?(s.rec2627-s.rec2526)/s.rec2526:0;
-    t+=`<tr><td>${s.nome}</td><td>${Math.round(s.ha2627).toLocaleString('pt-BR')}</td><td>${BRL(s.rec2627)}</td><td>${s.cli2627}</td><td>${th?BRL(th):'—'}</td><td>${BRL(s.rec2526)}</td><td><span class="tag ${var_>0.05?'hi':(var_<-0.05?'lo':'md')}">${s.rec2526?(var_>=0?'+':'')+PCT(var_):'novo'}</span></td></tr>`});
+    t+=`<tr><td data-label="Serviço" class="cardttl">${s.nome}</td><td data-label="Ha 26/27">${Math.round(s.ha2627).toLocaleString('pt-BR')}</td><td data-label="Receita 26/27">${BRL(s.rec2627)}</td><td data-label="Clientes">${s.cli2627}</td><td data-label="R$/ha">${th?BRL(th):'—'}</td><td data-label="Receita 25/26">${BRL(s.rec2526)}</td><td data-label="Var."><span class="tag ${var_>0.05?'hi':(var_<-0.05?'lo':'md')}">${s.rec2526?(var_>=0?'+':'')+PCT(var_):'novo'}</span></td></tr>`});
   t+='</tbody>';document.getElementById('tServ').innerHTML=t;
   try{ renderReconcilia(); }catch(e){ console.warn('reconcilia',e); }
 }
@@ -2745,11 +2745,11 @@ function renderFunil(){
     if(!ops.length){ h+='<tr><td colspan="9" style="color:var(--muted);padding:14px 6px">Sem oportunidades nesta safra. Lance em <b>Lançamentos → Funil de vendas</b>.</td></tr>'; }
     const sorted=ops.slice().sort((a,b)=>((+b.valor||0)*funilProb(b))-((+a.valor||0)*funilProb(a)));
     sorted.forEach(o=>{ const p=funilProb(o), pond=(+o.valor||0)*p;
-      h+='<tr><td><b>'+esc(o.cliente||'—')+'</b></td><td>'+esc(o.servico||'—')+'</td>'+
-        '<td><span class="ftag" style="--fc:'+funilCor(o.estagio)+'">'+esc(o.estagio)+'</span></td>'+
-        '<td>'+esc(o.vendedor||'A definir')+'</td><td>'+esc(o.mes||'—')+'</td>'+
-        '<td class="num">'+(o.area?fnum(o.area):'—')+'</td><td class="num">'+BRL(+o.valor||0)+'</td>'+
-        '<td class="num">'+Math.round(p*100)+'%</td><td class="num"><b>'+BRL(pond)+'</b></td></tr>'; });
+      h+='<tr><td data-label="Cliente" class="cardttl"><b>'+esc(o.cliente||'—')+'</b></td><td data-label="Serviço">'+esc(o.servico||'—')+'</td>'+
+        '<td data-label="Estágio"><span class="ftag" style="--fc:'+funilCor(o.estagio)+'">'+esc(o.estagio)+'</span></td>'+
+        '<td data-label="Vendedor">'+esc(o.vendedor||'A definir')+'</td><td data-label="Mês">'+esc(o.mes||'—')+'</td>'+
+        '<td class="num" data-label="Área (ha)">'+(o.area?fnum(o.area):'—')+'</td><td class="num" data-label="Valor">'+BRL(+o.valor||0)+'</td>'+
+        '<td class="num" data-label="Chance">'+Math.round(p*100)+'%</td><td class="num" data-label="Ponderado"><b>'+BRL(pond)+'</b></td></tr>'; });
     h+='</tbody><tfoot><tr><td colspan="5">Total — '+ops.length+' oportunidade(s)</td>'+
       '<td class="num">'+(ag.area?fnum(ag.area):'—')+'</td><td class="num">'+BRL(ag.cheio)+'</td>'+
       '<td class="num">—</td><td class="num"><b>'+BRL(ag.pond)+'</b></td></tr></tfoot>';
@@ -4095,7 +4095,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-13 · responsivo-fase4';
+const APP_VERSION='2026-08-13 · responsivo-fase5';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
