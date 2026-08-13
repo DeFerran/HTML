@@ -3,7 +3,7 @@
    - Supabase NUNCA é cacheado (dados ao vivo, sempre rede).
    - Navegação: rede primeiro (pega atualizações) → cache se offline.
    - Demais GET: cache primeiro → rede (e cacheia). */
-const CACHE = 'dfagro-cache-v1';
+const CACHE = 'dfagro-cache-v2';
 const SHELL = [
   './',
   './index.html',
@@ -11,6 +11,8 @@ const SHELL = [
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
+  './logo-verde.png',
+  './logo-branca.png',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js',
   'https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js',
