@@ -830,7 +830,7 @@ table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(
       <div class="edpills" id="eqSelInd" style="margin:0 0 8px"></div>
       <div class="chartbox tall"><canvas id="cEvolColab"></canvas></div>
     </div>
-    <div class="panel"><h3>Resumo por colaborador e indicador</h3><div class="cap">Meta 26/27 e 27/28, realizado acumulado na safra e % de atingimento. Verde = no alvo; âmbar = atenção; vermelho = abaixo. Prazo em dias: menor é melhor.</div><div style="overflow-x:auto"><table id="tEquipe" class="resp-cards"></table></div></div>
+    <div class="panel"><h3>Resumo por colaborador e indicador</h3><div class="cap">Meta 26/27 e 27/28, realizado acumulado na safra e % de atingimento. Verde = no alvo; âmbar = atenção; vermelho = abaixo. Prazo em dias: menor é melhor.</div><div style="overflow-x:auto"><table id="tEquipe"></table></div></div>
   </section>
 
   <!-- CUSTOS & COLETA -->
@@ -1616,7 +1616,7 @@ function renderRecompra(){
     {lab:'Próxima safra '+proxSafra,val:BRLk(recProx),c:naProx.length?'g':'',sub:naProx.length+' cliente(s) reamostram em '+proxSafra},
   ]);
   const tel=document.getElementById('tRecompra'); if(!tel)return;
-  if(!lista.length){ tel.innerHTML='<tbody><tr><td style="padding:14px 6px;color:var(--muted);line-height:1.5">Defina a <b>Última coleta</b> (safra) e o <b>Ciclo (anos)</b> de cada cliente em Lançamentos › Clientes para montar o pipeline de recompra. Clientes de Fertilidade Grid já vêm pré-preenchidos com ciclo de 2 anos.</td></tr></tbody>'; return; }
+  if(!lista.length){ tel.innerHTML='<tbody><tr><td colspan="7" style="padding:14px 6px;color:var(--muted);line-height:1.5">Defina a <b>Última coleta</b> (safra) e o <b>Ciclo (anos)</b> de cada cliente em Lançamentos › Clientes para montar o pipeline de recompra. Clientes de Fertilidade Grid já vêm pré-preenchidos com ciclo de 2 anos.</td></tr></tbody>'; return; }
   const rows=lista.map(x=>{ const prox=x.proxima===proxSafra; return '<tr><td data-label="Cliente" class="cardttl">'+esc(x.nome)+'</td><td data-label="Serviço">'+esc(x.servico||'—')+'</td><td class="num" data-label="Área (ha)">'+fnum(x.ha)+'</td>'+
     '<td data-label="Última coleta">'+esc(x.ultima)+'</td><td class="num" data-label="Ciclo">'+x.ciclo+' ano(s)</td><td data-label="Próxima"'+(prox?' style="font-weight:800;color:var(--leaf)"':'')+'>'+esc(x.proxima)+'</td>'+
     '<td class="num" data-label="Receita estimada">'+BRL(x.estimativa)+'</td></tr>'; }).join('');
@@ -2107,9 +2107,10 @@ function autoCardLabels(root){
     if(!ths.length) return;
     t.querySelectorAll('tbody tr').forEach(tr=>{
       const tds=tr.children;
-      if(tds.length===1 && tds[0].hasAttribute('colspan')) return; // estado vazio
+      if([...tds].some(td=>td.hasAttribute('colspan'))) return; // estado vazio / linha de seção
+      if(tds.length!==ths.length) return; // corpo não bate com o cabeçalho (ex.: rowspan) → não rotula errado
       for(let i=0;i<tds.length;i++){ if(!tds[i].getAttribute('data-label') && ths[i]) tds[i].setAttribute('data-label',ths[i]); }
-      if(tds[0] && !tds[0].classList.contains('cardttl') && !tds[0].hasAttribute('colspan')) tds[0].classList.add('cardttl');
+      if(tds[0] && !tds[0].classList.contains('cardttl')) tds[0].classList.add('cardttl');
     });
   });
 }
@@ -4126,7 +4127,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · fix-dre-cards';
+const APP_VERSION='2026-08-14 · cards-auditados';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
