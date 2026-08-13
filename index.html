@@ -499,6 +499,24 @@ table.mxtab th.mxcat,table.mxtab td.mxcat{position:sticky;left:0;background:var(
   .respfilt{display:none}
   .respfilt.open{display:flex}
 }
+/* ===== Editores de lançamento: cada linha vira um CARD-FORMULÁRIO no mobile ===== */
+@media(max-width:767px){
+  table.edcards thead{display:none}
+  table.edcards,table.edcards tbody,table.edcards tr,table.edcards td{display:block;width:100%}
+  table.edcards tr{border:1px solid var(--line);border-radius:14px;padding:12px 14px 14px;margin-bottom:12px;background:var(--card);box-shadow:var(--shadow)}
+  table.edcards td{border:none;padding:9px 0 0}
+  table.edcards td:first-child{padding-top:0}
+  table.edcards td::before{content:attr(data-label);display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:5px;text-align:left}
+  table.edcards input,table.edcards select{width:100%;min-height:46px;padding:11px 13px;font-size:15px;border:1px solid var(--line);background:var(--fieldbg);border-radius:10px;text-align:left}
+  table.edcards td.calc{text-align:left}
+  table.edcards td.calc{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-top:9px;font-size:15px;font-weight:700}
+  table.edcards td.calc::before{margin-bottom:2px;color:var(--muted)}
+  table.edcards td[colspan]::before{display:none}
+  table.edcards td.edrm{padding-top:12px}
+  table.edcards td.edrm::before{display:none}
+  table.edcards td.edrm .edx{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--red);font-weight:700;font-size:13px}
+  .edadd{width:100%;min-height:48px;font-size:15px;margin-top:2px}
+}
 </style>
 <script>try{if((localStorage.getItem('dfagro_theme')||'dark')==='dark'){document.documentElement.dataset.theme='dark';}}catch(e){}</script>
 </head>
@@ -2364,22 +2382,23 @@ function edTable(host,cfg){
   const el=document.getElementById(host); if(!el)return;
   function draw(){
     let h='<div class="edhead"><h3>'+cfg.title+'</h3>'+(cfg.help?'<p class="edhelp">'+cfg.help+'</p>':'')+'</div>';
-    h+='<div style="overflow-x:auto"><table class="edtab"><thead><tr>';
+    h+='<div style="overflow-x:auto"><table class="edtab edcards"><thead><tr>';
     cfg.cols.forEach(c=>h+='<th'+(c.num?' class="num"':'')+'>'+c.label+'</th>');
     h+='<th></th></tr></thead><tbody>';
     if(!cfg.rows.length) h+='<tr><td colspan="'+(cfg.cols.length+1)+'" style="color:var(--muted);padding:14px 6px">Nenhum registro ainda. Clique em “+ Adicionar linha”.</td></tr>';
     cfg.rows.forEach((row,i)=>{
       h+='<tr data-i="'+i+'">';
       cfg.cols.forEach(c=>{
-        if(c.type==='calc'){ h+='<td class="calc">'+c.calc(row)+'</td>'; }
+        const dl=' data-label="'+esc(c.label)+'"';
+        if(c.type==='calc'){ h+='<td class="calc"'+dl+'>'+c.calc(row)+'</td>'; }
         else if(c.type==='select'){
-          h+='<td><select data-i="'+i+'" data-k="'+c.k+'">'+c.opts.map(o=>'<option value="'+o.v+'"'+(row[c.k]===o.v?' selected':'')+'>'+o.t+'</option>').join('')+'</select></td>';
+          h+='<td'+dl+'><select data-i="'+i+'" data-k="'+c.k+'">'+c.opts.map(o=>'<option value="'+o.v+'"'+(row[c.k]===o.v?' selected':'')+'>'+o.t+'</option>').join('')+'</select></td>';
         } else {
           const val = c.type==='money'?fmoney(row[c.k]) : (c.type==='num'?fnum(row[c.k]) : (row[c.k]==null?'':row[c.k]));
-          h+='<td><input data-i="'+i+'" data-k="'+c.k+'" data-t="'+c.type+'" class="edinp'+(c.num?' num':'')+'" value="'+esc(val)+'"></td>';
+          h+='<td'+dl+'><input '+(c.num?'inputmode="decimal" ':'')+'data-i="'+i+'" data-k="'+c.k+'" data-t="'+c.type+'" class="edinp'+(c.num?' num':'')+'" value="'+esc(val)+'"></td>';
         }
       });
-      h+='<td><button class="edx" data-i="'+i+'" title="Remover">✕</button></td></tr>';
+      h+='<td class="edrm"><button class="edx" data-i="'+i+'" title="Remover">✕ Remover</button></td></tr>';
     });
     h+='</tbody></table></div><button class="edadd">+ Adicionar linha</button>';
     el.innerHTML=h;
@@ -4127,7 +4146,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · cards-auditados';
+const APP_VERSION='2026-08-14 · lancamentos-mobile';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
