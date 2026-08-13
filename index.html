@@ -2,7 +2,15 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#00401d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DF AGRO">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-src 'none'; worker-src 'self' blob:; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://pvftibzzqcbpgdihfcmb.supabase.co wss://pvftibzzqcbpgdihfcmb.supabase.co; upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>DF AGRO · Painel de Gestão — Agricultura de Precisão</title>
@@ -4146,7 +4154,7 @@ async function carregarPermissoes(){
   aplicarPermissoes(); atualizarRodape();
   if(ehAdmin){ try{ renderAdmin(); carregarHistorico(); }catch(e){} }
 }
-const APP_VERSION='2026-08-14 · lancamentos-mobile';
+const APP_VERSION='2026-08-14 · pwa-offline';
 function atualizarRodape(){ const el=document.getElementById('verInfo'); if(!el)return;
   el.textContent=' · versão '+APP_VERSION+(sbUser?(' · '+(sbUser.email||'')+' · papel: '+(meuPapel||'(não-membro)')):' · não logado'); }
 function mostrarAcessoBar(show,txt){ let bar=document.getElementById('acessoBar');
@@ -4239,6 +4247,14 @@ async function restaurarVersao(id){ if(!sb||!sbUser)return; if(!confirm('Restaur
   }catch(e){ alert('Erro ao restaurar: '+(e.message||e)); } }
 aplicarPermissoes(); atualizarRodape();
 try{ authInit(); }catch(e){ console.warn('authInit',e); }
+/* ===== PWA: offline no campo ===== */
+/* B) registra o service worker (cacheia app + bibliotecas → abre/recarrega offline) */
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ try{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){} }); }
+/* A) re-sincroniza automaticamente quando a conexão volta */
+window.addEventListener('online',()=>{
+  try{ if(sbUser){ cloudSet('Nuvem: '+(sbUser.email||'conectado')); setStatus('● Conexão de volta · sincronizando…','saving'); if(typeof cloudSave==='function') Promise.resolve(cloudSave(false)).catch(()=>{}); } }catch(e){}
+});
+window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') syncStamp('pend','Sincronização: pendente (offline)'); if(sbUser) cloudSet('Nuvem: offline (salvando no aparelho)'); }catch(e){} });
 /* aviso se a biblioteca de gráficos não carregou (sem internet/CDN) — o resto do painel continua funcionando */
 (function(){ if(window.Chart)return; try{
   const bar=document.createElement('div');

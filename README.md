@@ -41,6 +41,26 @@ mesmo mecanismo de troca de views (`.view.active`).
   "Layout clássico" no rodapé da sidebar faz isso; um botão flutuante reativa.
 - Em telas < 900px a sidebar recolhe e o menu horizontal volta automaticamente.
 
+## Uso offline (PWA)
+
+O painel é um **PWA** (Progressive Web App) — funciona no campo, com sinal ruim:
+
+- **Instalável:** no celular, "Adicionar à Tela de Início" cria um ícone e abre
+  em tela cheia, como um app.
+- **Abre e recarrega offline:** um *service worker* (`sw.js`) mantém em cache o
+  app e as bibliotecas; depois do primeiro acesso com internet, o painel abre
+  mesmo sem conexão (inclusive após fechar/recarregar).
+- **Lançar offline:** todas as edições são salvas no aparelho (`localStorage`)
+  na hora, sem depender de rede. Os cálculos, gráficos e tabelas rodam local.
+- **Sincronização automática:** o que foi lançado offline fica marcado como
+  *pendente* e é **enviado sozinho para a nuvem quando a conexão volta**
+  (evento `online`); também dá para forçar pelo botão 🔄.
+- **Dados ao vivo nunca são cacheados:** as chamadas ao Supabase sempre vão à
+  rede — o cache cobre só o app e as bibliotecas.
+
+Arquivos do PWA: `manifest.webmanifest`, `sw.js`, `icon-192.png`,
+`icon-512.png`, `apple-touch-icon.png`.
+
 ## Nuvem (Supabase)
 
 - **Organização:** `Bigdata Site`
