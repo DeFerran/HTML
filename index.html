@@ -624,6 +624,8 @@ header .htxt h1{display:none}
   <symbol id="ic-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.8M12 18.7v2.8M4.2 4.2l2 2M17.8 17.8l2 2M2.5 12h2.8M18.7 12h2.8M4.2 19.8l2-2M17.8 6.2l2-2"/></symbol>
   <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.6-3 7.8-7 9.2-4-1.4-7-4.6-7-9.2V6z"/><path d="M9 12l2 2 4-4.2"/></symbol>
   <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="ic-flag" viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 4.5h11l-2 3.5 2 3.5H6"/></symbol>
+  <symbol id="ic-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></symbol>
 </defs></svg>
 <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
   <button class="sb-collapse" id="sbCollapse" title="Recolher / expandir menu" aria-label="Recolher menu" onclick="toggleSidebarCollapse()"><svg viewBox="0 0 24 24"><use href="#ic-chevron"></use></svg></button>
@@ -658,6 +660,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
     <button class="snav snav-sub" data-target="iahub" data-ia="visao"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Visão Geral</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="prioridades"><svg class="sb-ic"><use href="#ic-flag"></use></svg><span class="sb-tx">Prioridades da IA</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="copiloto"><svg class="sb-ic"><use href="#ic-bot"></use></svg><span class="sb-tx">Copiloto AP</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="agentes"><svg class="sb-ic"><use href="#ic-hex"></use></svg><span class="sb-tx">Agentes</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="automacoes"><svg class="sb-ic"><use href="#ic-bolt"></use></svg><span class="sb-tx">Automações</span></button>
@@ -666,6 +669,7 @@ header .htxt h1{display:none}
     <button class="snav snav-sub" data-target="iamem"><svg class="sb-ic"><use href="#ic-cpu"></use></svg><span class="sb-tx">Memória</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="whatsapp"><svg class="sb-ic"><use href="#ic-chat"></use></svg><span class="sb-tx">WhatsApp</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="aprovacoes"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Aprovações</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="saude"><svg class="sb-ic"><use href="#ic-pulse"></use></svg><span class="sb-tx">Saúde da IA</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="historico"><svg class="sb-ic"><use href="#ic-archive"></use></svg><span class="sb-tx">Histórico &amp; Auditoria</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Configurações</span></button>
     <button class="snav" data-target="admin" id="sbAdmin" style="display:none"><svg class="sb-ic"><use href="#ic-shield"></use></svg><span class="sb-tx">Administração</span></button>
@@ -1501,6 +1505,123 @@ function comRatesAnderlirio(){ const A=(D.comissaoPlano&&D.comissaoPlano.anderli
   const ts=(Array.isArray(A.tiers)&&A.tiers.length)?A.tiers:null;
   const meta=ts?((+ts[ts.length-1].rate>0)?+ts[ts.length-1].rate:0.10):0.10;
   return {base:base, meta:meta}; }
+// <ai-detectors>
+/* Motor de DETECTORES PROATIVOS — LÓGICA PURA (sem DOM, sem D global): recebe um
+   `state` normalizado e devolve INSIGHTS. É a "primeira camada de IA proativa":
+   detecta → analisa → cria insight (nunca executa ação externa). Testável por bun
+   (extraído deste bloco). Cada insight traz os 6 campos obrigatórios:
+   o_que, por_que, dados, impacto, confianca, proxima_acao. */
+const AIDetectors=(function(){
+  const NIVEL_ORD={critico:0,aviso:1,info:2};
+  function ins(o){ return {id:o.id,tipo:o.tipo,nivel:o.nivel||'info',titulo:o.titulo,
+    o_que:o.o_que,por_que:o.por_que,dados:o.dados||[],impacto:o.impacto,
+    confianca:Math.max(0,Math.min(1,+o.confianca||0)),proxima_acao:o.proxima_acao}; }
+  function nomes(arr,n){ n=n||3; const s=arr.slice(0,n).join(', '); return arr.length>n?(s+' e +'+(arr.length-n)):s; }
+  function money(v){ v=+v||0; return 'R$ '+Math.round(v).toLocaleString('pt-BR'); }
+  function pct(v){ return Math.round((+v||0)*100)+'%'; }
+
+  // 1) NOVA ANÁLISE DE LABORATÓRIO DISPONÍVEL — clientes de Fertilidade cuja coleta
+  //    foi lançada na safra atual (ultimaColeta === safra base) → análise pronta p/ entrega.
+  function detectNovaAnalise(st){
+    const alvo=(st.clientes||[]).filter(c=>c.grupo==='fert' && c.coletaNaSafra && (c.ha>0||c.receita>0));
+    if(!alvo.length) return [];
+    return [ins({id:'nova_analise',tipo:'laboratorio',nivel:'info',
+      titulo:'Nova análise de laboratório disponível',
+      o_que:alvo.length+' cliente(s) de Fertilidade com coleta lançada na safra '+st.safraAtual+' — a análise de solo está disponível para entrega.',
+      por_que:'Coleta concluída na safra ativa gera análise laboratorial; entregar rápido mantém o ciclo e a percepção de valor.',
+      dados:['Clientes: '+nomes(alvo.map(c=>c.nome)),'Área somada: '+Math.round(alvo.reduce((a,c)=>a+(+c.ha||0),0)).toLocaleString('pt-BR')+' ha'],
+      impacto:'Entrega no prazo sustenta recorrência e diferencia o serviço.',
+      confianca:0.7,
+      proxima_acao:'Gerar e entregar o relatório de análise para: '+nomes(alvo.map(c=>c.nome))+'.'})];
+  }
+
+  // 2) COLETA ATRASADA (recoleta devida) — ciclo venceu: proximaColeta <= safra atual
+  //    e a última coleta é de safra anterior. (Mecanismo real: ciclo por safra.)
+  function detectColetaAtrasada(st){
+    const alvo=(st.clientes||[]).filter(c=>c.coletaDevida);
+    if(!alvo.length) return [];
+    const receita=alvo.reduce((a,c)=>a+(+c.receita||0),0);
+    return [ins({id:'coleta_atrasada',tipo:'coleta',nivel:'aviso',
+      titulo:'Coleta/recoleta devida',
+      o_que:alvo.length+' cliente(s) com o ciclo de coleta vencido para a safra '+st.safraAtual+'.',
+      por_que:'A recorrência da coleta é a base do faturamento; ciclo vencido é receita recorrente em risco.',
+      dados:['Clientes: '+nomes(alvo.map(c=>c.nome)),'Receita histórica em risco: '+money(receita)],
+      impacto:'Perda de recompra e de continuidade do histórico de fertilidade do talhão.',
+      confianca:0.8,
+      proxima_acao:'Agendar recoleta e acionar o comercial para: '+nomes(alvo.map(c=>c.nome))+'.'})];
+  }
+
+  // 3) COLETA CONCLUÍDA — etapas de operação marcadas como concluídas → próxima etapa.
+  function detectColetaConcluida(st){
+    const et=(st.etapasConcluidas||[]).filter(e=>e && e.etapa);
+    if(!et.length) return [];
+    return [ins({id:'coleta_concluida',tipo:'operacao',nivel:'info',
+      titulo:'Etapa de coleta concluída',
+      o_que:et.length+' etapa(s) de operação concluída(s): '+nomes(et.map(e=>e.etapa))+'.',
+      por_que:'Etapa concluída libera a próxima do fluxo (análise, relatório, recomendação, faturamento).',
+      dados:['Etapas: '+nomes(et.map(e=>e.etapa),5)],
+      impacto:'Avançar o fluxo evita gargalo e acelera a entrega ao cliente.',
+      confianca:0.9,
+      proxima_acao:'Iniciar a próxima etapa (relatório/recomendação) das etapas concluídas.'})];
+  }
+
+  // 4) CUSTO/HA ACIMA DO PARÂMETRO — serviços cujo custo/ha derruba a margem de
+  //    contribuição abaixo do alvo (D.metasServico.margemGeralMeta) ou custo>=preço.
+  function detectCustoHa(st){
+    const alvo=(st.servicos||[]).filter(s=>(+s.custoHa>0)&&(+s.precoHa>0)&&
+      ((s.custoHa>=s.precoHa) || (s.margemPct!=null && s.margemPct < st.margemAlvo)));
+    if(!alvo.length) return [];
+    const piores=alvo.slice().sort((a,b)=>(a.margemPct)-(b.margemPct)).slice(0,4);
+    return [ins({id:'custo_ha_alto',tipo:'custo',nivel:'aviso',
+      titulo:'Custo/ha acima do parâmetro',
+      o_que:alvo.length+' serviço(s) com custo/ha que deixa a margem abaixo do alvo de '+pct(st.margemAlvo)+'.',
+      por_que:'Custo/ha alto corrói a margem de contribuição — é o gatilho mais forte de reajuste de preço.',
+      dados:piores.map(s=>s.nome+': custo '+money(s.custoHa)+'/ha · preço '+money(s.precoHa)+'/ha · margem '+pct(s.margemPct)),
+      impacto:'Margem abaixo do alvo reduz o resultado da safra inteira.',
+      confianca:0.85,
+      proxima_acao:'Revisar preço/ha ou o custo de execução de: '+nomes(piores.map(s=>s.nome))+'.'})];
+  }
+
+  // 5) DADO IMPORTANTE FALTANTE — cadastros incompletos que quebram cálculos/decisão.
+  function detectDadoFaltante(st){
+    const cli=st.clientes||[]; const out=[];
+    const semServico=cli.filter(c=>!c.servico);
+    const semVendedor=cli.filter(c=>!c.vendedor || c.vendedor==='A definir');
+    const semCiclo=cli.filter(c=>c.grupo==='fert' && !(+c.cicloColeta>0));
+    const servSemHa=(st.servicos||[]).filter(s=>s.nome && !(+s.ha>0));
+    const partes=[];
+    if(semServico.length) partes.push(semServico.length+' cliente(s) sem serviço');
+    if(semVendedor.length) partes.push(semVendedor.length+' sem vendedor');
+    if(semCiclo.length) partes.push(semCiclo.length+' sem ciclo de coleta');
+    if(servSemHa.length) partes.push(servSemHa.length+' serviço(s) sem área');
+    if(!partes.length) return out;
+    const dados=[];
+    if(semServico.length) dados.push('Sem serviço: '+nomes(semServico.map(c=>c.nome)));
+    if(semVendedor.length) dados.push('Sem vendedor: '+nomes(semVendedor.map(c=>c.nome)));
+    if(semCiclo.length) dados.push('Sem ciclo: '+nomes(semCiclo.map(c=>c.nome)));
+    if(servSemHa.length) dados.push('Serviços sem área: '+nomes(servSemHa.map(s=>s.nome)));
+    out.push(ins({id:'dado_faltante',tipo:'qualidade',nivel:'aviso',
+      titulo:'Dado importante faltante',
+      o_que:'Cadastros incompletos: '+partes.join(' · ')+'.',
+      por_que:'Campos faltantes distorcem margem, comissão, recoleta e ranking — a IA e o painel dependem deles.',
+      dados:dados,
+      impacto:'Decisões e automações ficam imprecisas enquanto o cadastro não é completado.',
+      confianca:0.95,
+      proxima_acao:'Completar em Lançamentos › Clientes/Serviços os campos apontados.'}));
+    return out;
+  }
+
+  function runAll(st){
+    st=st||{};
+    const all=[].concat(
+      detectNovaAnalise(st),detectColetaAtrasada(st),detectColetaConcluida(st),
+      detectCustoHa(st),detectDadoFaltante(st));
+    return all.sort((a,b)=>(NIVEL_ORD[a.nivel]-NIVEL_ORD[b.nivel])||(b.confianca-a.confianca));
+  }
+  return {detectNovaAnalise,detectColetaAtrasada,detectColetaConcluida,
+    detectCustoHa,detectDadoFaltante,runAll};
+})();
+// </ai-detectors>
 /* REGRA DE NEGÓCIO (única): a comissão incide sobre a RECEITA BRUTA da venda —
    custos (laboratório, custo direto) NÃO são descontados da base. Usada em todos
    os pontos para que empresa, funil, carteira e segmentos conciliem. */
@@ -4673,6 +4794,7 @@ async function copCarregarRecentes(){ const s=document.getElementById('copRecent
    ai_knowledge_* e ai_memory. Telas futuras = "Em implantação" (sem fake). */
 const IAHUB_SUBS=[
   {k:'visao',t:'Visão Geral',ic:'📊'},
+  {k:'prioridades',t:'Prioridades da IA',ic:'🚩'},
   {k:'copiloto',t:'Copiloto AP',ic:'🤖'},
   {k:'agentes',t:'Agentes',ic:'🧩'},
   {k:'automacoes',t:'Automações',ic:'⚡'},
@@ -4681,6 +4803,7 @@ const IAHUB_SUBS=[
   {k:'memoria',t:'Memória',ic:'🧠'},
   {k:'whatsapp',t:'WhatsApp',ic:'💬'},
   {k:'aprovacoes',t:'Aprovações',ic:'✅'},
+  {k:'saude',t:'Saúde da IA',ic:'📈'},
   {k:'historico',t:'Histórico & Auditoria',ic:'🗂️'},
   {k:'config',t:'Configurações',ic:'⚙'}
 ];
@@ -4699,6 +4822,8 @@ function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
   const nav=document.getElementById('iahubNav'); if(nav) nav.querySelectorAll('.ia-pill').forEach(p=>p.classList.toggle('on',p.getAttribute('onclick').indexOf("'"+k+"'")>=0));
   const body=document.getElementById('iahubBody'); if(!body)return;
   if(k==='visao') return iahubVisao(body);
+  if(k==='prioridades') return iahubPrioridades(body);
+  if(k==='saude') return iahubSaude(body);
   if(k==='historico') return iahubHistorico(body);
   if(k==='agentes') return iahubAgentes(body);
   if(k==='automacoes') return iahubAutomacoes(body);
@@ -4720,6 +4845,86 @@ function iahKpi(label,val,sub){ return '<div class="ia-kpi"><div class="ia-kpi-l
 const IAHUB_PRICE={'claude-opus':15,'claude-sonnet':6,'claude-haiku':2}; /* US$/1M tokens (blended, aprox.) */
 function iahCusto(modelo,tokens){ const m=String(modelo||'').toLowerCase(); let p=6; for(const k in IAHUB_PRICE){ if(m.indexOf(k)>=0){ p=IAHUB_PRICE[k]; break; } } return (Number(tokens)||0)/1e6*p; }
 async function iahCount(tabela,filtros){ try{ let q=sb.from(tabela).select('id',{count:'exact',head:true}); (filtros||[]).forEach(f=>{ q=q.eq(f[0],f[1]); }); const {count}=await q; return count||0; }catch(e){ return 0; } }
+/* mapeia o estado D (fonte da verdade) → `state` normalizado dos detectores.
+   READ-only; nenhum dado é inventado — só deriva de campos reais existentes. */
+function buildDetectStateFromD(){
+  const cur=FUNIL_SAFRAS.indexOf(safraAtual());
+  const clientes=(D.clientes||[]).map(c=>{
+    const prox=proximaColeta(c);
+    const pi=FUNIL_SAFRAS.indexOf(prox), ui=FUNIL_SAFRAS.indexOf(c.ultimaColeta);
+    const coletaDevida=((+c.cicloColeta)>0)&&!!c.ultimaColeta&&pi>=0&&pi<=cur&&ui>=0&&ui<cur;
+    return {nome:c.nome,grupo:c.grupo,servico:c.servico,vendedor:c.vendedor,mes:c.mes,
+      ha:+c.ha||0,precoHa:+c.precoHa||0,receita:+c.receita||0,
+      ultimaColeta:c.ultimaColeta,cicloColeta:+c.cicloColeta||0,
+      coletaNaSafra:(c.ultimaColeta===safraAtual()),coletaDevida:coletaDevida};
+  });
+  const servicos=(D.servicos||[]).map(s=>{
+    const ha=+s.ha2627||0; const precoHa=(+s.precoHa2627)|| (ha>0?(+s.rec2627||0)/ha:0);
+    let custoHa=0; try{ custoHa=custoExecHa(s.nome); }catch(e){ custoHa=0; }
+    const margemPct=precoHa>0?(precoHa-custoHa)/precoHa:null;
+    return {nome:s.nome,ha:ha,precoHa:precoHa,receita:+s.rec2627||0,custoHa:custoHa,margemPct:margemPct};
+  });
+  const etapasConcluidas=((((D.operacao||{}).etapas)||[]).filter(e=>e&&e.concluido).map(e=>({etapa:e.etapa})));
+  const margemAlvo=(D.metasServico&&+D.metasServico.margemGeralMeta)||0.30;
+  return {safraAtual:safraAtual(),safraBase:SAFRA_BASE,margemAlvo:margemAlvo,
+    clientes:clientes,servicos:servicos,etapasConcluidas:etapasConcluidas};
+}
+/* PRIORIDADES DA IA — mostra os insights proativos. Cada card traz os 6 campos
+   obrigatórios. A IA NÃO executa ação externa: só sugere a próxima ação. */
+function iahubPrioridades(body){
+  if(!ehAdmin)return;
+  let list=[]; try{ list=AIDetectors.runAll(buildDetectStateFromD()); }catch(e){ console.warn('detect',e); list=[]; }
+  const meta={critico:['#c0392b','Crítico'],aviso:['#C08A2C','Atenção'],info:['#1E7D3C','Informativo']};
+  const cabecalho='<div class="panel"><h3>🚩 Prioridades da IA</h3><div class="cap">Insights proativos gerados a partir dos <b>seus dados</b> (apenas leitura). A IA <b>não executa nenhuma ação externa</b> — cada item mostra a próxima ação sugerida para você decidir.</div>'
+    +'<div class="cap" style="margin-top:6px">'+list.length+' prioridade(s) · atualizado agora.</div></div>';
+  const campo=(rot,val)=>'<div style="margin-top:8px"><div style="font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">'+rot+'</div><div style="font-size:13px;margin-top:2px">'+val+'</div></div>';
+  const card=it=>{ const m=meta[it.nivel]||['#777',it.nivel]; const conf=Math.round((it.confianca||0)*100);
+    const dados=(it.dados||[]).length?('<ul style="margin:2px 0 0;padding-left:18px;font-size:13px">'+it.dados.map(d=>'<li>'+esc(d)+'</li>').join('')+'</ul>'):'<span class="cap">—</span>';
+    return '<div class="panel" style="margin-top:12px;border-left:4px solid '+m[0]+'">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        +'<span style="background:'+m[0]+';color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px">'+m[1]+'</span>'
+        +'<h3 style="margin:0">'+esc(it.titulo)+'</h3>'
+        +'<span style="margin-left:auto;font-size:11px;color:var(--muted)">Confiança <b style="color:var(--ink)">'+conf+'%</b></span>'
+      +'</div>'
+      +campo('O que aconteceu',esc(it.o_que))
+      +campo('Por que chamou atenção',esc(it.por_que))
+      +campo('Dados utilizados',dados)
+      +campo('Impacto',esc(it.impacto))
+      +campo('Próxima ação sugerida','<b>'+esc(it.proxima_acao)+'</b>')
+      +'</div>';
+  };
+  const vazio='<div class="panel" style="margin-top:12px"><div class="note">Nenhuma prioridade no momento — cadastros e ciclos de coleta em dia. 👍</div></div>';
+  body.innerHTML=cabecalho+(list.length?list.map(card).join(''):vazio);
+}
+/* SAÚDE DA IA — AI Health Dashboard (observabilidade). Admin. Lê {action:'metrics'}. */
+async function iahubSaude(body){
+  if(!ehAdmin)return;
+  body.innerHTML='<div class="panel"><h3>📈 Saúde da IA</h3><div class="cap">Observabilidade da camada de IA nas últimas 24h (taxa de sucesso, erros, latência, tokens, custo, volume, falhas de ferramenta/fila/automação).</div><div id="saudeBox" style="margin-top:12px" class="cap">Carregando métricas…</div></div>';
+  let data=null,err=null;
+  try{ const r=await sb.functions.invoke('ai-gateway',{body:{action:'metrics'}}); if(r.error){err=r.error;} else {data=r.data;} }catch(e){ err=e; }
+  const box=document.getElementById('saudeBox'); if(!box)return;
+  if(err||!data||!data.ok){ box.innerHTML='<div class="note">Não foi possível carregar as métricas'+(err&&err.message?(': '+esc(err.message)):'')+'. Requer admin e a migração de observabilidade aplicada.</div>'; return; }
+  const s=data.summary||{};
+  const kpis=[
+    iahKpi('Taxa de sucesso',Math.round((s.successRate||0)*100)+'%','de '+iahNum(s.runsTotal||0)+' turnos'),
+    iahKpi('Erros',iahNum(s.runsFail||0),Math.round((s.errorRate||0)*100)+'% dos turnos'),
+    iahKpi('Latência p95',iahDur(s.latP95Ms||0),'média '+iahDur(s.latAvgMs||0)),
+    iahKpi('Volume',iahNum(s.runsTotal||0),'turnos na janela'),
+    iahKpi('Tokens',iahNum(s.tokensTotal||0),'in '+iahNum(s.tokensIn||0)+' · out '+iahNum(s.tokensOut||0)),
+    iahKpi('Custo estimado','US$ '+(+s.costUsd||0).toFixed(2),'janela 24h'),
+    iahKpi('Falhas de ferramenta',iahNum(s.toolFail||0),iahNum(s.toolCalls||0)+' chamadas'),
+    iahKpi('Falhas de fila',iahNum((data.queue&&data.queue.fail)||0),'jobs em erro'),
+    iahKpi('Falhas de automação',iahNum((data.automation&&data.automation.fail)||0),'execuções em erro'),
+  ];
+  const bt=(data.budget&&data.budget.tenant)||{};
+  const orc='<div class="ia-arow"><span>Orçamento (tokens/dia)</span> '+((+bt.limit>0)?(iahNum(bt.used||0)+' / '+iahNum(bt.limit)+' ('+Math.round((bt.pct||0)*100)+'%)'):'sem limite configurado')+'</div>';
+  const meta={critico:'#c0392b',aviso:'#C08A2C',info:'#1E7D3C'};
+  const alerts=(data.alerts||[]).map(a=>{ const cor=meta[a.nivel]||'#777'; return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)"><span style="flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:'+cor+';margin-top:4px"></span><div><b>'+esc(a.titulo)+'</b><div class="cap">'+esc(a.detalhe)+'</div></div></div>'; }).join('');
+  const tt=(s.toolTop||[]);
+  box.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">'+kpis.join('')+'</div>'
+    +'<div class="panel" style="margin-top:12px"><h3>Alertas técnicos</h3>'+(alerts||'<div class="cap">Sem alertas.</div>')+orc+'</div>'
+    +(tt.length?('<div class="panel" style="margin-top:12px"><h3>Ferramentas que mais falham</h3><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Ferramenta</th><th>Falhas</th></tr></thead><tbody>'+tt.map(x=>'<tr><td>'+esc(x.tool)+'</td><td>'+iahNum(x.fail)+'</td></tr>').join('')+'</tbody></table></div></div>'):'');
+}
 async function iahubVisao(body){
   if(!ehAdmin){ iahEscRestrito(body); return; }
   body.innerHTML='<div class="cap">Carregando indicadores…</div>';

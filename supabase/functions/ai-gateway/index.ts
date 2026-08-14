@@ -24,6 +24,14 @@ import {
 import { runReadTool, toolNivel, toolSpecs } from "./tools/read_tools.ts";
 import { KnowledgeHit, ProposeMemoryInput } from "./tools/types.ts";
 import { initialMemoryStatus } from "./tools/memory_rules.ts";
+import {
+  type AuditRow,
+  budgetStatus,
+  costGuard,
+  deriveTechnicalAlerts,
+  estimateCostUsd,
+  summarizeAudit,
+} from "./observability.ts";
 
 // ---- configuração (backend) ----
 const EMPRESA = "DF AGRO"; // tenant único atual (ver docs/ai/01-AUDITORIA-ATUAL.md)
@@ -34,6 +42,11 @@ const RATE_LIMIT_PER_MIN = 30; // por usuário
 const HISTORY_LIMIT = 20; // últimas mensagens no contexto
 const MAX_MESSAGE_LEN = 8_000;
 const MAX_TOOL_ITERS = 6; // teto de idas-e-voltas de tool no mesmo turno
+// guardrails de custo (tokens/dia). 0 = ilimitado. Overrideáveis por env — e, no
+// futuro SaaS, por plano/tenant (a lógica costGuard já aceita limites por escopo).
+const DAILY_TOKEN_LIMIT = Number(Deno.env.get("AI_DAILY_TOKEN_LIMIT") ?? "0") || 0;      // tenant/dia
+const DAILY_USER_TOKEN_LIMIT = Number(Deno.env.get("AI_DAILY_USER_TOKEN_LIMIT") ?? "0") || 0; // usuário/dia
+const METRICS_WINDOW_MIN = 1440; // janela padrão do dashboard de saúde (24h)
 
 const SYSTEM_PROMPT =
   `Você é o Copiloto da DF AGRO, uma consultoria de agricultura de precisão. ` +
@@ -161,6 +174,56 @@ Deno.serve(async (req: Request) => {
     return json(200, { ok: true, anthropic_configured: !!anthropicKey, model, papel });
   }
 
+  // AI Health Dashboard (observabilidade) — SOMENTE admin; não gera run nem
+  // consome rate limit. Agrega ai_audit_log + ai_jobs + automation_runs.
+  if (typeof body.action === "string" && body.action === "metrics") {
+    if (papel !== "admin") {
+      return json(403, errBody("forbidden", "Apenas admin pode ver as métricas."));
+    }
+    const windowMin = Number((body as { window_min?: unknown }).window_min) || METRICS_WINDOW_MIN;
+    const sinceIso = new Date(Date.now() - windowMin * 60_000).toISOString();
+    try {
+      const { data: rows } = await sb
+        .from("ai_audit_log")
+        .select("tipo, ok, erro, latencia_ms, tokens, tokens_in, tokens_out, custo_usd, modelo, tool")
+        .gte("criado_em", sinceIso)
+        .limit(5000);
+      const summary = summarizeAudit((rows ?? []) as AuditRow[]);
+      const { count: queueFail } = await sb
+        .from("ai_jobs").select("id", { count: "exact", head: true })
+        .eq("status", "erro").gte("atualizado_em", sinceIso);
+      const { count: autoFail } = await sb
+        .from("automation_runs").select("id", { count: "exact", head: true })
+        .eq("status", "erro").gte("criado_em", sinceIso);
+      // uso do dia (tenant/usuário) para orçamento — RPC agregada (sem vazar linhas)
+      let usedTenant = 0, usedUser = 0;
+      try {
+        const { data: u } = await sb.rpc("ai_usage_today");
+        const row = Array.isArray(u) ? u[0] : u;
+        usedTenant = Number(row?.tenant_tokens) || 0;
+        usedUser = Number(row?.user_tokens) || 0;
+      } catch { /* RPC ausente → orçamento fica sem uso apurado */ }
+      const budget = budgetStatus(usedTenant, DAILY_TOKEN_LIMIT);
+      const alerts = deriveTechnicalAlerts({
+        anthropicConfigured: !!anthropicKey, summary,
+        queueFail: queueFail ?? 0, autoFail: autoFail ?? 0, budget,
+      });
+      return json(200, {
+        ok: true, model, window_min: windowMin,
+        summary,
+        queue: { fail: queueFail ?? 0 },
+        automation: { fail: autoFail ?? 0 },
+        budget: {
+          tenant: { limit: DAILY_TOKEN_LIMIT, used: usedTenant, pct: budget.pct, ok: budget.ok },
+          user: { limit: DAILY_USER_TOKEN_LIMIT, used: usedUser },
+        },
+        alerts,
+      });
+    } catch (e) {
+      return json(500, errBody("metrics_error", (e as Error).message ?? "erro"));
+    }
+  }
+
   // (7) rate limiting por usuário: conta só os TURNOS (tipo='run'), não os
   // tool_calls — senão turnos com muitas ferramentas travariam o usuário.
   const since = new Date(Date.now() - 60_000).toISOString();
@@ -189,6 +252,35 @@ Deno.serve(async (req: Request) => {
       400,
       errBody("too_long", `Mensagem excede ${MAX_MESSAGE_LEN} caracteres.`),
     );
+  }
+
+  // (guardrail de custo) orçamento diário por tenant/usuário (tokens). 0 = ilimitado.
+  // Fail-open se a apuração falhar (o rate limit por minuto já limita abuso) — a
+  // disponibilidade não deve cair por causa da medição; ver docs/13.
+  if (DAILY_TOKEN_LIMIT > 0 || DAILY_USER_TOKEN_LIMIT > 0) {
+    let usedTenant = 0, usedUser = 0, apurou = false;
+    try {
+      const { data: u } = await sb.rpc("ai_usage_today");
+      const row = Array.isArray(u) ? u[0] : u;
+      usedTenant = Number(row?.tenant_tokens) || 0;
+      usedUser = Number(row?.user_tokens) || 0;
+      apurou = true;
+    } catch {
+      try { // fallback sob RLS: soma só as PRÓPRIAS linhas do dia (tenant sem teto)
+        const dayIso = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z").toISOString();
+        const { data: mine } = await sb.from("ai_audit_log")
+          .select("tokens").eq("tipo", "run").eq("user_id", userId)
+          .gte("criado_em", dayIso).limit(20000);
+        usedUser = (mine ?? []).reduce((a: number, r: { tokens?: number | null }) => a + (Number(r.tokens) || 0), 0);
+        apurou = true;
+      } catch { /* sem apuração → fail-open */ }
+    }
+    if (apurou) {
+      const guard = costGuard(usedTenant, DAILY_TOKEN_LIMIT, usedUser, DAILY_USER_TOKEN_LIMIT);
+      if (!guard.allow) {
+        return json(429, errBody("cost_limit", `Orçamento diário de IA atingido (${guard.escopo}). Tente novamente amanhã ou fale com o administrador.`));
+      }
+    }
   }
 
   const started = Date.now();
@@ -432,7 +524,7 @@ Deno.serve(async (req: Request) => {
       .update({ atualizado_em: new Date().toISOString() })
       .eq("id", conversationId);
 
-    // (4) log do run.
+    // (4) log do run — com split de tokens e custo estimado (observabilidade).
     await sb.from("ai_audit_log").insert({
       empresa: EMPRESA,
       conversation_id: conversationId,
@@ -442,6 +534,9 @@ Deno.serve(async (req: Request) => {
       ok: true,
       latencia_ms: Date.now() - started,
       tokens: inputTokens + outputTokens,
+      tokens_in: inputTokens,
+      tokens_out: outputTokens,
+      custo_usd: +estimateCostUsd(model, inputTokens, outputTokens).toFixed(6),
     });
 
     return json(200, {
