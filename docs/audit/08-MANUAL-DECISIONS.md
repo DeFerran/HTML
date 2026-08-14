@@ -6,39 +6,38 @@ opções e o impacto de cada uma. Nada será mexido sem sua ordem explícita.
 
 ---
 
-## D-01 (P1) — `recBruta()` usa índice fixo `[2]` (safra 26/27)
+## D-01 (P1) — `recBruta()` usava índice fixo `[2]` ✅ RESOLVIDO (Opção B — por safra)
 
-`function recBruta(){return D.safras.receita[2];}` (linha 1763). Todo o bloco
-financeiro (imposto, margem, comissão, ponto de equilíbrio, cascata) usa a
-receita bruta da **26/27** mesmo quando outra safra está ativa.
+**Decisão (gestor):** o financeiro deve seguir a **safra em foco**. O dono já
+havia pedido isso ("troquei a safra e ainda aparece da 26/27… precisa ser de
+acordo com cada safra"), as metas/preços já são por safra, e a plataforma já
+tinha a infraestrutura pronta (`safraIdx()` + `baseGate()`, que **zera** as abas
+de safras sem base lançada). O índice fixo era o único ponto que não acompanhava.
 
-- **Opção A (manter):** financeiro é sempre "consolidado 26/27" por definição.
-  Simples, mas o seletor de safra não afeta o financeiro (pode confundir).
-- **Opção B (por safra):** `recBruta()` segue `safraAtual()`. Coerente com o
-  seletor, **mas** exige receita por safra confiável em `D.safras` e revisar
-  todos os consumidores → **regressão ampla**. Precisa de bateria de testes.
-
-**Recomendação:** decidir o significado ("financeiro é sempre 26/27" vs "segue a
-safra"). Se B, tratar como fase própria com testes de regressão.
+**Aplicado:** `recBruta()` passou a usar `safraIdx()` (segue `safraAtual()`),
+com fallback defensivo para `[2]`. Para a **26/27 (base)** o índice resolve para
+2 → **comportamento idêntico ao anterior** (verificado: R$ 1.479.363,40); ao
+trocar para outra safra, todo o bloco financeiro (imposto, margem, comissão,
+equilíbrio) acompanha — e safras sem base já são zeradas pelo `baseGate`.
+Verificado em render headless: 27/28 com base → recBruta 250k, imposto 42,5k;
+voltar p/ 26/27 → 1.479.363,40. 0 erros JS.
 
 ---
 
-## D-02 (P1) — Base da comissão diverge (linha 2452)
+## D-02 (P1) — Base da comissão divergia (linha 2452) ✅ RESOLVIDO (Opção A — sobre a receita)
 
-Regra declarada: comissão sobre **receita bruta** (`comBase()=recBruta()`, lab é
-despesa e não entra na base). Mas `renderServGeral` (linha 2452) usa
-`max(rec − custoDir, 0) * comRate()` — receita **menos custo direto**.
+**Decisão (gestor/especialista):** em consultoria de serviços de AP, a comissão
+de vendas incide sobre o **faturamento (receita bruta)**, não sobre a margem —
+é o padrão de mercado e é exatamente a regra já declarada no código
+(`comBase()=recBruta()`, "laboratório é despesa e não entra na base"). O plano
+escalonado do Anderlírio também é sobre **vendas**. A linha 2452 era o único
+ponto fora da curva (usava `receita − custo direto`).
 
-- **Opção A:** padronizar tudo em **receita bruta** (alinha 2452 às demais).
-  Comissão sobe onde há custo direto; margem líquida exibida cai nesse card.
-- **Opção B:** a regra real é **sobre a margem** (rec−custoDir) e as outras é que
-  estão "otimistas". Aí muda-se `comBase`/`comissaoSobre`.
-
-**Impacto:** afeta números exibidos de comissão e margem. **Não** dá para
-escolher sem a regra oficial do contrato de comissão.
-
-**Recomendação:** confirmar no contrato: comissão incide sobre faturamento ou
-sobre margem? Depois padronizar em **um** ponto (single source).
+**Aplicado:** `renderServGeral` passou a calcular `com = rec * comRate()`,
+alinhado a `servMC`, `geralMC` e `comBase`. Efeito: nas linhas com custo direto
+a comissão fica um pouco maior e a margem de contribuição exibida cai
+levemente — leitura **mais conservadora e consistente**. `renderServGeral`
+verificado sem erro em headless.
 
 ---
 
@@ -59,30 +58,57 @@ sobre margem? Depois padronizar em **um** ponto (single source).
 
 ---
 
-## D-04 (P2) — `bi_metas` realizado defasado (=0)
+## D-04 (P2) — `bi_metas` realizado defasado (=0) ✅ RESOLVIDO (Opção B — fonte viva)
 
-Meta 1.8M, realizado 0. Fonte viva é `D.metasSafra`.
+**Decisão (gestor):** a **fonte da verdade das metas é o app** (`D.metasSafra`,
+lido por `metasFoco()` por safra), não o espelho ETL. Auditei os consumidores:
+`bi_metas` **não é lido por nenhuma tool da IA nem por nenhum render** (grep em
+`index.html` e `supabase/` → zero usos). Ou seja, o espelho defasado **não
+alimenta nenhuma decisão viva** — só existiria para um relatório futuro.
 
-- **Opção A:** ETL do espelho passa a espelhar `metasSafra`.
-- **Opção B:** IA/relatórios de meta lêem o snapshot vivo, não `bi_metas`.
-
----
-
-## D-05 (P2) — Entregas: linha 100% pendente conta 2×
-
-`statusLinha`/`agg` (~2270): uma linha só-pendente entra em **andamento** e em
-**pendente**. Definição de "em andamento" é ambígua.
-
-- **Opção A:** "em andamento" = tem ≥1 item concluído **e** ≥1 pendente.
-- **Opção B:** manter, mas deixar claro no rótulo que as categorias se sobrepõem.
+**Aplicado:** nada de código (não há consumidor a corrigir). Fica registrado:
+os KPIs de meta vêm de `D.metasSafra` (por safra, já migrado nesta plataforma);
+`bi_metas` é um espelho não utilizado. **Raiz (opcional):** se um dia a IA/BI for
+consumir metas, o ETL deve espelhar `metasSafra` — até lá, não usar `bi_metas`.
 
 ---
 
-## D-06 (P2) — Hectares divergentes por origem
+## D-05 (P2) — Entregas: linha 100% pendente contava 2× ✅ RESOLVIDO (Opção A)
 
-`bi_clientes` (~20.003 ha) vs `bi_servicos` (~28.500 ha). Qual é a área
-"oficial" para KPIs? Serviços podem contar a mesma área em múltiplos serviços
-(soma > área física). **Decisão de negócio.**
+**Decisão (gestor):** categorias **mutuamente exclusivas** — cada linha de
+entrega é **concluída** (tudo pronto), **em andamento** (começou: ≥1 item
+concluído, mas ainda falta) ou **pendente/não iniciada** (tem entregáveis
+aplicáveis, porém **nada** concluído). Uma linha só-pendente **não** é "em
+andamento".
+
+**Aplicado (bloco puro `op-entregas-calc`):** `statusLinha` retorna
+`nao_iniciada` quando `aplicaveis>0 && concluidos===0` (antes caía em
+`andamento`); `agg` agora coloca cada linha em **exatamente um balde** (fim da
+dupla contagem andamento+pendente). Alinhado com o filtro da tela (Não
+iniciada/Em andamento/Concluída). Testes `opentregas.test.ts` atualizados +
+caso novo (invariante de exclusividade). Suíte: 123 passam.
+
+---
+
+## D-06 (P2) — Hectares divergentes por origem ✅ RESOLVIDO (definição, sem mudança de código)
+
+**Decisão (gestor agronômico):** os dois números medem **coisas diferentes** —
+não é erro, é definição:
+
+- **Hectares-serviço** (`Σ ha por serviço` ≈ 28.500) = **volume de trabalho
+  executado**. O mesmo talhão físico pode receber vários serviços (Fertilidade
+  Grid + Coleta + Curva de Nível…), então a soma **excede** a área física de
+  propósito. **Esta é a base oficial das métricas por hectare** (receita/ha,
+  custo/ha, ponto de equilíbrio, contribuição/ha) — é o denominador que casa com
+  a receita e o custo dos serviços prestados. É o que `haTotal()` já usa. ✅
+- **Hectares físicos de clientes** (`bi_clientes` ≈ 20.003) = **pegada física**
+  da carteira (área do cliente, sem duplicar por serviço). Métrica de contexto
+  por cliente (a IA usa em `get_client`).
+
+**Conclusão:** o app **já usa o denominador correto** (ha-serviço) no lugar
+certo (economia unitária), e a pegada física fica no contexto por cliente.
+Nenhuma mudança de código — a "divergência" era só falta de nome. Registrado:
+não somar/comparar as duas bases como se fossem a mesma área.
 
 ---
 

@@ -21,17 +21,20 @@ inventado — cada item aponta arquivo:linha ou tabela.
 | I-04 | P2 | 🟡→✅ | `OpAmostrasCalc.agg` (~2188) | `tempoMedio` somava **dias negativos** (data de resultado antes do envio). | Exclui negativos da média. Teste `tests/opamostras.test.ts`. |
 | I-05 | P2 | 🟡→✅ | `BRL`/`BRLk`/`PCT` (1595-1597) | Divisão por zero (base receita = 0) exibia `R$ NaN` / `Infinity%`. | Formatadores tratam NaN/Infinity como 0. Teste `tests/formatadores.test.ts`. |
 
-## Abertos — necessitam DECISÃO do dono (não auto-corrigidos por regra)
+## Decisões de negócio — RESOLVIDAS (dono delegou; decididas como gestor/especialista)
 
-| # | Prior. | Status | Onde | Problema | Por que não auto-corrigi |
-|---|--------|--------|------|----------|--------------------------|
-| I-06 | P1 | 🔵 | `recBruta()` (1763) `return D.safras.receita[2];` | Índice **fixo `[2]`** = safra 26/27. Ignora `safraAtual()`. Todo o bloco financeiro (imposto, margem, comissão, ponto de equilíbrio) usa receita bruta da 26/27 mesmo com outra safra ativa. | Mudar a base financeira por safra é alteração estrutural de regra de negócio com regressão ampla. Ver 08-MANUAL-DECISIONS. |
-| I-07 | P1 | 🔵 | `renderServGeral` custoHa (2452) vs `comBase()` (1771) | Comissão calculada em **≥2 bases divergentes**: regra declarada é sobre **receita bruta** (`comBase()=recBruta()`), mas a linha 2452 usa `Math.max(rec−custoDir,0)*comRate()` (receita **menos** custo direto). | Qual é a base oficial da comissão é decisão de negócio; mudar afeta margens exibidas. |
-| I-08 | P1 | 🔵 | `bi_custos_mensais` (288 linhas, `SUM(valor)=0`) | Tabela-espelho de custos mensais **totalmente zerada**. `get_costs` (ai-gateway) lê dela → IA reporta custo mensal **R$ 0**. | Requer decidir/reprocessar o ETL do snapshot; não é bug de código do app. |
-| I-09 | P2 | 🟡 | `bi_metas` (`receita_meta=1.800.000`, `receita_real=0`) | Espelho de metas com **realizado zerado/defasado**. | ETL/snapshot; a fonte viva é `D.metasSafra` no app. |
-| I-10 | P2 | 🔵 | `OpEntregasCalc.statusLinha`/`agg` (~2270) | Linha 100% pendente conta como **andamento E pendente** ao mesmo tempo. | Definição de "em andamento" é regra de negócio ambígua. |
-| I-11 | P2 | 🟡→✅ | `renderOpResumo` (Ciclo) | Único rótulo enganoso ("pontos na safra") sem filtro por safra → trocado para "pontos no total" (D-07). Demais telas já usavam "no período". | **CORRIGIDO** — render headless confirma. |
-| I-12 | P2 | 🔵 | Hectares: `bi_clientes`≈20.003 vs `bi_servicos`≈28.500 | Duas bases de área divergentes conforme a origem. | Qual é a área oficial é decisão de negócio. |
+Todas as decisões D-01…D-07 foram resolvidas (ver 08-MANUAL-DECISIONS.md com a
+justificativa de cada uma). Restam apenas itens de higiene P3 abaixo.
+
+| # | Prior. | Status | Onde | Resolução |
+|---|--------|--------|------|-----------|
+| I-06 | P1 | 🔵→✅ | `recBruta()` (1763) | Índice fixo `[2]` ignorava `safraAtual()` → agora segue a safra em foco via `safraIdx()` (26/27 idêntico ao anterior). **D-01 aplicado**, verificado em headless. | **RESOLVIDO** (Opção B — por safra). |
+| I-07 | P1 | 🔵→✅ | `renderServGeral` (2452) | Comissão divergente (rec−custoDir) → alinhada à regra única **sobre receita bruta** (`rec*comRate()`). **D-02 aplicado**. | **RESOLVIDO** (Opção A — sobre a receita). |
+| I-08 | P1 | 🔵→✅ | `bi_custos_mensais` (zerada) → `get_costs` | **D-03 aplicado + deployado** (v7): total/categoria via `bi_custo_categoria` (reconcilia); mensal omitido com aviso. | **RESOLVIDO**. |
+| I-09 | P2 | 🟡→✅ | `bi_metas` (realizado defasado) | **D-04**: espelho **sem consumidor** (0 usos na IA/renders); fonte viva é `D.metasSafra`. Nenhum código a corrigir. | **RESOLVIDO** (fonte viva). |
+| I-10 | P2 | 🔵→✅ | `OpEntregasCalc.statusLinha`/`agg` | Dupla contagem eliminada: baldes mutuamente exclusivos (concluída/andamento/pendente). **D-05 aplicado** + testes. | **RESOLVIDO** (Opção A). |
+| I-11 | P2 | 🟡→✅ | `renderOpResumo` (Ciclo) | "pontos na safra" → "pontos no total" (D-07). | **RESOLVIDO**. |
+| I-12 | P2 | 🔵→✅ | Hectares clientes vs serviços | **D-06**: medem coisas distintas — ha-serviço (oficial p/ economia unitária, já usado por `haTotal()`) vs pegada física por cliente. Definição registrada, sem mudança de código. | **RESOLVIDO** (definição). |
 
 ## Abertos — higiene / risco futuro (P3)
 

@@ -32,10 +32,16 @@ test("progresso: tudo 'na' → 0% e 0 aplicáveis", () => {
   expect(p.pct).toBe(0);
 });
 
-test("statusLinha: concluída quando 100%, andamento quando parcial, nao_iniciada quando vazio", () => {
+test("statusLinha: concluída (100%), andamento (≥1 concluído + falta), nao_iniciada (vazio)", () => {
   expect(OP.statusLinha(linha({ propQuimicas: { status: "concluido" }, mapas: { status: "concluido" } }))).toBe("concluida");
   expect(OP.statusLinha(linha({ propQuimicas: { status: "concluido" }, mapas: { status: "pendente" } }))).toBe("andamento");
   expect(OP.statusLinha(linha({}))).toBe("nao_iniciada");
+});
+
+test("statusLinha (D-05): linha 100% pendente NÃO é 'andamento' — é 'nao_iniciada'", () => {
+  // tem itens aplicáveis, porém NADA concluído → não começou
+  expect(OP.statusLinha(linha({ calcario: { status: "pendente" }, mib: { status: "pendente" } }))).toBe("nao_iniciada");
+  expect(OP.statusLinha(linha({ propQuimicas: { status: "na" }, mapas: { status: "pendente" } }))).toBe("nao_iniciada");
 });
 
 test("contaPendentes / temPendente", () => {
@@ -45,19 +51,21 @@ test("contaPendentes / temPendente", () => {
   expect(OP.temPendente(linha({ mapas: { status: "concluido" } }))).toBe(false);
 });
 
-test("agg: concluídas, em andamento, pendentes e itens pendentes", () => {
+test("agg (D-05): baldes MUTUAMENTE EXCLUSIVOS — sem dupla contagem andamento+pendente", () => {
   const linhas = [
     linha({ propQuimicas: { status: "concluido" }, mapas: { status: "concluido" } }),           // concluída
-    linha({ propQuimicas: { status: "concluido" }, mapas: { status: "pendente" } }),             // andamento, 1 pendente
-    linha({ calcario: { status: "pendente" }, mib: { status: "pendente" } }),                    // andamento, 2 pendentes
-    linha({}),                                                                                    // nao_iniciada (0 aplicáveis)
+    linha({ propQuimicas: { status: "concluido" }, mapas: { status: "pendente" } }),             // andamento (1 concluído), 1 item pendente
+    linha({ calcario: { status: "pendente" }, mib: { status: "pendente" } }),                    // pendente/não iniciada, 2 itens pendentes
+    linha({}),                                                                                    // 0 aplicáveis (não entra em nenhum balde)
   ];
   const a = OP.agg(linhas);
   expect(a.total).toBe(4);
   expect(a.concluidas).toBe(1);
-  expect(a.emAndamento).toBe(2);
-  expect(a.pendentes).toBe(2); // as 2 em andamento não estão concluídas e têm aplicáveis
+  expect(a.emAndamento).toBe(1);   // só a linha que realmente começou
+  expect(a.pendentes).toBe(1);     // a linha 100% pendente (com aplicáveis) — NÃO conta como andamento
   expect(a.itensPendentes).toBe(3);
+  // invariante: cada linha com itens aplicáveis está em EXATAMENTE um balde
+  expect(a.concluidas + a.emAndamento + a.pendentes).toBe(3); // a linha vazia (0 aplicáveis) fica de fora
 });
 
 test("filtra: cliente, status e pendências", () => {

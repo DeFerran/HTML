@@ -1760,7 +1760,13 @@ function custoRawTotal(){ return (D.projGastos?+D.projGastos.total:sum(D.caixaMe
 function margContabilVal(){ return recBruta()-imposto()-custoRawTotal()-comissaoVal(); }                 // tudo dentro
 function margOperVal(){ return margContabilVal()+custoNaoOper(); }                                        // exclui one-offs + capex
 /* --- safra 26/27 como projeto --- */
-function recBruta(){return D.safras.receita[2];}                         // faturamento contratado
+/* faturamento contratado da SAFRA EM FOCO (D-01): segue safraAtual() via safraIdx,
+   em vez do índice fixo [2]=26/27. Para a 26/27 (base) o índice resolve p/ 2 →
+   comportamento idêntico ao anterior; ao trocar de safra, o financeiro acompanha
+   (safras sem base já são zeradas pelo baseGate). Fallback defensivo para [2]. */
+function recBruta(){ const i=safraIdx();
+  if(i>=0 && D.safras && Array.isArray(D.safras.receita)) return +D.safras.receita[i]||0;
+  return (D.safras && D.safras.receita && +D.safras.receita[2])||0; }
 function imposto(){return recBruta()*taxRate;}                          // NF sobre receita bruta
 function recLiquida(){return recBruta()-imposto();}                     // receita líquida de imposto
 function custoTotal(){let c=(D.projGastos?D.projGastos.total:sum(D.caixaMensal.custo)); if(outrosOff)c-=outrosVal(); return c;}
@@ -2270,7 +2276,14 @@ const OpEntregasCalc=(function(){
   function progresso(linha){ let aplic=0, concl=0;
     ITENS.forEach(def=>{ const st=statusItem(linha,def.k); if(st!=='na'){ aplic++; if(st==='concluido') concl++; } });
     return {concluidos:concl,aplicaveis:aplic,pct:aplic? Math.round(concl/aplic*100):0}; }
-  function statusLinha(linha){ const p=progresso(linha); if(p.aplicaveis>0 && p.pct===100) return 'concluida'; if(p.aplicaveis>0 && p.concluidos<p.aplicaveis && p.pct>0) return 'andamento'; if(p.aplicaveis>0) return 'andamento'; return 'nao_iniciada'; }
+  /* Status da linha — categorias MUTUAMENTE EXCLUSIVAS (D-05):
+     concluída = tudo concluído · andamento = começou (≥1 concluído) mas falta ·
+     não iniciada = tem itens aplicáveis porém NADA concluído (= pendente). */
+  function statusLinha(linha){ const p=progresso(linha);
+    if(p.aplicaveis<=0) return 'nao_iniciada';
+    if(p.pct===100) return 'concluida';
+    if(p.concluidos>0) return 'andamento';
+    return 'nao_iniciada'; }
   function temPendente(linha){ return ITENS.some(def=>statusItem(linha,def.k)==='pendente'); }
   function contaPendentes(linha){ return ITENS.reduce((a,def)=>a+(statusItem(linha,def.k)==='pendente'?1:0),0); }
   function filtra(linhas,f){ f=f||{}; return (linhas||[]).filter(l=>{
@@ -2281,10 +2294,13 @@ const OpEntregasCalc=(function(){
     if(f.pendencias==='sem' && temPendente(l)) return false;
     if(f.busca){ const q=String(f.busca).toLowerCase(); if(!((l.cliente||'')+' '+(l.fazenda||'')+' '+(l.obs||'')).toLowerCase().includes(q)) return false; }
     return true; }); }
+  /* Agregado — cada linha entra em EXATAMENTE um balde (concluída/andamento/pendente);
+     não há mais dupla contagem de andamento+pendente (D-05). */
   function agg(linhas){ linhas=linhas||[]; let emAndamento=0,concluidas=0,pendentes=0,itensPendentes=0;
     linhas.forEach(l=>{ const s=statusLinha(l);
-      if(s==='concluida') concluidas++; else if(s==='andamento') emAndamento++;
-      if(s!=='concluida' && progresso(l).aplicaveis>0) pendentes++;
+      if(s==='concluida') concluidas++;
+      else if(s==='andamento') emAndamento++;
+      else if(progresso(l).aplicaveis>0) pendentes++;
       itensPendentes+=contaPendentes(l); });
     return {total:linhas.length,emAndamento,concluidas,pendentes,itensPendentes}; }
   return {ITENS,marker,statusItem,progresso,statusLinha,temPendente,contaPendentes,filtra,agg};
@@ -2449,7 +2465,9 @@ function renderServGeral(){
     const rec=+s.rec2627||0, ha=+s.ha2627||0, nCli=+s.cli2627||0;
     const custoHa=custoExecHa(s.nome,'antigo');                 // lab por grid + coleta de campo + custo manual (auto)
     let mcPct=null, liqPct=null;
-    if(custoHa>0){ const custoDir=custoHa*ha, imp=rec*taxRate, com=Math.max(rec-custoDir,0)*comRate(); const mc=rec-imp-custoDir-com;
+    /* comissão sobre RECEITA BRUTA (regra única: comBase()=recBruta()); antes esta
+       linha usava (receita − custo direto), divergindo das demais telas (D-02). */
+    if(custoHa>0){ const custoDir=custoHa*ha, imp=rec*taxRate, com=rec*comRate(); const mc=rec-imp-custoDir-com;
       mcPct=rec?mc/rec:0; liqPct=mcPct-poolPct; }
     return {nome:s.nome, ha, rec, recHa:ha>0?rec/ha:0, ticket:nCli>0?rec/nCli:0, nCli, custoHa, mcPct, liqPct};
   }).sort((a,b)=>b.rec-a.rec);
