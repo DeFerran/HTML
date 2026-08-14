@@ -1999,7 +1999,7 @@ function renderOpResumo(){
     +'<div class="op-stage-big">'+big+(bigSub?' <small>'+esc(bigSub)+'</small>':'')+'</div>'
     +'<div class="op-stage-metrics">'+metrics+'</div>'
     +'<button class="btn abrir" onclick="opAbrir(\''+abrir+'\')">Abrir</button></div>';
-  const nHa=OpColetaCalc.hectares(col.totalPontos,D.opColeta&&D.opColeta.hectaresFator);
+  const nHa=OpColetaCalc.hectares(D.opColeta&&D.opColeta.lancamentos||[]);
   const html=[
     stage('1','Coleta de Pontos',col.totalPontos.toLocaleString('pt-BR'),'pontos na safra',
       m('Dias',col.diasTrabalhados)+m('Lançamentos',nLanc)+m('Média/dia',col.diasTrabalhados?col.mediaDiaria.toFixed(0):'0')+m('Hectares',(nHa!=null?Math.round(nHa).toLocaleString('pt-BR'):'—')),'opcoleta'),
