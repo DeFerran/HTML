@@ -1493,6 +1493,14 @@ function custoAincorrer(){return D.projGastos?D.projGastos.projetado:0;}
 /* comLab removido: laboratório é despesa, não base de comissão */
 function comBase(){return recBruta();} // laboratório é despesa, não entra na base de comissão
 function comRate(){return (D.comissao&&D.comissao.rate)||0.07;}
+/* taxas base/meta do Anderlírio a partir do PLANO moderno (D.comissaoPlano),
+   substituindo o antigo D.metas.anderlirio: base = piso; meta = topo das faixas.
+   Defaults 7%/10% preservam o comportamento anterior. */
+function comRatesAnderlirio(){ const A=(D.comissaoPlano&&D.comissaoPlano.anderlirio)||{};
+  const base=(+A.pisoRate>0)?+A.pisoRate:0.07;
+  const ts=(Array.isArray(A.tiers)&&A.tiers.length)?A.tiers:null;
+  const meta=ts?((+ts[ts.length-1].rate>0)?+ts[ts.length-1].rate:0.10):0.10;
+  return {base:base, meta:meta}; }
 /* REGRA DE NEGÓCIO (única): a comissão incide sobre a RECEITA BRUTA da venda —
    custos (laboratório, custo direto) NÃO são descontados da base. Usada em todos
    os pontos para que empresa, funil, carteira e segmentos conciliem. */
@@ -2040,13 +2048,14 @@ function renderMetas(){
   try{ renderMetasSegmentos(); }catch(e){ console.warn('metasSeg',e); }
   try{ renderMargemLiq(); }catch(e){ console.warn('margemLiq',e); }
   try{ renderComissaoColab(); }catch(e){ console.warn('comColab',e); }
-  const M=D.metas||{};
   const rb=recBruta(), imp=imposto(), rl=recLiquida(), cTot=custoTotal();
   const sv=D.servicos.filter(s=>s.ha2627>0);
   const totha=sv.reduce((a,b)=>a+b.ha2627,0)||1;
   const moper=margemOper(), mopP=margemOperPct();
-  const com7=comBase()*(M.anderlirio&&M.anderlirio.base||0.07);
-  const com10=comBase()*(M.anderlirio&&M.anderlirio.meta||0.10);
+  const AR=comRatesAnderlirio();
+  const com7=comBase()*AR.base;
+  const com10=comBase()*AR.meta;
+  const pctBase=Math.round(AR.base*100), pctMeta=Math.round(AR.meta*100);
   const mlq7=moper-com7, mlq10=moper-com10;
   const MF=metasFoco();
   const recMeta=(+MF.receita||0)||rb, recReal=((+MF.receitaReal||0)>0?+MF.receitaReal:rb);
@@ -2073,7 +2082,7 @@ function renderMetas(){
       datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:11},formatter:v=>nHa(v)},
       tooltip:{callbacks:{title:c=>c&&c[0]?c[0].label:'',label:c=>nHa(c.raw)+(c.dataIndex===1&&haFalta>0?' · falta '+nHa(haFalta):'')}}},
       scales:{x:{ticks:{callback:v=>Math.round(v/1000)+'k'}}}}});
-  mk('cComimp',{type:'bar',data:{labels:['7% (base)','10% (meta batida)'],datasets:[
+  mk('cComimp',{type:'bar',data:{labels:[pctBase+'% (base)',pctMeta+'% (meta batida)'],datasets:[
     {label:'Comissão',data:[com7,com10],backgroundColor:[C.gold,C.red],borderRadius:6}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},
       datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:'#1b2a1f',font:{weight:'800',size:11},formatter:v=>BRLk(v)},
@@ -2083,9 +2092,9 @@ function renderMetas(){
     {lab:'Receita / ha',val:BRL(rb/totha),sub:nHa(totha)+' na safra'},
     {lab:'Custo / ha',val:BRL(cTot/totha),c:'gold',sub:'desembolso 2026 ÷ ha'},
     {lab:'Imposto / ha',val:BRL(imp/totha),c:'gold',sub:(taxRate*100).toFixed(0)+'% sobre NF'},
-    {lab:'Comissão / ha',val:BRL(com7/totha),c:'gold',sub:'7% base · 10% se meta'},
+    {lab:'Comissão / ha',val:BRL(com7/totha),c:'gold',sub:pctBase+'% base · '+pctMeta+'% se meta'},
     {lab:'Margem oper. / ha',val:BRL(moper/totha),c:moper>0?'g':'r',sub:PCT(mopP)+' antes da comissão'},
-    {lab:'Margem líq. / ha',val:BRL(mlq7/totha),c:mlq7>0?'g':'r',sub:PCT(mlq7/rb)+' após comissão 7%'},
+    {lab:'Margem líq. / ha',val:BRL(mlq7/totha),c:mlq7>0?'g':'r',sub:PCT(mlq7/rb)+' após comissão '+pctBase+'%'},
   ]);
   const svs=sv.slice().sort((a,b)=>(b.rec2627/b.ha2627)-(a.rec2627/a.ha2627));
   mk('cRecHa',{type:'bar',data:{labels:svs.map(s=>s.nome),datasets:[{data:svs.map(s=>s.rec2627/s.ha2627),
@@ -2250,14 +2259,18 @@ function renderMetas(){
     if(charts.cCliLucro){charts.cCliLucro.destroy();delete charts.cCliLucro;}
   }
 
-  const B=M.bruno||{};
+  /* Bruno: lê do PLANO moderno (D.comissaoPlano.bruno), não mais da global D.metas */
+  const B=(D.comissaoPlano&&D.comissaoPlano.bruno)||{};
+  const brVendas=comVendasEf('bruno'), brMeta=+B.metaVendas||0, brRate=+B.rate||0;
+  const bnList=Array.isArray(B.bonus)?B.bonus:[];
+  const bnFeitos=bnList.filter(bn=>bn&&bn.entregue).length;
   const nd='<span style="color:var(--red);font-weight:700">a definir</span>';
   const rowb=(l,v)=>'<tr><td class="lbl">'+l+'</td><td>'+v+'</td></tr>';
   document.getElementById('brunoBox').innerHTML=
-    rowb('Relatórios entregues', (B.relatoriosFeitos!=null&&B.relatoriosMeta!=null)?(B.relatoriosFeitos+' / '+B.relatoriosMeta+' meta'):nd)+
-    rowb('Valor de vendas (Bruno)', (B.vendasReal!=null&&B.vendasMeta!=null)?(BRL(B.vendasReal)+' / '+BRL(B.vendasMeta)+' meta'):nd)+
-    rowb('% de comissão do Bruno', (B.comissaoRate!=null)?((B.comissaoRate*100).toFixed(1)+'%'):nd)+
-    rowb('Prazo médio de entrega', (B.prazoMedioDias!=null)?(B.prazoMedioDias+' dias'):nd);
+    rowb('Valor de vendas (Bruno)', (brVendas>0||brMeta>0)?(BRL(brVendas)+(brMeta>0?(' / '+BRL(brMeta)+' meta'):'')):nd)+
+    rowb('% de comissão do Bruno', (brRate>0)?((brRate*100).toFixed(1)+'%'):nd)+
+    rowb('Bônus entregues', bnList.length?(bnFeitos+' / '+bnList.length):nd)+
+    rowb('Comissão total (Bruno)', (brVendas>0||bnFeitos>0)?BRL(brVendas*brRate+bnList.reduce((a,bn)=>a+(bn&&bn.entregue?(+bn.valor||0):0),0)):nd);
   call('callMetas',[
     {c:recFalta>0?'gold':'moss',big:PCT(recPct),t:'da meta de receita já contratada. A meta foi ancorada no vendido, então começa em 100% — suba a meta conforme fechar novos contratos para o painel mostrar quanto falta.'},
     {c:moper>0?'moss':'gold',big:BRL(cTot/totha),t:'de custo por hectare, contra '+BRL(rb/totha)+'/ha de receita. Sobra apenas '+BRL(moper/totha)+'/ha de margem operacional — reajuste de preço é o gatilho mais forte.'},
