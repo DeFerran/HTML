@@ -5873,10 +5873,13 @@ function orcAprovar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)ret
 function orcDevolver(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; const m=prompt('Motivo da devolução (para o vendedor ajustar):',''); if(m===null)return; q.status='rascunho'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'devolvido',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO(),motivoDevolucao:m}); qzLog(q,'devolvido para ajuste',m); commit(); renderOrcamentosView(); uiToast('↩ '+q.numero+' devolvido para ajuste'); }
 function orcRejeitar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Rejeitar (recusar) o orçamento '+q.numero+'?'))return; q.status='recusado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'rejeitado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); qzLog(q,'recusado',''); commit(); renderOrcamentosView(); uiToast('✕ '+q.numero+' recusado'); }
 /* ---- render: lista x wizard ---- */
-function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)renderOrcWizard(host); else renderOrcLista(host); }
+function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)return renderOrcWizard(host); if(_orcVista==='painel')return renderOrcPainel(host); renderOrcLista(host); }
 const ORC_STATUS_LBL={rascunho:'Rascunho',aguardando_aprovacao:'Aguardando aprovação',aprovado:'Aprovado',enviado:'Enviado',negociacao:'Em negociação',aceito:'Aceito',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
 /* Fase 8: filtros, períodos, status e "Meus Orçamentos" */
 let _orcFiltro={status:'',vendedor:'',cliente:'',periodo:'',servico:'',busca:''};
+let _orcVista='lista';
+function orcSetVista(v){ _orcVista=v; renderOrcamentosView(); }
+function orcVistaBar(){ return '<div class="mtabs" style="margin-bottom:14px"><button class="mtab'+(_orcVista!=='painel'?' on':'')+'" onclick="orcSetVista(\'lista\')">Lista</button><button class="mtab'+(_orcVista==='painel'?' on':'')+'" onclick="orcSetVista(\'painel\')">Painel comercial</button></div>'; }
 function qzHojeISO(){ try{return new Date().toISOString().slice(0,10);}catch(e){return '';} }
 function qzNoPeriodo(dISO,per){ if(!per)return true; if(!dISO)return false; const hoje=qzHojeISO();
   if(per==='hoje')return dISO===hoje; if(per==='mes')return dISO.slice(0,7)===hoje.slice(0,7);
@@ -5901,7 +5904,8 @@ function orcSetStatus(id,st){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!
 function renderOrcLista(host){
   const qs=orcFiltradas(); const heads=orcHeads();
   const cnt=st=>heads.filter(q=>q.status===st).length;
-  let h='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
+  let h=orcVistaBar();
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
   // tiles "Meus Orçamentos" (clicáveis)
   const tiles=[['','Total',heads.length],['rascunho','Rascunhos',cnt('rascunho')],['aguardando_aprovacao','Aguardando',cnt('aguardando_aprovacao')],['aprovado','Aprovados',cnt('aprovado')],['enviado','Enviados',cnt('enviado')],['negociacao','Negociação',cnt('negociacao')],['aceito','Aceitos',cnt('aceito')],['expirando','Expirando',heads.filter(qzExpirando).length]];
   h+='<div class="orc-tiles">'+tiles.map(t=>'<div class="orc-tile'+((_orcFiltro.status===t[0]&&(t[0]!==''))?' on':(t[0]===''&&!_orcFiltro.status&&!_orcFiltro.vendedor&&!_orcFiltro.cliente&&!_orcFiltro.periodo&&!_orcFiltro.servico&&!_orcFiltro.busca?' on':''))+'" onclick="orcTileFiltro(\''+t[0]+'\')"><div class="tv">'+t[2]+'</div><div class="tl">'+esc(t[1])+'</div></div>').join('')+'</div>';
@@ -5937,6 +5941,53 @@ function renderOrcLista(host){
       +'<td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
     if(histOn)h+='<tr><td colspan="11" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
   h+='</tbody></table></div></div>'; host.innerHTML=h;
+}
+/* ===== Fase 9: painel comercial de orçamentos ===== */
+function renderOrcPainel(host){
+  const heads=orcHeads(); let h=orcVistaBar();
+  h+='<div style="margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
+  if(!heads.length){ h+='<div class="panel"><div class="op-empty">Sem orçamentos ainda para o painel. Crie o primeiro na aba <b>Lista</b>.</div></div>'; host.innerHTML=h; return; }
+  const emJogo=heads.filter(q=>['enviado','negociacao','aceito','recusado','expirado'].indexOf(q.status)>=0);
+  const aceitos=heads.filter(q=>q.status==='aceito'||q.status==='convertido');
+  const valorOrcado=heads.reduce((a,q)=>a+(+q.total||0),0), areaOrcada=heads.reduce((a,q)=>a+(+q.areaHa||0),0);
+  const valorAceito=aceitos.reduce((a,q)=>a+(+q.total||0),0), areaAceita=aceitos.reduce((a,q)=>a+(+q.areaHa||0),0);
+  const conv=emJogo.length?aceitos.length/emJogo.length:0;
+  const tk=heads.filter(q=>+q.total>0); const ticket=tk.length?valorOrcado/tk.length:0;
+  const descs=heads.filter(q=>+q.totalTabela>0).map(q=>QuoteCalc.descontoEfetivoPct(q.total,q.totalTabela)); const descMedio=descs.length?descs.reduce((a,b)=>a+b,0)/descs.length:0;
+  const venc=heads.filter(qzExpirando).length, aguard=heads.filter(q=>q.status==='aguardando_aprovacao').length;
+  h+='<div class="kpis" id="orcKpi"></div>';
+  h+='<div class="grid two"><div class="panel"><h3>Funil dos orçamentos</h3><div class="cap">Valor por estágio. Os <b>aceitos</b> alimentam o funil de vendas na conversão (Fase 10) — sem segundo funil.</div><div class="chartbox"><canvas id="cOrcFunil"></canvas></div></div>'
+    +'<div class="panel"><h3>Por vendedor</h3><div class="cap">Orçado, aceito e conversão de cada vendedor.</div><div style="overflow-x:auto"><table id="tOrcVend" class="resp-cards"></table></div></div></div>';
+  host.innerHTML=h;
+  const kp=[
+    {lab:'Orçamentos',val:heads.length,sub:aguard?(aguard+' aguardando aprovação'):'na carteira'},
+    {lab:'Valor orçado',val:BRLk(valorOrcado),sub:fnum(areaOrcada)+' ha orçados'},
+    {lab:'Aceitos',val:aceitos.length,c:'g',sub:BRLk(valorAceito)+' · '+fnum(areaAceita)+' ha'},
+    {lab:'Conversão',val:PCT(conv),c:conv>=0.3?'g':'gold',sub:emJogo.length+' propostas em jogo'},
+    {lab:'Ticket médio',val:BRLk(ticket),sub:'por orçamento'},
+    {lab:'Desconto médio',val:PCT(descMedio/100),c:descMedio>10?'r':'',sub:'vs tabela'},
+    {lab:'Vencendo',val:venc,c:venc?'gold':'',sub:'validade ≤ 7 dias'},
+  ];
+  if(qzPodeVerMargem()){ const mcTot=aceitos.reduce((a,q)=>a+qzMargem(q).mc,0); const recTot=valorAceito; kp.push({lab:'Margem projetada',val:BRLk(mcTot),c:mcTot>=0?'g':'r',sub:(recTot?PCT(mcTot/recTot):'—')+' dos aceitos'}); }
+  try{ kpi('orcKpi',kp); }catch(e){}
+  const estg=[['rascunho','Rascunho'],['aguardando_aprovacao','Aguardando'],['enviado','Enviado'],['negociacao','Negociação'],['aceito','Aceito']];
+  const fdata=estg.map(e=>heads.filter(q=>q.status===e[0]).reduce((a,q)=>a+(+q.total||0),0));
+  try{ mk('cOrcFunil',{type:'bar',data:{labels:estg.map(e=>e[1]),datasets:[{label:'Valor',data:fdata,backgroundColor:estg.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:54}},plugins:{legend:{display:false},
+      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>v?BRLk(v):''},
+      tooltip:{callbacks:{label:c=>{const n=heads.filter(q=>q.status===estg[c.dataIndex][0]).length; return BRL(c.raw)+' · '+n+' orçamento(s)';}}}},
+      scales:{x:{ticks:{callback:v=>BRLk(v)}}}}}); }catch(e){}
+  const tv=document.getElementById('tOrcVend');
+  if(tv){ const vends=[...new Set(heads.map(q=>q.vendedor||'A definir'))];
+    const rows=vends.map(v=>{ const qs=heads.filter(q=>(q.vendedor||'A definir')===v); const ac=qs.filter(q=>q.status==='aceito'||q.status==='convertido');
+      const jogo=qs.filter(q=>['enviado','negociacao','aceito','recusado','expirado'].indexOf(q.status)>=0);
+      const vo=qs.reduce((a,q)=>a+(+q.total||0),0); const va=ac.reduce((a,q)=>a+(+q.total||0),0);
+      const tks=qs.filter(q=>+q.total>0); const ticketV=tks.length?vo/tks.length:0;
+      const dd=qs.filter(q=>+q.totalTabela>0).map(q=>QuoteCalc.descontoEfetivoPct(q.total,q.totalTabela)); const dm=dd.length?dd.reduce((a,b)=>a+b,0)/dd.length:0;
+      return {v:v,n:qs.length,vo:vo,ac:ac.length,va:va,conv:jogo.length?ac.length/jogo.length:0,ticket:ticketV,desc:dm}; }).sort((a,b)=>b.vo-a.vo);
+    let t='<thead><tr><th>Vendedor</th><th class="num">Orçados</th><th class="num">Valor orçado</th><th class="num">Aceitos</th><th class="num">Conversão</th><th class="num">Ticket</th><th class="num">Desc. médio</th></tr></thead><tbody>';
+    rows.forEach(r=>{ t+='<tr><td data-label="Vendedor" class="cardttl">'+esc(r.v)+'</td><td data-label="Orçados" class="num">'+r.n+'</td><td data-label="Valor orçado" class="num">'+BRL(r.vo)+'</td><td data-label="Aceitos" class="num">'+r.ac+' · '+BRLk(r.va)+'</td><td data-label="Conversão" class="num">'+PCT(r.conv)+'</td><td data-label="Ticket" class="num">'+BRLk(r.ticket)+'</td><td data-label="Desc. médio" class="num">'+PCT(r.desc/100)+'</td></tr>'; });
+    t+='</tbody>'; tv.innerHTML=t; }
 }
 function qzSummaryHTML(){ if(!_qz)return '';
   let h='<div class="orc-sumcard"><div style="font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Resumo · '+esc(_qz.numero)+'</div>';
