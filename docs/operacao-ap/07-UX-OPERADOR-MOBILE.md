@@ -1,5 +1,18 @@
 # Operação AP — Fase 7: Modo Campo (operador)
 
+> **Atualização (a pedido): Modo Campo simplificado.** A tela ficou com só o
+> essencial: **iniciar a coleta na fazenda** (seletor de fazenda + "▶ Iniciar
+> coleta", ou iniciar uma coleta já planejada) e o colaborador **anotar os pontos
+> coletados no dia** (contador −1/+1/+5 e entrada direta). Foram **removidos** da
+> tela: finalizar, registrar problema, CTA "enviar amostras", e os campos extras
+> (talhão/fator/equipe/hectares). Continuam automáticos: **você (operador), data e
+> hora de início**; iniciar ainda avança o projeto vinculado para **Coleta**. O
+> restante do fluxo (finalizar, amostras, etc.) é feito nas telas do gestor. O texto
+> abaixo descreve a versão original completa.
+
+---
+
+
 Tela **mobile-first** para o operador registrar a coleta em poucos toques —
 reaproveitando a **Coleta de Pontos** (`D.opColeta`, sem segundo formulário) e
 alimentando o pipeline automaticamente. Aditivo; nenhum cálculo/rota/dado existente

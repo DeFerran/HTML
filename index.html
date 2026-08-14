@@ -6063,9 +6063,8 @@ function projMover(p,novaEtapa,opts){ if(!p||!novaEtapa)return; opts=opts||{}; c
   if(novaEtapa===pipeCondConclusao(p.tipoWorkflowId)){ p.status='concluido'; p.concluidoEm=opts.em||nowISO(); }
   else if(p.status==='concluido'){ p.status='ativo'; p.concluidoEm=''; } }
 /* ===== Modo Campo (Fase 7) — operador registra a coleta em poucos toques ===== */
-let _campoNova=false, _campoFeito=null;
 function campoOperador(){ try{return localStorage.getItem('dfagro_operador')||'';}catch(e){return '';} }
-function campoSetOperador(v){ try{localStorage.setItem('dfagro_operador',v||'');}catch(e){} _campoFeito=null; renderCampo(); }
+function campoSetOperador(v){ try{localStorage.setItem('dfagro_operador',v||'');}catch(e){} renderCampo(); }
 function campoHoje(){ try{return new Date().toISOString().slice(0,10);}catch(e){return '';} }
 function campoHora(){ try{const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}catch(e){return '';} }
 function campoLancs(){ return (D.opColeta&&D.opColeta.lancamentos)||[]; }
@@ -6085,42 +6084,34 @@ function campoAddPontos(id,delta){ const l=campoLanc(id); if(!l)return; if(!camp
   if(l.status==='planejada'){ l.status='andamento'; if(!l.horaInicio)l.horaInicio=campoHora(); campoAvancaProjeto(l,'COLETA','COLETA_INICIADA','coleta iniciada em campo'); }
   if(!l.data)l.data=campoHoje(); const c=campoMinhaEntrada(l); c.pontos=Math.max(0,(+c.pontos||0)+delta); commit(); renderCampo(); }
 function campoSetPontos(id,val){ const l=campoLanc(id); if(!l)return; if(!campoOperador()){uiToast('Selecione quem é você.','err');return;} if(!l.data)l.data=campoHoje(); if(l.status==='planejada')l.status='andamento'; const c=campoMinhaEntrada(l); c.pontos=Math.max(0,Math.round(+val||0)); commit(); renderCampo(); }
-function campoFinalizar(id){ const l=campoLanc(id); if(!l)return; if(!confirm('Finalizar a coleta de '+(l.fazenda||l.cliente||'')+'?'))return;
-  if(!l.horaFim)l.horaFim=campoHora(); if(!l.data)l.data=campoHoje(); l.status='finalizada';
-  campoAvancaProjeto(l,'LABORATORIO','COLETA_CONCLUIDA','coleta concluída em campo'); _campoFeito={cliente:l.cliente,fazenda:l.fazenda}; commit(); renderCampo(); uiToast('✓ Coleta finalizada'); }
-function campoProblema(id){ const l=campoLanc(id); if(!l)return; const t=prompt('Descreva o problema (ex.: ponto refeito, acesso bloqueado, chuva, amostra perdida):'); if(t==null)return; const tx=String(t).trim(); if(!tx)return;
-  if(!Array.isArray(l.ocorrencias))l.ocorrencias=[]; l.ocorrencias.push({em:nowISO(),quem:campoOperador()||'campo',texto:tx});
-  l.obs=((l.obs||'')+(l.obs?' · ':'')+'⚠ '+tx).slice(0,600); campoAvancaProjeto(l,l.status==='finalizada'?'LABORATORIO':'COLETA','OCORRENCIA','⚠ '+tx); commit(); renderCampo(); uiToast('⚠ Problema registrado'); }
-function campoIrAmostras(){ _campoFeito=null; const btn=document.querySelector('#tabs button[data-v="opamostras"]'); if(btn)btn.click(); }
-function campoNovaToggle(){ _campoNova=!_campoNova; renderCampo(); }
-function campoNovaCriar(){ const cli=(document.getElementById('cnCli')||{}).value||''; const faz=((document.getElementById('cnFaz')||{}).value||'').trim(); const tal=((document.getElementById('cnTal')||{}).value||'').trim(); const fat=(typeof pnum==='function'?pnum((document.getElementById('cnFat')||{}).value):+((document.getElementById('cnFat')||{}).value)||0); const nome=campoOperador();
-  if(!nome){uiToast('Selecione quem é você.','err');return;} if(!cli && !faz){uiToast('Informe cliente ou fazenda.','err');return;}
+function campoNovaCriar(){ const nome=campoOperador(); if(!nome){uiToast('Selecione quem é você.','err');return;}
+  const sel=document.getElementById('cnFaz'); const fid=sel?sel.value:''; let faz='',cli='',mun='';
+  if(fid){ const f=(D.fazendas||[]).find(x=>x&&x.id===fid); if(f){ faz=f.nome||''; cli=f.clienteNome||''; mun=f.municipioNome||''; } }
+  else { const tx=document.getElementById('cnFazTx'); faz=tx?String(tx.value||'').trim():''; }
+  if(!faz){uiToast('Escolha ou informe a fazenda.','err');return;}
   if(!D.opColeta||typeof D.opColeta!=='object')D.opColeta={lancamentos:[],hectaresFator:null}; if(!Array.isArray(D.opColeta.lancamentos))D.opColeta.lancamentos=[];
-  D.opColeta.lancamentos.push({id:'opc'+uidLanc(),data:campoHoje(),equipe:'',cliente:cli,fazenda:faz,talhao:tal,fator:(fat||''),status:'andamento',obs:'',horaInicio:campoHora(),colaboradores:[{nome:nome,pontos:0}]});
-  _campoNova=false; commit(); renderCampo(); uiToast('Coleta criada'); }
-function campoNovaForm(){ const clientes=(typeof nomesClientes==='function')?nomesClientes():[]; const fator=(D.opColeta&&D.opColeta.hectaresFator)||'';
-  return '<div class="campo-new"><label>Cliente<select id="cnCli"><option value="">—</option>'+clientes.map(c=>'<option>'+esc(c)+'</option>').join('')+'</select></label>'
-   +'<label>Fazenda<input id="cnFaz" placeholder="fazenda"></label>'
-   +'<div style="display:flex;gap:8px"><label style="flex:1">Talhão<input id="cnTal" placeholder="ex.: TH 01"></label><label style="width:110px">ha/ponto<input id="cnFat" inputmode="decimal" value="'+esc(String(fator||''))+'" placeholder="fator"></label></div>'
-   +'<button class="campo-btn go" onclick="campoNovaCriar()">Criar e iniciar</button></div>'; }
-function campoCardHTML(l){ const si=OpColetaCalc.statusInfo(l.status); const total=OpColetaCalc.totalDia(l); const mine=campoMinhaLinha(l); const myp=mine?(+mine.pontos||0):0; const ha=(+l.fator>0)?(' · ~'+fnum(Math.round(total*(+l.fator)))+' ha'):'';
-  let h='<div class="campo-card"><div class="cc-top"><div><div class="cc-faz">'+esc(l.fazenda||l.cliente||'Coleta')+'</div><div class="cc-sub">'+esc(l.cliente||'')+(l.talhao?(' · Talhão '+esc(l.talhao)):'')+'</div></div><span class="op-badge '+si.cls+'">'+esc(si.label)+'</span></div>';
+  const fat=(D.opColeta&&D.opColeta.hectaresFator)||'';
+  D.opColeta.lancamentos.push({id:'opc'+uidLanc(),data:campoHoje(),equipe:'',cliente:cli,fazenda:faz,municipio:mun,talhao:'',fator:(fat||''),status:'andamento',obs:'',horaInicio:campoHora(),colaboradores:[{nome:nome,pontos:0}]});
+  commit(); renderCampo(); uiToast('▶ Coleta iniciada'); }
+function campoNovaForm(){ const fazs=(D.fazendas||[]).filter(f=>f&&f.ativo!==false);
+  let h='<div class="campo-new"><div style="font-weight:800;color:var(--head);font-size:15px">Iniciar coleta na fazenda</div>';
+  if(fazs.length){ h+='<label>Fazenda<select id="cnFaz"><option value="">— escolha a fazenda —</option>'+fazs.map(f=>'<option value="'+esc(f.id)+'">'+esc(f.nome||'')+(f.clienteNome?(' — '+esc(f.clienteNome)):'')+'</option>').join('')+'</select></label>'; }
+  else { h+='<label>Fazenda<input id="cnFazTx" placeholder="nome da fazenda"></label><div class="cap">Dica: cadastre fazendas em Cadastros › Fazendas para escolher direto.</div>'; }
+  return h+'<button class="campo-btn go" onclick="campoNovaCriar()">▶ Iniciar coleta</button></div>'; }
+function campoCardHTML(l){ const mine=campoMinhaLinha(l); const myp=mine?(+mine.pontos||0):0;
+  let h='<div class="campo-card"><div class="cc-top"><div><div class="cc-faz">'+esc(l.fazenda||l.cliente||'Coleta')+'</div>'+(l.cliente?('<div class="cc-sub">'+esc(l.cliente)+'</div>'):'')+'</div></div>';
   if(l.status==='planejada'){ h+='<button class="campo-btn go" onclick="campoIniciar(\''+l.id+'\')">▶ Iniciar coleta</button>'; }
-  else { h+='<div class="cc-pts"><div class="cc-ptn">'+myp+'</div><div class="cc-ptl">meus pontos'+(total!==myp?(' · equipe '+total):'')+ha+'</div></div>';
+  else { h+='<div class="cc-pts"><div class="cc-ptn">'+myp+'</div><div class="cc-ptl">pontos coletados</div></div>';
     h+='<div class="cc-step"><button class="campo-step" onclick="campoAddPontos(\''+l.id+'\',-1)">−1</button><button class="campo-step" onclick="campoAddPontos(\''+l.id+'\',1)">+1</button><button class="campo-step" onclick="campoAddPontos(\''+l.id+'\',5)">+5</button><input class="edinp num" inputmode="numeric" value="'+myp+'" onchange="campoSetPontos(\''+l.id+'\',this.value)" style="width:74px;text-align:center"></div>';
-    h+='<div class="cc-acts"><button class="campo-btn ok" onclick="campoFinalizar(\''+l.id+'\')">✓ Finalizar</button><button class="campo-btn warn" onclick="campoProblema(\''+l.id+'\')">⚠ Problema</button></div>';
-    if(l.horaInicio)h+='<div class="cc-meta">Início '+esc(l.horaInicio)+(l.data?(' · '+esc(qzDataBR(l.data))):'')+(l.horaFim?(' · fim '+esc(l.horaFim)):'')+'</div>'; }
+    if(l.horaInicio)h+='<div class="cc-meta">Início da coleta '+esc(l.horaInicio)+(l.data?(' · '+esc(qzDataBR(l.data))):'')+'</div>'; }
   return h+'</div>'; }
 function renderCampo(){ const host=document.getElementById('campoHost'); if(!host)return;
   const op=campoOperador(); const colabs=(D.colaboradores||[]).filter(c=>c&&c.ativo!==false).map(c=>c.nome).filter(Boolean); const abertas=campoColetasAbertas();
-  let h='<div class="campo-wrap"><div class="lead"><h2>Modo Campo</h2><p>Registre a coleta em poucos toques. Cliente, fazenda, data e hora entram sozinhos.</p></div>';
+  let h='<div class="campo-wrap"><div class="lead"><h2>Modo Campo</h2><p>Inicie a coleta na fazenda e anote os pontos coletados no dia. Só isso — o resto entra sozinho (você, data e hora).</p></div>';
   h+='<div class="campo-op"><span>Sou:</span><select onchange="campoSetOperador(this.value)"><option value="">— selecione —</option>'+colabs.map(n=>'<option'+(n===op?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select></div>';
-  if(_campoFeito){ h+='<div class="campo-done"><div class="cd-t">✓ Coleta concluída</div><div class="cd-s">'+esc(_campoFeito.fazenda||_campoFeito.cliente||'')+' — próximo passo: enviar amostras ao laboratório.</div><button class="campo-btn ghost" onclick="campoIrAmostras()">📦 Registrar envio de amostras</button></div>'; }
-  if(!op){ host.innerHTML=h+'<div class="op-empty">Selecione seu nome acima para ver e registrar suas coletas.</div></div>'; return; }
-  h+='<button class="campo-btn add" onclick="campoNovaToggle()">'+(_campoNova?'× Cancelar':'+ Nova coleta')+'</button>';
-  if(_campoNova)h+=campoNovaForm();
-  if(!abertas.length){ h+='<div class="op-empty">Nenhuma coleta aberta. Crie uma coleta rápida acima, ou peça ao gestor para converter um orçamento.</div>'; }
-  else abertas.forEach(l=>{ h+=campoCardHTML(l); });
+  if(!op){ host.innerHTML=h+'<div class="op-empty">Selecione seu nome acima para iniciar e registrar suas coletas.</div></div>'; return; }
+  h+=campoNovaForm();
+  if(abertas.length) abertas.forEach(l=>{ h+=campoCardHTML(l); });
   host.innerHTML=h+'</div>'; }
 /* ===== Gargalos, aging e SLA (Fase 6) ===== */
 function garYM(off){ try{ const n=new Date(); return new Date(Date.UTC(n.getFullYear(),n.getMonth()+off,1)).toISOString().slice(0,7); }catch(e){return '';} }
