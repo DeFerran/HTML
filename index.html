@@ -2430,7 +2430,19 @@ const PipelineCalc=(function(){
       if(slaStatus(dias,slaMap[c])==='vermelho')m[c].atrasados++;
       if(!p.responsaveis||!p.responsaveis[c])m[c].semResp++; });
     return Object.keys(m).map(k=>({etapa:k,fila:m[k].fila,tempoMedio:m[k].fila?m[k].somaDias/m[k].fila:0,maxDias:m[k].maxDias,atrasados:m[k].atrasados,semResp:m[k].semResp,sla:m[k].sla})); }
-  return {ETAPAS_PADRAO,ms,diasEntre,ordem,movimentos,marcos,entradaEtapaAtual,diasNaEtapa,leadTime,slaStatus,temposEntreEtapas,tempoEntreMarcos,agg,duracoesEtapa,mediaPorEtapa,gargalos};
+  // alertas priorizados (projeto parado, SLA vencido, sem responsável, aguardando etapas-chave)
+  function alertas(projetos,opts){ opts=opts||{}; const slaMap=opts.slaPorEtapa||{}; const nowISO=opts.nowISO; const out=[];
+    (projetos||[]).forEach(p=>{ if(((p&&p.status)||'ativo')!=='ativo')return; const et=p.etapaAtual; const dias=diasNaEtapa(p,nowISO); const sla=+slaMap[et]||0;
+      if(slaStatus(dias,sla)==='vermelho') out.push({tipo:'ATRASADO',nivel:'critico',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:2000+((dias||0)-sla)});
+      if(dias!=null && dias>Math.max(14,sla*2)) out.push({tipo:'PARADO',nivel:'critico',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:1500+dias});
+      if(!p.responsaveis||!p.responsaveis[et]) out.push({tipo:'SEM_RESP',nivel:'atencao',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:400});
+      if(et==='PROCESSAMENTO') out.push({tipo:'AGUARDA_PROCESSAMENTO',nivel:'atencao',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:700+((dias||0))});
+      if(et==='APRESENTACAO') out.push({tipo:'AGUARDA_APRESENTACAO',nivel:'atencao',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:720+((dias||0))});
+      if(et==='REGULAGEM') out.push({tipo:'AGUARDA_REGULAGEM',nivel:'atencao',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:740+((dias||0))});
+      if(et==='ACOMPANHAMENTO' && dias!=null && dias>Math.max(7,sla)) out.push({tipo:'ACOMP_VENCIDO',nivel:'atencao',projetoId:p.id,etapa:et,dias:dias,sla:sla,prio:760+dias});
+    });
+    return out.sort((a,b)=>b.prio-a.prio); }
+  return {ETAPAS_PADRAO,ms,diasEntre,ordem,movimentos,marcos,entradaEtapaAtual,diasNaEtapa,leadTime,slaStatus,temposEntreEtapas,tempoEntreMarcos,agg,duracoesEtapa,mediaPorEtapa,gargalos,alertas};
 })();
 // </pipeline-calc>
 // <op-csv>
@@ -2734,9 +2746,14 @@ function opAmSalvar(){
   const rec={dataEnvio:opv('maEnvio'),respEnvio:opv('maResp').trim(),volume:opv('maVolume').trim(),dataResultado:opv('maResultado'),arquivoMaquina:opv('maArquivo'),obs:opv('maObs').trim(),
     fazendas:opAmParse(opv('maFaz')),talhoes:opAmParse(opv('maTalhoes')),etiquetagem:opAmParse(opv('maEtiq'))};
   if(!rec.dataEnvio){ alert('Informe a data de envio.'); return; }
-  if(_opAmEdit){ const r=(D.opAmostras.remessas||[]).find(x=>x.id===_opAmEdit); if(r) Object.assign(r,rec); }
-  else { rec.id='opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opAmostras.remessas.push(rec); }
+  if(_opAmEdit){ const r=(D.opAmostras.remessas||[]).find(x=>x.id===_opAmEdit); if(r){ const tinha=!!r.dataResultado; Object.assign(r,rec); if(!tinha && r.dataResultado) opAmAutomacaoResultado(r); } }
+  else { rec.id='opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opAmostras.remessas.push(rec); if(rec.dataResultado) opAmAutomacaoResultado(rec); }
   opAmFecha(); if(typeof commit==='function') commit(); renderOpAmostras(); try{uiToast('✓ Remessa salva');}catch(_){} }
+/* Fase 10 — automação: resultado do laboratório recebido → projeto avança p/ Interpolação */
+function opAmAutomacaoResultado(r){ if(!r||!r.projetoId||typeof projPorId!=='function')return; const p=projPorId(r.projetoId); if(!p||((p.status||'ativo')!=='ativo'))return;
+  const cods=pipeEtapasCodigos(p.tipoWorkflowId); const iCur=cods.indexOf(p.etapaAtual), iProc=cods.indexOf('PROCESSAMENTO');
+  if(iProc>=0 && iProc>iCur){ projMover(p,'PROCESSAMENTO',{origem:'automacao',obs:'resultado do laboratório recebido'+(r.dataResultado?(' ('+r.dataResultado+')'):'')}); try{uiToast('⚙ '+p.numero+' → Interpolação (resultado recebido)');}catch(e){} }
+  else { projLog(p,{tipo:'LAB_RESULTADO',obs:'resultado do laboratório recebido',origem:'automacao'}); } }
 function opAmExcluir(){ if(!_opAmEdit)return; if(!confirm('Excluir esta remessa?'))return; D.opAmostras.remessas=(D.opAmostras.remessas||[]).filter(x=>x.id!==_opAmEdit); opAmFecha(); if(typeof commit==='function') commit(); renderOpAmostras(); }
 // <op-entregas-calc>
 /* Controle Operacional · Tela 3 — CÁLCULO PURO (sem DOM/D): progresso por linha,
@@ -6172,6 +6189,27 @@ function renderGargalos(){ const host=document.getElementById('gargHost'); if(!h
 /* ===== Painel Operacional (Fase 5) — KPIs hoje/mês + pipeline por etapa clicável ===== */
 function painelHojeISO(){ try{return new Date().toISOString().slice(0,10);}catch(e){return '';} }
 function painelMesIniISO(){ try{ const n=new Date(); return new Date(Date.UTC(n.getFullYear(),n.getMonth(),1)).toISOString().slice(0,10); }catch(e){return '';} }
+let _painelAlertaFiltro='';
+const ALERTA_LBL={ATRASADO:'Atrasado (SLA)',PARADO:'Parado',SEM_RESP:'Sem responsável',AGUARDA_PROCESSAMENTO:'Aguardando processamento',AGUARDA_APRESENTACAO:'Aguardando apresentação',AGUARDA_REGULAGEM:'Aguardando regulagem',ACOMP_VENCIDO:'Acompanhamento vencido'};
+function painelSetAlerta(t){ _painelAlertaFiltro=(t===_painelAlertaFiltro?'':t); renderPainelOp(); }
+function painelCentralHTML(projs,tp,slaMap){ const al=PipelineCalc.alertas(projs,{slaPorEtapa:slaMap,nowISO:nowISO()});
+  let h='<div class="pl-card"><h3 style="margin:0 0 8px">Precisa da sua atenção</h3>';
+  if(!al.length)return h+'<div class="cap">Nada pendente de SLA, responsável ou etapas-chave. 👍</div></div>';
+  const grp={}; al.forEach(a=>{ if(!grp[a.tipo])grp[a.tipo]={tipo:a.tipo,nivel:a.nivel,n:0}; grp[a.tipo].n++; });
+  const chips=Object.keys(grp).map(k=>grp[k]).sort((a,b)=>(a.nivel===b.nivel?b.n-a.n:(a.nivel==='critico'?-1:1)));
+  h+='<div class="alz-chips"><button class="alz-chip'+(!_painelAlertaFiltro?' on':'')+'" onclick="painelSetAlerta(\'\')">Todos <b>'+al.length+'</b></button>';
+  chips.forEach(g=>{ h+='<button class="alz-chip '+(g.nivel==='critico'?'crit':'aten')+(_painelAlertaFiltro===g.tipo?' on':'')+'" onclick="painelSetAlerta(\''+g.tipo+'\')">'+(g.nivel==='critico'?'🔴 ':'🟡 ')+esc(ALERTA_LBL[g.tipo]||g.tipo)+' <b>'+g.n+'</b></button>'; });
+  h+='</div>';
+  let list=al.filter(a=>!_painelAlertaFiltro||a.tipo===_painelAlertaFiltro);
+  if(!_painelAlertaFiltro){ const seen={}; list=list.filter(a=>{ if(seen[a.projetoId])return false; seen[a.projetoId]=1; return true; }); }
+  h+='<div style="overflow-x:auto;margin-top:4px"><table class="resp-cards"><thead><tr><th>Projeto</th><th>Cliente</th><th>Etapa</th><th>Situação</th><th>Tempo</th><th></th></tr></thead><tbody>';
+  list.slice(0,20).forEach(a=>{ const p=projPorId(a.projetoId); if(!p)return; h+='<tr>'
+    +'<td data-label="Projeto"><b>'+esc(p.numero||'—')+'</b></td><td data-label="Cliente">'+esc(p.clienteNome||'—')+'</td>'
+    +'<td data-label="Etapa"><span class="op-badge op-b-run">'+esc(pipeEtapaNome(tp,a.etapa))+'</span></td>'
+    +'<td data-label="Situação"><span class="alz-tag '+(a.nivel==='critico'?'crit':'aten')+'">'+(a.nivel==='critico'?'🔴':'🟡')+' '+esc(ALERTA_LBL[a.tipo]||a.tipo)+'</span></td>'
+    +'<td data-label="Tempo">'+(a.dias!=null?(a.dias+'d'+(a.sla>0?('/'+a.sla+'d'):'')):'—')+'</td>'
+    +'<td data-label=""><button class="edbtn" onclick="painelAbrirProj(\''+p.id+'\')">abrir</button></td></tr>'; });
+  return h+'</tbody></table></div></div>'; }
 function painelIrEtapa(cod){ _projSel=null; _projVista='lista'; _projFiltro={status:'ativo',cliente:'',etapa:cod,busca:''}; const btn=document.querySelector('#tabs button[data-v="projetos"]'); if(btn)btn.click(); }
 function painelAbrirProj(id){ const btn=document.querySelector('#tabs button[data-v="projetos"]'); if(btn)btn.click(); if(typeof projAbrir==='function')projAbrir(id); }
 function renderPainelOp(){ const host=document.getElementById('painelHost'); if(!host)return;
@@ -6193,18 +6231,8 @@ function renderPainelOp(){ const host=document.getElementById('painelHost'); if(
   pipeEtapas(tp).forEach(e=>{ const n=porEtapa[e.codigo]||0; const atr=atrasadosPorEtapa[e.codigo]||0;
     h+='<button class="pop-stage'+(atr?' hot':'')+'" onclick="painelIrEtapa(\''+e.codigo+'\')"><span class="pop-n">'+n+'</span><span class="pop-l">'+esc(e.nome)+'</span>'+(atr?('<span class="pop-atr">'+atr+' atrasado'+(atr>1?'s':'')+'</span>'):'')+'</button>'; });
   h+='</div></div>';
-  // precisa de atenção
-  h+='<div class="pl-card"><h3 style="margin:0 0 8px">Precisa da sua atenção</h3>';
-  if(!atencao.length){ h+='<div class="cap">Nenhuma etapa em atraso de SLA. 👍</div>'; }
-  else { h+='<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Projeto</th><th>Cliente</th><th>Etapa</th><th>Responsável</th><th>Atraso</th><th></th></tr></thead><tbody>';
-    atencao.slice(0,12).forEach(x=>{ const p=x.p,s=x.s; const dif=s.dias-s.sla;
-      h+='<tr><td data-label="Projeto"><b>'+esc(p.numero||'—')+'</b></td><td data-label="Cliente">'+esc(p.clienteNome||'—')+'</td>'
-       +'<td data-label="Etapa"><span class="op-badge op-b-run">'+esc(pipeEtapaNome(tp,p.etapaAtual))+'</span></td>'
-       +'<td data-label="Responsável">'+esc(projRespEtapa(p,p.etapaAtual)||'—')+'</td>'
-       +'<td data-label="Atraso"><span class="pl-sla"><span class="pl-dot vermelho"></span>'+s.dias+'/'+s.sla+'d · +'+dif+'d</span></td>'
-       +'<td data-label=""><button class="edbtn" onclick="painelAbrirProj(\''+p.id+'\')">abrir</button></td></tr>'; });
-    h+='</tbody></table></div>'; }
-  h+='</div>';
+  // central de prioridades (Fase 10)
+  h+=painelCentralHTML(projs,tp,pipeSlaMap(tp));
   host.innerHTML=h;
   kpi('painelKpi',[
     {lab:'Projetos ativos',val:String(ag.wip),c:'g',sub:ag.atrasados+' em atraso'},
@@ -8305,6 +8333,14 @@ tr.op-total td{background:var(--soft2)!important;color:var(--head);font-weight:8
 .pop-stage .pop-l{display:block;font-size:11px;color:var(--muted);margin-top:3px;font-weight:700;line-height:1.2}
 .pop-stage .pop-atr{display:block;font-size:10px;font-weight:800;color:var(--red);margin-top:4px}
 .pop-stage.hot{border-color:var(--red)}.pop-stage.hot .pop-n{color:var(--red)}
+/* Central de prioridades / alertas */
+.alz-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.alz-chip{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer}
+.alz-chip b{margin-left:3px}
+.alz-chip.on{border-color:var(--leaf);background:var(--tintG)}
+.alz-chip.crit.on{border-color:var(--red);background:var(--tintR)}
+.alz-tag{font-size:11.5px;font-weight:700;white-space:nowrap}
+.alz-tag.crit{color:var(--red)}.alz-tag.aten{color:var(--orange)}
 /* Kanban do pipeline */
 .kan-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
 .kan-col{flex:0 0 224px;min-width:224px;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px;transition:background .1s,border-color .1s}

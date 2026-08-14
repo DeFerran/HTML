@@ -213,6 +213,38 @@ test("duracoesEtapa + mediaPorEtapa: tempo médio por etapa, com filtro de mês 
   expect(set.PLANEJAMENTO).toBeUndefined(); // não saiu do planejamento em setembro
 });
 
+test("alertas: gera e prioriza (atrasado/parado/sem-resp/aguardando), ignora cancelado", () => {
+  const now = "2026-08-20T00:00:00Z";
+  const projetos = [
+    { id: "a", status: "ativo", etapaAtual: "LABORATORIO", responsaveis: {},
+      eventos: [ev("LABORATORIO", "2026-07-20T00:00:00Z")] }, // 31d, SLA 7 -> ATRASADO + PARADO + SEM_RESP
+    { id: "b", status: "ativo", etapaAtual: "APRESENTACAO", responsaveis: { APRESENTACAO: "Ana" },
+      eventos: [ev("APRESENTACAO", "2026-08-19T00:00:00Z")] }, // AGUARDA_APRESENTACAO
+    { id: "c", status: "ativo", etapaAtual: "REGULAGEM", responsaveis: { REGULAGEM: "Bruno" },
+      eventos: [ev("REGULAGEM", "2026-08-18T00:00:00Z")] }, // AGUARDA_REGULAGEM
+    { id: "x", status: "cancelado", etapaAtual: "COLETA", eventos: [] }, // ignorado
+  ];
+  const al = P.alertas(projetos, { slaPorEtapa: { LABORATORIO: 7, APRESENTACAO: 5, REGULAGEM: 7 }, nowISO: now });
+  const tipos = al.map((a: { tipo: string }) => a.tipo);
+  expect(tipos).toContain("ATRASADO");
+  expect(tipos).toContain("PARADO");
+  expect(tipos).toContain("SEM_RESP");
+  expect(tipos).toContain("AGUARDA_APRESENTACAO");
+  expect(tipos).toContain("AGUARDA_REGULAGEM");
+  // nenhum alerta do projeto cancelado
+  expect(al.every((a: { projetoId: string }) => a.projetoId !== "x")).toBe(true);
+  // o mais prioritário é do projeto atrasado (a)
+  expect(al[0].projetoId).toBe("a");
+  expect(al[0].nivel).toBe("critico");
+});
+
+test("alertas: nada pendente = lista vazia", () => {
+  const now = "2026-08-20T00:00:00Z";
+  const projetos = [{ id: "z", status: "ativo", etapaAtual: "COLETA", responsaveis: { COLETA: "Bruno" },
+    eventos: [ev("COLETA", "2026-08-19T00:00:00Z")] }]; // 1d, SLA 7, tem resp, etapa não-chave
+  expect(P.alertas(projetos, { slaPorEtapa: { COLETA: 7 }, nowISO: now }).length).toBe(0);
+});
+
 test("REABERTURA: sequência com volta de etapa é preservada nos movimentos", () => {
   const reab = { criadoEm: "2026-08-01T00:00:00Z", etapaAtual: "PROCESSAMENTO",
     eventos: [ev("MAPAS", "2026-08-10T00:00:00Z"), ev("PROCESSAMENTO", "2026-08-12T00:00:00Z", { obs: "reaberto: revisar interpolação" })] };
