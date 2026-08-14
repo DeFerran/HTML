@@ -812,6 +812,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="opresumo"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Ciclo Operacional</span></button>
     <button class="snav" data-target="projetos"><svg class="sb-ic"><use href="#ic-funnel"></use></svg><span class="sb-tx">Projetos (Pipeline)</span></button>
     <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
+    <button class="snav" data-target="produtividade"><svg class="sb-ic"><use href="#ic-target"></use></svg><span class="sb-tx">Produtividade</span></button>
     <button class="snav" data-target="opamostras"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Envio de Amostras</span></button>
     <button class="snav" data-target="opentregas"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Controle de Entregas</span></button>
     <div class="sb-group">Gestão</div>
@@ -863,6 +864,7 @@ header .htxt h1{display:none}
   <button data-v="opresumo">Ciclo Operacional</button>
   <button data-v="projetos">Projetos</button>
   <button data-v="opcoleta">Coleta de Pontos</button>
+  <button data-v="produtividade">Produtividade</button>
   <button data-v="opamostras">Envio de Amostras</button>
   <button data-v="opentregas">Controle de Entregas</button>
   <button data-v="edit">✎ Lançamentos</button>
@@ -1201,6 +1203,11 @@ header .htxt h1{display:none}
   <!-- CONTROLE OPERACIONAL · Projetos (Pipeline de AP) -->
   <section class="view" id="v-projetos">
     <div id="projHost"></div>
+  </section>
+
+  <!-- CONTROLE OPERACIONAL · Produtividade da equipe -->
+  <section class="view" id="v-produtividade">
+    <div id="prodHost"></div>
   </section>
 
   <!-- CONTROLE OPERACIONAL · Tela 1 — Coleta de Pontos Diários -->
@@ -2270,7 +2277,34 @@ const OpColetaCalc=(function(){
   function hectares(lancs){ lancs=lancs||[]; let has=false,tot=0;
     lancs.forEach(l=>{ const f=+((l&&l.fator))||0; if(f>0){ has=true; tot+=totalDia(l)*f; } });
     return has? tot : null; }
-  return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,MESES};
+  /* ===== Fase 4 — produção por colaborador / equipe (reaproveita a coleta) ===== */
+  // hectares de um colaborador num lançamento = pontos dele × fator do lançamento
+  function porColaborador(lancs){ lancs=lancs||[]; const by=new Map(); let algumFator=false;
+    lancs.forEach(l=>{ const f=+((l&&l.fator))||0; if(f>0)algumFator=true;
+      (l.colaboradores||[]).forEach(c=>{ if(!c||!c.nome)return; const p=+c.pontos||0;
+        const e=by.get(c.nome)||{nome:c.nome,pontos:0,dias:new Set(),ha:0,coletas:0};
+        e.pontos+=p; if(p>0)e.dias.add(l.data); if(f>0)e.ha+=p*f; e.coletas++; by.set(c.nome,e); }); });
+    return [...by.values()].map(e=>({nome:e.nome,pontos:e.pontos,dias:e.dias.size,coletas:e.coletas,
+      ha:algumFator?e.ha:null,mediaPontosDia:e.dias.size?e.pontos/e.dias.size:0,
+      mediaHaDia:(algumFator&&e.dias.size)?e.ha/e.dias.size:null})).sort((a,b)=>b.pontos-a.pontos); }
+  function porEquipe(lancs){ lancs=lancs||[]; const by=new Map(); let algumFator=false;
+    lancs.forEach(l=>{ const f=+((l&&l.fator))||0; if(f>0)algumFator=true; const eq=l.equipe||'—'; const t=totalDia(l);
+      const e=by.get(eq)||{equipe:eq,pontos:0,dias:new Set(),ha:0,colabs:new Set(),coletas:0};
+      e.pontos+=t; if(t>0)e.dias.add(l.data); if(f>0)e.ha+=t*f; e.coletas++;
+      (l.colaboradores||[]).forEach(c=>{ if(c&&c.nome)e.colabs.add(c.nome); }); by.set(eq,e); });
+    return [...by.values()].map(e=>({equipe:e.equipe,pontos:e.pontos,dias:e.dias.size,coletas:e.coletas,
+      colaboradores:e.colabs.size,ha:algumFator?e.ha:null,mediaPontosDia:e.dias.size?e.pontos/e.dias.size:0})).sort((a,b)=>b.pontos-a.pontos); }
+  function serieMensal(lancs){ return gruposPorMes(lancs).map(m=>({ym:m.ym,label:m.label,pontos:m.total,ha:hectares(m.lancs),dias:new Set(m.lancs.filter(l=>totalDia(l)>0).map(l=>l.data)).size})); }
+  function historicoColab(lancs,nome){ return (lancs||[]).filter(l=>(l.colaboradores||[]).some(c=>c&&c.nome===nome))
+    .slice().sort((a,b)=>String(a.data||'').localeCompare(String(b.data||''))).map(l=>{ const c=(l.colaboradores||[]).find(x=>x&&x.nome===nome); const p=c?(+c.pontos||0):0; const f=+l.fator||0;
+      return {data:l.data,equipe:l.equipe||'',cliente:l.cliente||'',fazenda:l.fazenda||'',talhao:l.talhao||'',pontos:p,ha:(f>0?p*f:null),status:l.status||''}; }); }
+  function resumoColeta(lancs){ lancs=lancs||[]; const a=agg(lancs); const ha=hectares(lancs);
+    let abertas=0,concl=0; lancs.forEach(l=>{ if(l.status==='finalizada')concl++; else if(l.status==='planejada'||l.status==='andamento')abertas++; });
+    const colabs=new Set(); lancs.forEach(l=>(l.colaboradores||[]).forEach(c=>{if(c&&c.nome)colabs.add(c.nome);}));
+    return {pontos:a.totalPontos,dias:a.diasTrabalhados,mediaPontosDia:a.mediaDiaria,ha:ha,
+      mediaHaDia:(ha!=null&&a.diasTrabalhados)?ha/a.diasTrabalhados:null,
+      coletas:lancs.length,abertas:abertas,concluidas:concl,colaboradores:colabs.size}; }
+  return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,porColaborador,porEquipe,serieMensal,historicoColab,resumoColeta,MESES};
 })();
 // </op-coleta-calc>
 // <quote-calc>
@@ -3717,6 +3751,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='custos')renderCustos();
   if(b.dataset.v==='opresumo'){ try{renderOpResumo();}catch(e){console.warn('opResumo',e);} }
   if(b.dataset.v==='projetos'){ _projSel=null; try{renderProjetosView();}catch(e){console.warn('projetos',e);} }
+  if(b.dataset.v==='produtividade'){ _prodColab=null; try{renderProdutividade();}catch(e){console.warn('produtividade',e);} }
   if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
   if(b.dataset.v==='opamostras'){ try{renderOpAmostras();}catch(e){console.warn('opAmostras',e);} }
   if(b.dataset.v==='opentregas'){ try{renderOpEntregas();}catch(e){console.warn('opEntregas',e);} }
@@ -5969,6 +6004,74 @@ function projMover(p,novaEtapa,opts){ if(!p||!novaEtapa)return; opts=opts||{}; c
   p.etapaAtual=novaEtapa; projLog(p,{tipo:'ETAPA',etapaDe:de,etapaPara:novaEtapa,responsavel:opts.responsavel||'',obs:opts.obs||'',origem:opts.origem||'manual',em:opts.em});
   if(novaEtapa===pipeCondConclusao(p.tipoWorkflowId)){ p.status='concluido'; p.concluidoEm=opts.em||nowISO(); }
   else if(p.status==='concluido'){ p.status='ativo'; p.concluidoEm=''; } }
+/* ===== Produtividade da equipe (Fase 4) — reaproveita a Coleta (opColeta) ===== */
+let _prodPeriodo='30', _prodDe='', _prodAte='', _prodColab=null;
+function prodLancs(){ return (D.opColeta&&D.opColeta.lancamentos)||[]; }
+function prodISO(d){ try{return d.toISOString().slice(0,10);}catch(e){return '';} }
+function prodRange(){ if(_prodPeriodo==='custom')return {de:_prodDe||'',ate:_prodAte||''};
+  const now=new Date(); const hoje=prodISO(now);
+  if(_prodPeriodo==='hoje')return {de:hoje,ate:hoje};
+  if(_prodPeriodo==='7'){ const d=new Date(now); d.setDate(d.getDate()-6); return {de:prodISO(d),ate:hoje}; }
+  if(_prodPeriodo==='30'){ const d=new Date(now); d.setDate(d.getDate()-29); return {de:prodISO(d),ate:hoje}; }
+  if(_prodPeriodo==='mes'){ const d=new Date(now.getFullYear(),now.getMonth(),1); return {de:prodISO(d),ate:hoje}; }
+  return {de:'',ate:''}; }
+function prodFiltrados(){ const r=prodRange(); return OpColetaCalc.filtra(prodLancs(),{de:r.de,ate:r.ate}); }
+function prodSetPeriodo(p){ _prodPeriodo=p; renderProdutividade(); }
+function prodSetCustom(k,v){ if(k==='de')_prodDe=v; else _prodAte=v; _prodPeriodo='custom'; renderProdutividade(); }
+function prodAbrirColab(nome){ _prodColab=nome; renderProdutividade(); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} }
+function prodFecharColab(){ _prodColab=null; renderProdutividade(); }
+function prodNum(v){ return (v==null)?'—':(typeof fnum==='function'?fnum(Math.round(v)):String(Math.round(v))); }
+function prodDec(v){ return (v==null)?'—':(+v).toFixed(1); }
+function prodHa(v){ return v==null?'—':(prodNum(v)+' ha'); }
+function prodPeriodoLabel(){ const m={hoje:'Hoje','7':'Últimos 7 dias','30':'Últimos 30 dias',mes:'Este mês',tudo:'Tudo',custom:'Personalizado'}; return m[_prodPeriodo]||''; }
+function prodPeriodoBar(r){ const opts=[['hoje','Hoje'],['7','7 dias'],['30','30 dias'],['mes','Este mês'],['tudo','Tudo']];
+  let h='<div class="pl-toolbar"><div class="pl-seg">'+opts.map(o=>'<button class="'+(_prodPeriodo===o[0]?'on':'')+'" onclick="prodSetPeriodo(\''+o[0]+'\')">'+o[1]+'</button>').join('')+'</div>';
+  h+='<span style="display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)">De <input type="date" class="edinp" value="'+esc(r.de||'')+'" onchange="prodSetCustom(\'de\',this.value)" style="min-height:38px;width:150px"> até <input type="date" class="edinp" value="'+esc(r.ate||'')+'" onchange="prodSetCustom(\'ate\',this.value)" style="min-height:38px;width:150px"></span></div>'; return h; }
+function renderProdutividade(){ const host=document.getElementById('prodHost'); if(!host)return;
+  if(_prodColab)return renderProdColab(host,_prodColab);
+  const lancs=prodFiltrados(); const r=prodRange();
+  const res=OpColetaCalc.resumoColeta(lancs); const porCol=OpColetaCalc.porColaborador(lancs); const porEq=OpColetaCalc.porEquipe(lancs); const serie=OpColetaCalc.serieMensal(lancs);
+  let h='<div class="lead"><h2>Produtividade da equipe</h2><p>Quem coletou, quanto e onde — a partir dos lançamentos da <b>Coleta de Pontos</b> (mesma base, sem redigitar). Escolha o período e clique num colaborador para ver o histórico diário. Leia com <b>contexto</b> (malha, profundidade, distância, dificuldade): mais pontos nem sempre é melhor.</p></div>';
+  h+=prodPeriodoBar(r)+'<div class="kpis" id="prodKpi"></div>';
+  if(!lancs.length){ host.innerHTML=h+'<div class="op-empty" style="margin-top:14px">Nenhuma coleta no período. Ajuste o período ou lance coletas em <b>Coleta de Pontos</b>.</div>'; kpi('prodKpi',[{lab:'Pontos',val:'0',c:'gold'}]); return; }
+  h+='<div class="panel"><h3>Pontos por colaborador</h3><div class="cap">'+esc(prodPeriodoLabel())+' · ordenado por pontos. Leia com contexto (a barra é volume bruto, não avaliação).</div><div class="chartbox"><canvas id="cProdColab"></canvas></div></div>';
+  const totP=porCol.reduce((a,c)=>a+c.pontos,0)||1;
+  h+='<div class="panel"><h3>Por colaborador</h3><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Colaborador</th><th class="num">Dias</th><th class="num">Pontos</th><th class="num">Pontos/dia</th><th class="num">Hectares</th><th class="num">ha/dia</th><th class="num">% pontos</th><th></th></tr></thead><tbody>';
+  porCol.forEach(c=>{ h+='<tr><td data-label="Colaborador"><b>'+esc(c.nome)+'</b></td><td data-label="Dias" class="num">'+c.dias+'</td><td data-label="Pontos" class="num">'+prodNum(c.pontos)+'</td><td data-label="Pontos/dia" class="num">'+prodDec(c.mediaPontosDia)+'</td><td data-label="Hectares" class="num">'+prodHa(c.ha)+'</td><td data-label="ha/dia" class="num">'+(c.mediaHaDia==null?'—':prodNum(c.mediaHaDia))+'</td><td data-label="% pontos" class="num">'+PCT(c.pontos/totP)+'</td><td data-label=""><button class="edbtn" onclick="prodAbrirColab(\''+esc(String(c.nome).replace(/'/g,"\\'"))+'\')">histórico</button></td></tr>'; });
+  h+='</tbody></table></div></div>';
+  h+='<div class="panel"><h3>Por equipe</h3><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Equipe</th><th class="num">Colab.</th><th class="num">Dias</th><th class="num">Pontos</th><th class="num">Pontos/dia</th><th class="num">Hectares</th></tr></thead><tbody>';
+  porEq.forEach(e=>{ h+='<tr><td data-label="Equipe"><b>'+esc(e.equipe)+'</b></td><td data-label="Colab." class="num">'+e.colaboradores+'</td><td data-label="Dias" class="num">'+e.dias+'</td><td data-label="Pontos" class="num">'+prodNum(e.pontos)+'</td><td data-label="Pontos/dia" class="num">'+prodDec(e.mediaPontosDia)+'</td><td data-label="Hectares" class="num">'+prodHa(e.ha)+'</td></tr>'; });
+  h+='</tbody></table></div>';
+  if(serie.length>1)h+='<div class="panel"><h3>Evolução mensal</h3><div class="cap">Pontos (barras) e hectares (linha) por mês no período.</div><div class="chartbox"><canvas id="cProdMes"></canvas></div></div>';
+  host.innerHTML=h;
+  kpi('prodKpi',[
+    {lab:'Pontos',val:prodNum(res.pontos),c:'g',sub:res.dias+' dia(s) trabalhado(s)'},
+    {lab:'Hectares',val:res.ha==null?'—':prodNum(res.ha),c:'gold',sub:'estimados (pontos × fator)'},
+    {lab:'Pontos/dia',val:prodDec(res.mediaPontosDia),c:'g',sub:res.mediaHaDia==null?'—':prodNum(res.mediaHaDia)+' ha/dia'},
+    {lab:'Coletas',val:String(res.coletas),c:'gold',sub:res.concluidas+' concl. · '+res.abertas+' abertas'},
+    {lab:'Colaboradores',val:String(res.colaboradores),c:'g',sub:'ativos no período'} ]);
+  try{ mk('cProdColab',{type:'bar',data:{labels:porCol.map(c=>c.nome),datasets:[{label:'Pontos',data:porCol.map(c=>c.pontos),backgroundColor:C.moss,borderRadius:5}]},
+    options:{maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:false},datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:11},formatter:v=>fnum(v)},tooltip:{}},scales:{x:{ticks:{autoSkip:false}},y:{beginAtZero:true}}}});
+  }catch(e){}
+  if(serie.length>1){ try{ mk('cProdMes',{data:{labels:serie.map(s=>s.label),datasets:[
+    {type:'bar',label:'Pontos',data:serie.map(s=>s.pontos),backgroundColor:C.moss,borderRadius:5,order:2},
+    {type:'line',label:'Hectares',data:serie.map(s=>s.ha||0),borderColor:C.gold,backgroundColor:C.gold,yAxisID:'y1',order:1,tension:.3}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:true},datalabels:{display:false}},scales:{y:{beginAtZero:true,position:'left'},y1:{beginAtZero:true,position:'right',grid:{display:false}}}}}); }catch(e){} }
+}
+function renderProdColab(host,nome){ const lancs=prodFiltrados(); const hist=OpColetaCalc.historicoColab(lancs,nome);
+  const pontos=hist.reduce((a,r)=>a+r.pontos,0); const dias=new Set(hist.filter(r=>r.pontos>0).map(r=>r.data)).size; const haArr=hist.filter(r=>r.ha!=null); const ha=haArr.length?haArr.reduce((a,r)=>a+r.ha,0):null;
+  let h='<div class="ed-back" onclick="prodFecharColab()" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-weight:800;color:var(--orange)"><svg class="ed-ic"><use href="#ic-chevron"></use></svg> Voltar à produtividade</div>';
+  h+='<div class="lead"><h2>'+esc(nome)+'</h2><p>'+esc(prodPeriodoLabel())+' — histórico diário de coleta. Contexto importa: leia junto de malha, profundidade e dificuldade da fazenda.</p></div>';
+  h+='<div class="kpis" id="prodColKpi"></div>';
+  if(!hist.length){ host.innerHTML=h+'<div class="op-empty" style="margin-top:14px">Sem coletas deste colaborador no período.</div>'; kpi('prodColKpi',[{lab:'Pontos',val:'0',c:'gold'}]); return; }
+  h+='<div class="panel"><h3>Histórico diário</h3><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Data</th><th>Equipe</th><th>Cliente</th><th>Fazenda</th><th>Talhão</th><th class="num">Pontos</th><th class="num">Hectares</th><th>Status</th></tr></thead><tbody>';
+  hist.slice().reverse().forEach(r=>{ const si=OpColetaCalc.statusInfo(r.status); h+='<tr><td data-label="Data">'+esc(r.data?qzDataBR(r.data):'—')+'</td><td data-label="Equipe">'+esc(r.equipe||'—')+'</td><td data-label="Cliente">'+esc(r.cliente||'—')+'</td><td data-label="Fazenda">'+esc(r.fazenda||'—')+'</td><td data-label="Talhão">'+esc(r.talhao||'—')+'</td><td data-label="Pontos" class="num">'+prodNum(r.pontos)+'</td><td data-label="Hectares" class="num">'+prodHa(r.ha)+'</td><td data-label="Status"><span class="op-badge '+si.cls+'">'+esc(si.label)+'</span></td></tr>'; });
+  h+='</tbody></table></div></div>'; host.innerHTML=h;
+  kpi('prodColKpi',[
+    {lab:'Pontos',val:prodNum(pontos),c:'g',sub:dias+' dia(s)'},
+    {lab:'Pontos/dia',val:prodDec(dias?pontos/dias:0),c:'g'},
+    {lab:'Hectares',val:ha==null?'—':prodNum(ha),c:'gold',sub:'estimados'},
+    {lab:'Coletas',val:String(hist.length),c:'gold'} ]); }
 /* ===== Pipeline de projetos — views (Fase 3: timeline + visão do cliente) ===== */
 let _projSel=null, _projVista='lista', _projFiltro={status:'',cliente:'',etapa:'',busca:''};
 function projCodigos(p){ return pipeEtapasCodigos(p&&p.tipoWorkflowId); }

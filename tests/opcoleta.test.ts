@@ -88,3 +88,68 @@ test("hectares: soma pontos×fator por lançamento; null se nenhum fator", () =>
     { colaboradores: [{ pontos: 999 }] },
   ])).toBe(20);
 });
+
+/* ===== Fase 4 — produtividade por colaborador / equipe ===== */
+const LANCS_F = [
+  { data: "2026-08-11", equipe: "Equipe 01", cliente: "Casari", fazenda: "Casari", talhao: "C1", status: "finalizada", fator: 3, colaboradores: [{ nome: "Agnaldo", pontos: 30 }, { nome: "Iago", pontos: 20 }] },
+  { data: "2026-08-12", equipe: "Equipe 01", cliente: "Aliança", fazenda: "Aliança", talhao: "A1", status: "andamento", fator: 5, colaboradores: [{ nome: "Agnaldo", pontos: 10 }] },
+  { data: "2026-09-01", equipe: "Equipe 02", cliente: "Iracema", fazenda: "Iracema", talhao: "I1", status: "finalizada", fator: 2, colaboradores: [{ nome: "Iago", pontos: 40 }] },
+];
+
+test("porColaborador: pontos, dias, ha (pontos×fator), médias e ordenação", () => {
+  const pc = OP.porColaborador(LANCS_F);
+  const agn = pc.find((c: { nome: string }) => c.nome === "Agnaldo");
+  expect(agn.pontos).toBe(40); // 30 + 10
+  expect(agn.dias).toBe(2);
+  expect(agn.ha).toBe(30 * 3 + 10 * 5); // 90 + 50 = 140
+  expect(agn.mediaPontosDia).toBeCloseTo(20, 5);
+  expect(agn.mediaHaDia).toBeCloseTo(70, 5);
+  const iago = pc.find((c: { nome: string }) => c.nome === "Iago");
+  expect(iago.ha).toBe(20 * 3 + 40 * 2); // 60 + 80 = 140
+  expect(pc[0].pontos).toBeGreaterThanOrEqual(pc[1].pontos); // ordenado
+});
+
+test("porColaborador: ha null quando nenhum lançamento tem fator", () => {
+  const pc = OP.porColaborador([{ data: "2026-08-11", colaboradores: [{ nome: "X", pontos: 10 }] }]);
+  expect(pc[0].ha).toBeNull();
+  expect(pc[0].mediaHaDia).toBeNull();
+});
+
+test("porEquipe: agrega por equipe (pontos, dias, ha, nº colaboradores)", () => {
+  const pe = OP.porEquipe(LANCS_F);
+  const e1 = pe.find((e: { equipe: string }) => e.equipe === "Equipe 01");
+  expect(e1.pontos).toBe(50 + 10); // dia1 (30+20) + dia2 (10)
+  expect(e1.dias).toBe(2);
+  expect(e1.colaboradores).toBe(2); // Agnaldo, Iago
+  expect(e1.ha).toBe(50 * 3 + 10 * 5); // 150 + 50 = 200
+});
+
+test("serieMensal: pontos e ha por mês", () => {
+  const s = OP.serieMensal(LANCS_F);
+  expect(s.length).toBe(2);
+  expect(s[0].ym).toBe("2026-08");
+  expect(s[0].pontos).toBe(60); // 50 + 10
+  expect(s[0].ha).toBe(50 * 3 + 10 * 5); // 200
+  expect(s[1].ym).toBe("2026-09");
+  expect(s[1].pontos).toBe(40);
+});
+
+test("historicoColab: linhas diárias do colaborador com ha por dia", () => {
+  const h = OP.historicoColab(LANCS_F, "Agnaldo");
+  expect(h.length).toBe(2);
+  expect(h[0].data).toBe("2026-08-11");
+  expect(h[0].pontos).toBe(30);
+  expect(h[0].ha).toBe(90); // 30 × 3
+  expect(h[1].ha).toBe(50); // 10 × 5
+});
+
+test("resumoColeta: pontos, ha, dias, coletas abertas/concluídas, colaboradores", () => {
+  const r = OP.resumoColeta(LANCS_F);
+  expect(r.pontos).toBe(100); // 60 + 40
+  expect(r.ha).toBe(200 + 80); // ago 200 + set 80
+  expect(r.dias).toBe(3);
+  expect(r.coletas).toBe(3);
+  expect(r.concluidas).toBe(2); // 2 finalizadas
+  expect(r.abertas).toBe(1); // 1 andamento
+  expect(r.colaboradores).toBe(2); // Agnaldo, Iago
+});
