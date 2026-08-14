@@ -4597,7 +4597,7 @@ const IAHUB_SUBS=[
   {k:'copiloto',t:'Copiloto AP',ic:'🤖'},
   {k:'agentes',t:'Agentes',ic:'🧩'},
   {k:'automacoes',t:'Automações',ic:'⚡'},
-  {k:'alertas',t:'Alertas Inteligentes',ic:'🔔',futuro:true},
+  {k:'alertas',t:'Alertas Inteligentes',ic:'🔔'},
   {k:'conhecimento',t:'Conhecimento',ic:'📚'},
   {k:'memoria',t:'Memória',ic:'🧠'},
   {k:'whatsapp',t:'WhatsApp',ic:'💬'},
@@ -4625,6 +4625,7 @@ function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
   if(k==='automacoes') return iahubAutomacoes(body);
   if(k==='whatsapp') return iahubWhatsapp(body);
   if(k==='aprovacoes') return iahubAprovacoes(body);
+  if(k==='alertas') return iahubAlertas(body);
   if(k==='copiloto'){ body.innerHTML='<div class="panel"><h3>Copiloto AP</h3><div class="cap">O Copiloto abre em um painel lateral.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="copOpen()">🤖 Abrir Copiloto</button></div></div>'; return; }
   if(k==='conhecimento'){ body.innerHTML='<div class="panel"><h3>Base de Conhecimento</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=ia]\').click()">📚 Abrir Conhecimento</button></div></div>'; return; }
   if(k==='memoria'){ body.innerHTML='<div class="panel"><h3>Memória</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=iamem]\').click()">🧠 Abrir Memória</button></div></div>'; return; }
@@ -4919,6 +4920,53 @@ async function apPropor(){ if(!sb||!ehAdmin)return; const to=(document.getElemen
   try{ const {data,error}=await sb.functions.invoke('ai-actions',{body:{action:'propose',tool:'send_external_whatsapp_message',entity_type:'whatsapp',entity_id:to,payload:{to,text}}}); if(error)throw new Error(await kbFnError(error));
     apMsg('Proposta criada (pendente de aprovação).','ok'); document.getElementById('apText').value=''; apList();
   }catch(e){ apMsg('Erro: '+(e.message||e),'err'); } }
+/* ---------- Alertas Inteligentes / Tarefas / Rascunhos (Central) — admin ---------- */
+function alMsg(t,cls){ const e=document.getElementById('alMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
+function alNivelBadge(n){ const m={info:'#0A6A30',aviso:'#9a6a00',critico:'#c0392b'}; return '<span style="color:'+(m[n]||'#777')+';font-weight:700">'+esc(n||'')+'</span>'; }
+function tkPrioBadge(p){ const m={baixa:'#0A6A30',media:'#9a6a00',alta:'#c0392b'}; return '<span style="color:'+(m[p]||'#777')+';font-weight:700">'+esc(p||'')+'</span>'; }
+function iahubAlertas(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  body.innerHTML=
+    '<div class="panel"><h3>Alertas internos</h3><div class="cap">Gerados por SAFE_WRITE (Copiloto/automações) ou criados aqui. Internos — não saem da plataforma.</div>'
+    +'<div class="edform"><label>Nível<br><select id="alN"><option value="info">info</option><option value="aviso">aviso</option><option value="critico">crítico</option></select></label><label>Título<br><input id="alT" type="text"></label><label style="flex:1;min-width:220px">Mensagem<br><input id="alMsgIn" type="text"></label></div>'
+    +'<div style="margin-top:8px"><button class="edbtn" onclick="alCriar()">➕ Criar alerta</button> <button class="edbtn" onclick="alList()">↺ Atualizar</button></div>'
+    +'<div class="authmsg" id="alMsg" style="margin-top:8px"></div>'
+    +'<div style="overflow-x:auto;margin-top:8px"><table id="alTab" class="resp-cards"></table></div></div>'
+    +'<div class="panel"><h3>Tarefas</h3>'
+      +'<div class="edform"><label style="flex:1;min-width:220px">Título<br><input id="tkT" type="text"></label><label>Prioridade<br><select id="tkP"><option value="baixa">baixa</option><option value="media" selected>média</option><option value="alta">alta</option></select></label></div>'
+      +'<div style="margin-top:8px"><button class="edbtn" onclick="tkCriar()">➕ Criar tarefa</button> <button class="edbtn" onclick="tkList()">↺ Atualizar</button></div>'
+      +'<div style="overflow-x:auto;margin-top:8px"><table id="tkTab" class="resp-cards"></table></div></div>'
+    +'<div class="panel"><h3>Rascunhos de relatório</h3><div class="cap">Rascunhos internos (não oficiais) gerados por generate_report_draft.</div>'
+      +'<div style="margin-top:8px"><button class="edbtn" onclick="rdList()">↺ Atualizar</button></div>'
+      +'<div style="overflow-x:auto;margin-top:8px"><table id="rdTab" class="resp-cards"></table></div></div>';
+  alList(); tkList(); rdList();
+}
+async function alCriar(){ if(!sb||!ehAdmin)return; const nivel=document.getElementById('alN').value; const titulo=(document.getElementById('alT').value||'').trim()||null; const mensagem=(document.getElementById('alMsgIn').value||'').trim();
+  if(!mensagem){ alMsg('Informe a mensagem.','err'); return; }
+  try{ const {data,error}=await sb.functions.invoke('ai-actions',{body:{action:'execute_safe',tool:'create_internal_alert',payload:{nivel,titulo,mensagem}}}); if(error)throw new Error(await kbFnError(error)); if(data&&data.error)throw new Error(data.error.message||'erro'); alMsg('Alerta criado.','ok'); document.getElementById('alT').value='';document.getElementById('alMsgIn').value=''; alList(); }catch(e){ alMsg('Erro: '+(e.message||e),'err'); } }
+async function alList(){ const h=document.getElementById('alTab'); if(!h||!sb)return; h.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{ const {data,error}=await sb.from('ai_alerts').select('id,nivel,titulo,mensagem,entity_type,entity_id,lido,criado_em').order('criado_em',{ascending:false}).limit(100); if(error)throw error;
+    const rows=(data||[]); if(!rows.length){ h.innerHTML='<tbody><tr><td class="cap">Nenhum alerta.</td></tr></tbody>'; return; }
+    h.innerHTML='<thead><tr><th>Nível</th><th>Título</th><th>Mensagem</th><th>Entidade</th><th>Lido</th><th>Data</th><th></th></tr></thead><tbody>'+rows.map(a=>{ const ent=(a.entity_type||'')+(a.entity_id?(' · '+a.entity_id):'')||'—'; const act=a.lido?'':'<button class="edbtn" onclick="alLido(\''+a.id+'\')">marcar lido</button>';
+      return '<tr'+(a.lido?' style="opacity:.6"':'')+'><td>'+alNivelBadge(a.nivel)+'</td><td>'+esc(a.titulo||'—')+'</td><td>'+esc(String(a.mensagem||'').slice(0,140))+'</td><td>'+esc(ent)+'</td><td>'+(a.lido?'sim':'não')+'</td><td>'+esc(iahData(a.criado_em))+'</td><td>'+act+'</td></tr>'; }).join('')+'</tbody>'; try{wrapTables();}catch(e){}
+  }catch(e){ h.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
+async function alLido(id){ if(!sb)return; try{ const {error}=await sb.from('ai_alerts').update({lido:true}).eq('id',id); if(error)throw error; alList(); }catch(e){ alMsg('Erro: '+(e.message||e),'err'); } }
+async function tkCriar(){ if(!sb||!ehAdmin)return; const titulo=(document.getElementById('tkT').value||'').trim(); const prioridade=document.getElementById('tkP').value; if(!titulo){ alMsg('Informe o título da tarefa.','err'); return; }
+  try{ const {data,error}=await sb.functions.invoke('ai-actions',{body:{action:'execute_safe',tool:'create_task',payload:{titulo,prioridade}}}); if(error)throw new Error(await kbFnError(error)); if(data&&data.error)throw new Error(data.error.message||'erro'); alMsg('Tarefa criada.','ok'); document.getElementById('tkT').value=''; tkList(); }catch(e){ alMsg('Erro: '+(e.message||e),'err'); } }
+async function tkList(){ const h=document.getElementById('tkTab'); if(!h||!sb)return; h.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{ const {data,error}=await sb.from('ai_tasks').select('id,titulo,prioridade,status,entity_type,entity_id,criado_em').order('criado_em',{ascending:false}).limit(100); if(error)throw error;
+    const rows=(data||[]); if(!rows.length){ h.innerHTML='<tbody><tr><td class="cap">Nenhuma tarefa.</td></tr></tbody>'; return; }
+    const next={aberta:'em_andamento',em_andamento:'concluida'};
+    h.innerHTML='<thead><tr><th>Tarefa</th><th>Prioridade</th><th>Status</th><th>Data</th><th></th></tr></thead><tbody>'+rows.map(t=>{ const n=next[t.status]; const act=n?('<button class="edbtn" onclick="tkStatus(\''+t.id+'\',\''+n+'\')">→ '+n.replace('_',' ')+'</button>'):'✓';
+      return '<tr'+(t.status==='concluida'?' style="opacity:.6"':'')+'><td>'+esc(t.titulo)+'</td><td>'+tkPrioBadge(t.prioridade)+'</td><td>'+esc(t.status)+'</td><td>'+esc(iahData(t.criado_em))+'</td><td>'+act+'</td></tr>'; }).join('')+'</tbody>'; try{wrapTables();}catch(e){}
+  }catch(e){ h.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
+async function tkStatus(id,status){ if(!sb)return; try{ const {error}=await sb.from('ai_tasks').update({status,atualizado_em:new Date().toISOString()}).eq('id',id); if(error)throw error; tkList(); }catch(e){ alMsg('Erro: '+(e.message||e),'err'); } }
+async function rdList(){ const h=document.getElementById('rdTab'); if(!h||!sb)return; h.innerHTML='<tbody><tr><td class="cap">Carregando…</td></tr></tbody>';
+  try{ const {data,error}=await sb.from('ai_report_drafts').select('id,titulo,conteudo,criado_em').order('criado_em',{ascending:false}).limit(50); if(error)throw error;
+    const rows=(data||[]); if(!rows.length){ h.innerHTML='<tbody><tr><td class="cap">Nenhum rascunho.</td></tr></tbody>'; return; }
+    h.innerHTML='<thead><tr><th>Título</th><th>Prévia</th><th>Data</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.titulo)+'</td><td>'+esc(String(r.conteudo||'').slice(0,120))+'</td><td>'+esc(iahData(r.criado_em))+'</td><td><button class="edbtn" onclick="rdView(\''+r.id+'\')">ver</button></td></tr>').join('')+'</tbody>'; try{wrapTables();}catch(e){}
+  }catch(e){ h.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
+async function rdView(id){ if(!sb)return; try{ const {data}=await sb.from('ai_report_drafts').select('titulo,conteudo').eq('id',id).maybeSingle(); if(data) alert((data.titulo||'Rascunho')+'\n\n'+(data.conteudo||'')); }catch(e){ alMsg('Erro: '+(e.message||e),'err'); } }
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;
