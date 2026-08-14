@@ -5747,12 +5747,36 @@ function qzRecalc(){ if(!_qz)return; const area=+_qz.areaHa||0;
   _qz.pagamento={condId:_qz.pagamentoCondId,parcelas:cond?QuoteCalc.parcelas(_qz.total,cond.parcelas,base):[]};
   _qz.validoAte=QuoteCalc.venc(_qz.emitidoEm,+_qz.validadeDias||0); _qz.atualizadoEm=nowISO(); }
 function qzSalvarDraft(){ if(!_qz)return; qzRecalc(); if(!Array.isArray(D.quotes))D.quotes=[]; const i=D.quotes.findIndex(q=>q&&q.id===_qz.id); if(i>=0)D.quotes[i]=_qz; else D.quotes.push(_qz); commit(); }
+function qzLog(q,acao,detalhe){ if(!q)return; if(!Array.isArray(q.historico))q.historico=[]; q.historico.push({em:nowISO(),quem:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local',acao:acao,detalhe:detalhe||''}); }
+function qzDataHora(iso){ const s=String(iso||''); if(s.length<16)return s; return qzDataBR(s.slice(0,10))+' '+s.slice(11,16); }
+function qzHistHTML(q){ const hs=(q&&q.historico)||[]; if(!hs.length)return '<span class="cap">Sem histórico.</span>';
+  return '<div style="display:flex;flex-direction:column;gap:5px">'+hs.slice().reverse().map(e=>'<div style="font-size:12.5px"><b>'+esc(e.acao||'')+'</b>'+(e.detalhe?(' — '+esc(e.detalhe)):'')+' <span class="cap">· '+esc(qzDataHora(e.em))+' · '+esc(e.quem||'')+'</span></div>').join('')+'</div>'; }
+function qzEditavel(q){ return !q || q.status==='rascunho' || (q.aprovacao&&q.aprovacao.status==='devolvido'); }
 function orcNovo(){ const base=(function(){try{return new Date().toISOString().slice(0,10);}catch(e){return '';}})();
-  _qz={id:'q'+uidLanc(),numero:qtNumero(),versao:1,status:'rascunho',clienteNome:'',fazenda:'',municipio:'',vendedor:'',safra:qtSafraAtual(),areaHa:0,itens:[],descontoGeralPct:0,subtotal:0,descontoValor:0,total:0,totalTabela:0,desvioPct:null,pagamentoCondId:((D.comercial.condicoesPgto||[])[0]||{}).id||'',pagamento:{parcelas:[]},validadeDias:+D.comercial.validadePadraoDias||15,emitidoEm:base,validoAte:'',obsCliente:'',obsInterna:'',criadoEm:nowISO(),criadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||''};
-  _qzStep=0; qzSalvarDraft(); renderOrcamentosView(); }
-function orcAbrir(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(q){ _qz=JSON.parse(JSON.stringify(q)); if(!Array.isArray(_qz.itens))_qz.itens=[]; _qzStep=0; renderOrcamentosView(); } }
+  _qz={id:'q'+uidLanc(),numero:qtNumero(),versao:1,versaoDe:null,substituidoPor:null,status:'rascunho',clienteNome:'',fazenda:'',municipio:'',vendedor:'',safra:qtSafraAtual(),areaHa:0,itens:[],descontoGeralPct:0,subtotal:0,descontoValor:0,total:0,totalTabela:0,desvioPct:null,pagamentoCondId:((D.comercial.condicoesPgto||[])[0]||{}).id||'',pagamento:{parcelas:[]},validadeDias:+D.comercial.validadePadraoDias||15,emitidoEm:base,validoAte:'',obsCliente:'',obsInterna:'',historico:[],criadoEm:nowISO(),criadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||''};
+  qzLog(_qz,'criado','rascunho'); _qzStep=0; qzSalvarDraft(); renderOrcamentosView(); }
+function orcAbrir(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return;
+  if(!qzEditavel(q)){ // não sobrescreve versão já enviada/aprovada: cria nova versão para editar
+    if(!confirm('Este orçamento está em "'+(ORC_STATUS_LBL[q.status]||q.status)+'". Editar cria a versão v'+((+q.versao||1)+1)+' (a atual é preservada). Continuar?'))return;
+    return orcNovaVersao(id); }
+  _qz=JSON.parse(JSON.stringify(q)); if(!Array.isArray(_qz.itens))_qz.itens=[]; if(!Array.isArray(_qz.historico))_qz.historico=[]; _qzStep=0; renderOrcamentosView(); }
+function orcNovaVersao(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; const nv=JSON.parse(JSON.stringify(q));
+  nv.id='q'+uidLanc(); nv.versao=(+q.versao||1)+1; nv.versaoDe=q.id; nv.substituidoPor=null; nv.status='rascunho'; if(nv.aprovacao)nv.aprovacao={exigida:false,status:'',motivo:'',por:'',em:''};
+  if(!Array.isArray(nv.historico))nv.historico=[]; qzLog(nv,'nova versão','v'+nv.versao+' (de '+q.numero+' v'+(q.versao||1)+')');
+  q.substituidoPor=nv.id; if(!Array.isArray(D.quotes))D.quotes=[]; D.quotes.push(nv); commit(); _qz=nv; _qzStep=0; renderOrcamentosView(); uiToast('Nova versão v'+nv.versao+' criada'); }
+function orcDuplicar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; const dup=JSON.parse(JSON.stringify(q));
+  dup.id='q'+uidLanc(); dup.numero=qtNumero(); dup.versao=1; dup.versaoDe=null; dup.substituidoPor=null; dup.status='rascunho'; dup.aprovacao={exigida:false,status:'',motivo:'',por:'',em:''};
+  dup.safra=qtSafraAtual(); dup.emitidoEm=(function(){try{return new Date().toISOString().slice(0,10);}catch(e){return '';}})(); dup.criadoEm=nowISO(); dup.historico=[];
+  // repuxa preços vigentes e avisa se mudou
+  let mudou=false; (dup.itens||[]).forEach(it=>{ const novo=qtPrecoTabela(it.servico); if(Math.abs((+it.precoTabela||0)-novo)>0.005)mudou=true; });
+  const _save=_qz; _qz=dup; qzRecalc(); _qz=_save;
+  qzLog(dup,'duplicado','de '+q.numero+(mudou?' · preços atualizados p/ tabela vigente':''));
+  if(!Array.isArray(D.quotes))D.quotes=[]; D.quotes.push(dup); commit(); _qz=dup; _qzStep=0; renderOrcamentosView();
+  uiToast(mudou?('Duplicado — preços atualizados para a tabela vigente'):('✓ Orçamento duplicado ('+dup.numero+')')); }
 function orcFechar(){ _qz=null; renderOrcamentosView(); }
-function orcRemover(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Remover o orçamento '+(q.numero||'')+'?'))return; D.quotes=(D.quotes||[]).filter(x=>x&&x.id!==id); commit(); renderOrcamentosView(); }
+function orcRemover(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Remover o orçamento '+(q.numero||'')+(q.versao>1?(' v'+q.versao):'')+'?'))return; D.quotes=(D.quotes||[]).filter(x=>x&&x.id!==id); (D.quotes||[]).forEach(x=>{ if(x&&x.substituidoPor===id)x.substituidoPor=null; }); commit(); renderOrcamentosView(); }
+let _orcHist={};
+function orcToggleHist(id){ _orcHist[id]=!_orcHist[id]; renderOrcamentosView(); }
 function qzStep(n){ if(!_qz)return; _qzStep=Math.max(0,Math.min(ORC_STEPS.length-1,n)); qzSalvarDraft(); renderOrcamentosView(); }
 function qzSetField(f,v){ if(!_qz)return; _qz[f]=v; qzRecalc(); qzSalvarDraft(); qzRefreshSummary(); }
 function qzSetCliente(nome){ if(!_qz)return; _qz.clienteNome=nome; _qz.vendedor=qzVendedorDoCliente(nome)||_qz.vendedor; _qz.fazenda=''; const fs=qzFazendasDoCliente(nome); if(fs.length===1){ _qz.fazenda=fs[0].nome; _qz.municipio=fs[0].municipioNome||''; if(+fs[0].areaHa>0)_qz.areaHa=+fs[0].areaHa; } qzSalvarDraft(); renderOrcamentosView(); }
@@ -5766,19 +5790,19 @@ function qzGerar(){ if(!_qz||_qzGerando)return; if(!_qz.clienteNome){uiToast('Se
   _qzGerando=true;
   try{ qzRecalc(); const rec=QuoteCalc.reconcilia(_qz); if(!rec.ok){ uiToast('Inconsistência: '+rec.erros.join(', '),'err'); return; }
     const ap=qzAvisoAprovacao();
-    if(ap.exigida){ _qz.status='aguardando_aprovacao'; _qz.aprovacao={exigida:true,status:'pendente',motivo:ap.motivos.join(' · '),por:'',em:'',solicitadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'',solicitadoEm:nowISO()}; }
-    else { _qz.status='rascunho'; _qz.aprovacao={exigida:false,status:'',motivo:'',por:'',em:''}; }
+    if(ap.exigida){ _qz.status='aguardando_aprovacao'; _qz.aprovacao={exigida:true,status:'pendente',motivo:ap.motivos.join(' · '),por:'',em:'',solicitadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'',solicitadoEm:nowISO()}; qzLog(_qz,'enviado para aprovação',ap.motivos.join(' · ')); }
+    else { _qz.status='rascunho'; _qz.aprovacao={exigida:false,status:'',motivo:'',por:'',em:''}; qzLog(_qz,'gerado','Total '+BRL(+_qz.total||0)+(+_qz.descontoValor>0?(' · desc. '+PCT(qzDescEfetivoPct()/100)):'')); }
     qzSalvarDraft(); const num=_qz.numero, exig=ap.exigida; _qz=null; renderOrcamentosView(); uiToast(exig?('⏳ '+num+' salvo — enviado para aprovação'):('✓ Orçamento '+num+' salvo')); }
   finally{ _qzGerando=false; } }
 /* aprovações do gestor */
-function orcAprovar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; q.status='aprovado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'aprovado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); commit(); renderOrcamentosView(); uiToast('✓ '+q.numero+' aprovado'); }
-function orcDevolver(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; const m=prompt('Motivo da devolução (para o vendedor ajustar):',''); if(m===null)return; q.status='rascunho'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'devolvido',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO(),motivoDevolucao:m}); commit(); renderOrcamentosView(); uiToast('↩ '+q.numero+' devolvido para ajuste'); }
-function orcRejeitar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Rejeitar (recusar) o orçamento '+q.numero+'?'))return; q.status='recusado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'rejeitado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); commit(); renderOrcamentosView(); uiToast('✕ '+q.numero+' recusado'); }
+function orcAprovar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; q.status='aprovado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'aprovado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); qzLog(q,'aprovado',''); commit(); renderOrcamentosView(); uiToast('✓ '+q.numero+' aprovado'); }
+function orcDevolver(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; const m=prompt('Motivo da devolução (para o vendedor ajustar):',''); if(m===null)return; q.status='rascunho'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'devolvido',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO(),motivoDevolucao:m}); qzLog(q,'devolvido para ajuste',m); commit(); renderOrcamentosView(); uiToast('↩ '+q.numero+' devolvido para ajuste'); }
+function orcRejeitar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Rejeitar (recusar) o orçamento '+q.numero+'?'))return; q.status='recusado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'rejeitado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); qzLog(q,'recusado',''); commit(); renderOrcamentosView(); uiToast('✕ '+q.numero+' recusado'); }
 /* ---- render: lista x wizard ---- */
 function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)renderOrcWizard(host); else renderOrcLista(host); }
 const ORC_STATUS_LBL={rascunho:'Rascunho',aguardando_aprovacao:'Aguardando aprovação',aprovado:'Aprovado',enviado:'Enviado',negociacao:'Em negociação',aceito:'Aceito',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
 function renderOrcLista(host){
-  const qs=(D.quotes||[]).slice().sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||'')));
+  const qs=(D.quotes||[]).filter(q=>q&&!q.substituidoPor).slice().sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||'')));
   let h='<div style="margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
   // Aprovações comerciais (gestor)
   if(qzPodeAprovar()){ const pend=(D.quotes||[]).filter(q=>q&&q.status==='aguardando_aprovacao');
@@ -5791,7 +5815,9 @@ function renderOrcLista(host){
       h+='</div>'; } }
   if(!qs.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento ainda. Clique em <b>+ Novo orçamento</b> — leva cerca de 1–3 minutos.</div></div>'; host.innerHTML=h; return; }
   h+='<div class="panel"><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th class="num">Área</th><th class="num">Serviços</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>';
-  qs.forEach(q=>{ h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b></td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">abrir</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>'; });
+  qs.forEach(q=>{ const vbadge=(+q.versao>1)?(' <span class="tag md">v'+q.versao+'</span>'):''; const histOn=!!_orcHist[q.id];
+    h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
+    if(histOn)h+='<tr><td colspan="8" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
   h+='</tbody></table></div></div>'; host.innerHTML=h;
 }
 function qzSummaryHTML(){ if(!_qz)return '';
