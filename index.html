@@ -810,6 +810,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="op"><svg class="sb-ic"><use href="#ic-tractor"></use></svg><span class="sb-tx">Operação</span></button>
     <div class="sb-group">Controle Operacional</div>
     <button class="snav" data-target="opresumo"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Ciclo Operacional</span></button>
+    <button class="snav" data-target="projetos"><svg class="sb-ic"><use href="#ic-funnel"></use></svg><span class="sb-tx">Projetos (Pipeline)</span></button>
     <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
     <button class="snav" data-target="opamostras"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Envio de Amostras</span></button>
     <button class="snav" data-target="opentregas"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Controle de Entregas</span></button>
@@ -860,6 +861,7 @@ header .htxt h1{display:none}
   <button data-v="custos">Custos &amp; Coleta</button>
   <button data-v="op">Operação</button>
   <button data-v="opresumo">Ciclo Operacional</button>
+  <button data-v="projetos">Projetos</button>
   <button data-v="opcoleta">Coleta de Pontos</button>
   <button data-v="opamostras">Envio de Amostras</button>
   <button data-v="opentregas">Controle de Entregas</button>
@@ -1194,6 +1196,11 @@ header .htxt h1{display:none}
     <div class="lead"><h2>Controle Operacional — Visão do Ciclo</h2>
       <p>O ciclo operacional em um lugar: <b>coleta de pontos → envio de amostras → entregas</b>. Os números vêm das três telas; clique para abrir cada controle.</p></div>
     <div class="op-ciclo" id="opCiclo"></div>
+  </section>
+
+  <!-- CONTROLE OPERACIONAL · Projetos (Pipeline de AP) -->
+  <section class="view" id="v-projetos">
+    <div id="projHost"></div>
   </section>
 
   <!-- CONTROLE OPERACIONAL · Tela 1 — Coleta de Pontos Diários -->
@@ -3709,6 +3716,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
   if(b.dataset.v==='opresumo'){ try{renderOpResumo();}catch(e){console.warn('opResumo',e);} }
+  if(b.dataset.v==='projetos'){ _projSel=null; try{renderProjetosView();}catch(e){console.warn('projetos',e);} }
   if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
   if(b.dataset.v==='opamostras'){ try{renderOpAmostras();}catch(e){console.warn('opAmostras',e);} }
   if(b.dataset.v==='opentregas'){ try{renderOpEntregas();}catch(e){console.warn('opEntregas',e);} }
@@ -5961,6 +5969,130 @@ function projMover(p,novaEtapa,opts){ if(!p||!novaEtapa)return; opts=opts||{}; c
   p.etapaAtual=novaEtapa; projLog(p,{tipo:'ETAPA',etapaDe:de,etapaPara:novaEtapa,responsavel:opts.responsavel||'',obs:opts.obs||'',origem:opts.origem||'manual',em:opts.em});
   if(novaEtapa===pipeCondConclusao(p.tipoWorkflowId)){ p.status='concluido'; p.concluidoEm=opts.em||nowISO(); }
   else if(p.status==='concluido'){ p.status='ativo'; p.concluidoEm=''; } }
+/* ===== Pipeline de projetos — views (Fase 3: timeline + visão do cliente) ===== */
+let _projSel=null, _projVista='lista', _projFiltro={status:'',cliente:'',etapa:'',busca:''};
+function projCodigos(p){ return pipeEtapasCodigos(p&&p.tipoWorkflowId); }
+function projProgresso(p){ const cs=projCodigos(p); const i=cs.indexOf(p&&p.etapaAtual); if(cs.length<2||i<0)return 0; if((p&&p.status)==='concluido')return 100; return Math.round(i/(cs.length-1)*100); }
+function projProxEtapa(p){ const cs=projCodigos(p); const i=cs.indexOf(p&&p.etapaAtual); return (i>=0&&i<cs.length-1)?cs[i+1]:''; }
+function projRespEtapa(p,cod){ return (p&&p.responsaveis&&p.responsaveis[cod])||((pipeEtapaDef(p&&p.tipoWorkflowId,cod)||{}).responsavelPadrao)||''; }
+function projSla(p){ const sla=(pipeSlaMap(p&&p.tipoWorkflowId)[p&&p.etapaAtual])||0; const dias=PipelineCalc.diasNaEtapa(p,nowISO()); return {dias:dias,sla:sla,status:PipelineCalc.slaStatus(dias,sla)}; }
+function projLead(p){ return PipelineCalc.leadTime(p,nowISO()); }
+function projSlaTxt(s){ if(s==null)return '—'; if(s.status==='sem')return (s.dias!=null?(s.dias+'d na etapa'):'—'); const dif=(s.dias||0)-(s.sla||0); return s.dias+'/'+s.sla+'d'+(dif>0?(' · +'+dif+'d'):''); }
+function projDataBR(iso){ return iso?qzDataBR(String(iso).slice(0,10)):''; }
+function projStatusOptions(cur){ return [['','Todos'],['ativo','Ativos'],['concluido','Concluídos'],['cancelado','Cancelados']].map(x=>'<option value="'+x[0]+'"'+(x[0]===cur?' selected':'')+'>'+x[1]+'</option>').join(''); }
+function projHdr(k,v,raw){ return '<div><span class="k">'+esc(k)+'</span><br>'+(raw?v:('<b>'+esc(v||'—')+'</b>'))+'</div>'; }
+
+function renderProjetosView(){ const host=document.getElementById('projHost'); if(!host)return;
+  if(_projSel){ const p=projPorId(_projSel); if(p) return renderProjetoDetalhe(host,p); _projSel=null; }
+  return renderProjLista(host); }
+function projSetVista(v){ _projVista=v; renderProjetosView(); }
+function projAbrir(id){ _projSel=id; renderProjetosView(); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} }
+function projFechar(){ _projSel=null; renderProjetosView(); }
+function projSetFiltro(k,v){ _projFiltro[k]=v; renderProjetosView(); }
+function projLimparFiltro(){ _projFiltro={status:'',cliente:'',etapa:'',busca:''}; renderProjetosView(); }
+function projFiltrados(){ const f=_projFiltro; return (D.projetos||[]).filter(p=>{ if(!p)return false;
+  if(f.status && (p.status||'ativo')!==f.status)return false;
+  if(f.cliente && (p.clienteNome||'')!==f.cliente)return false;
+  if(f.etapa && (p.etapaAtual||'')!==f.etapa)return false;
+  if(f.busca){ const b=f.busca.toLowerCase(); const hay=[p.numero,p.clienteNome,p.fazenda,(p.servicos||[]).join(' ')].join(' ').toLowerCase(); if(hay.indexOf(b)<0)return false; }
+  return true; }); }
+
+function renderProjLista(host){ const todos=(D.projetos||[]); const ag=PipelineCalc.agg(todos,{slaPorEtapa:pipeSlaMap(pipeTipoPadraoId()),nowISO:nowISO()});
+  let h='<div class="lead"><h2>Projetos — pipeline de AP</h2><p>Cada serviço vira um projeto que percorre as etapas do processo. Abra um projeto para ver a <b>linha do tempo</b> com datas, responsáveis, tempos e atrasos. Projetos nascem ao <b>converter um orçamento aceito</b>.</p></div>';
+  h+='<div class="pl-toolbar"><div class="pl-seg"><button class="'+(_projVista==='lista'?'on':'')+'" onclick="projSetVista(\'lista\')">Projetos</button><button class="'+(_projVista==='cliente'?'on':'')+'" onclick="projSetVista(\'cliente\')">Por cliente</button></div></div>';
+  h+='<div class="kpis" id="projKpi"></div>';
+  if(!todos.length){ host.innerHTML=h+'<div class="op-empty" style="margin-top:14px">Nenhum projeto ainda. Converta um orçamento aceito (Orçamentos › converter) para criar o primeiro projeto do pipeline.</div>'; kpi('projKpi',[{lab:'Projetos',val:'0',c:'gold'}]); return; }
+  h+=(_projVista==='cliente')?projClienteHTML():projListaHTML(); host.innerHTML=h;
+  kpi('projKpi',[
+    {lab:'Projetos ativos',val:String(ag.wip),c:'g',sub:ag.concluidos+' concluídos'},
+    {lab:'Atrasados (SLA)',val:String(ag.atrasados),c:ag.atrasados?'r':'g',sub:'etapa acima do prazo'},
+    {lab:'Backlog',val:String(ag.backlog),c:'gold',sub:'pedido / planejamento'},
+    {lab:'Sem responsável',val:String(ag.semResp),c:ag.semResp?'gold':'g',sub:'na etapa atual'} ]); }
+
+function projListaHTML(){ const list=projFiltrados(); const tp=pipeTipoPadraoId(); const codigos=pipeEtapasCodigos(tp);
+  const clientes=[...new Set((D.projetos||[]).map(p=>p.clienteNome).filter(Boolean))].sort();
+  let h='<div class="orc-filters">';
+  h+='<label>Status<select onchange="projSetFiltro(\'status\',this.value)">'+projStatusOptions(_projFiltro.status)+'</select></label>';
+  h+='<label>Cliente<select onchange="projSetFiltro(\'cliente\',this.value)"><option value="">Todos</option>'+clientes.map(c=>'<option'+(c===_projFiltro.cliente?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></label>';
+  h+='<label>Etapa<select onchange="projSetFiltro(\'etapa\',this.value)"><option value="">Todas</option>'+codigos.map(c=>'<option value="'+c+'"'+(c===_projFiltro.etapa?' selected':'')+'>'+esc(pipeEtapaNome(tp,c))+'</option>').join('')+'</select></label>';
+  h+='<label>Busca<input value="'+esc(_projFiltro.busca)+'" oninput="projSetFiltro(\'busca\',this.value)" placeholder="número, cliente, fazenda…"></label>';
+  h+='<button class="edbtn ghost" onclick="projLimparFiltro()">Limpar</button></div>';
+  h+='<div class="cap" style="margin:6px 0 10px">'+list.length+' de '+(D.projetos||[]).length+' projeto(s)</div>';
+  if(!list.length)return h+'<div class="op-empty">Nenhum projeto no filtro. <a href="#" onclick="projLimparFiltro();return false">limpar filtros</a></div>';
+  h+='<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th>Serviços</th><th>Etapa atual</th><th>Progresso</th><th>Responsável</th><th>SLA</th><th>Lead</th><th></th></tr></thead><tbody>';
+  list.forEach(p=>{ const s=projSla(p); const prog=projProgresso(p); const tp2=p.tipoWorkflowId; const lead=projLead(p);
+    h+='<tr>'
+     +'<td data-label="Número"><b>'+esc(p.numero||'—')+'</b>'+(p.status==='cancelado'?' <span class="op-badge op-b-none">cancelado</span>':(p.status==='concluido'?' <span class="op-badge op-b-ok">concluído</span>':''))+'</td>'
+     +'<td data-label="Cliente">'+esc(p.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(p.fazenda||'—')+'</td>'
+     +'<td data-label="Serviços" style="font-size:12px">'+esc((p.servicos||[]).join(', ')||'—')+'</td>'
+     +'<td data-label="Etapa atual"><span class="op-badge op-b-run">'+esc(pipeEtapaNome(tp2,p.etapaAtual))+'</span></td>'
+     +'<td data-label="Progresso"><div class="pl-prog"><i style="width:'+prog+'%"></i></div><span class="cap">'+prog+'%</span></td>'
+     +'<td data-label="Responsável">'+esc(projRespEtapa(p,p.etapaAtual)||'—')+'</td>'
+     +'<td data-label="SLA"><span class="pl-sla"><span class="pl-dot '+s.status+'"></span>'+esc(projSlaTxt(s))+'</span></td>'
+     +'<td data-label="Lead">'+(lead!=null?lead+'d':'—')+'</td>'
+     +'<td data-label="" style="white-space:nowrap"><button class="edbtn" onclick="projAbrir(\''+p.id+'\')">abrir</button></td></tr>'; });
+  return h+'</tbody></table></div>'; }
+
+function projClienteHTML(){ const list=projFiltrados(); const by=new Map();
+  list.forEach(p=>{ const k=p.clienteNome||'—'; if(!by.has(k))by.set(k,[]); by.get(k).push(p); });
+  if(!by.size)return '<div class="op-empty">Nenhum projeto.</div>';
+  let h=''; [...by.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([cli,ps])=>{
+    const ativos=ps.filter(p=>(p.status||'ativo')==='ativo').length;
+    h+='<div class="pl-cliblk"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div style="font-weight:800;font-size:15px;color:var(--head)">'+esc(cli)+'</div><span class="cap">'+ps.length+' projeto(s) · '+ativos+' ativo(s)</span></div>';
+    h+='<div style="overflow-x:auto;margin-top:10px"><table class="resp-cards"><thead><tr><th>Projeto</th><th>Fazenda</th><th>Etapa atual</th><th>%</th><th>Responsável</th><th>Próxima etapa</th><th>SLA</th><th></th></tr></thead><tbody>';
+    ps.forEach(p=>{ const s=projSla(p); const prox=projProxEtapa(p); const tp2=p.tipoWorkflowId;
+      h+='<tr><td data-label="Projeto"><b>'+esc(p.numero)+'</b></td><td data-label="Fazenda">'+esc(p.fazenda||'—')+'</td>'
+       +'<td data-label="Etapa atual"><span class="op-badge op-b-run">'+esc(pipeEtapaNome(tp2,p.etapaAtual))+'</span></td>'
+       +'<td data-label="%">'+projProgresso(p)+'%</td><td data-label="Responsável">'+esc(projRespEtapa(p,p.etapaAtual)||'—')+'</td>'
+       +'<td data-label="Próxima etapa">'+(prox?esc(pipeEtapaNome(tp2,prox)):'—')+'</td>'
+       +'<td data-label="SLA"><span class="pl-sla"><span class="pl-dot '+s.status+'"></span>'+esc(projSlaTxt(s))+'</span></td>'
+       +'<td data-label=""><button class="edbtn" onclick="projAbrir(\''+p.id+'\')">abrir</button></td></tr>'; });
+    h+='</tbody></table></div></div>'; });
+  return h; }
+
+function renderProjetoDetalhe(host,p){ const tp=p.tipoWorkflowId; const codigos=pipeEtapasCodigos(tp); const marcos=PipelineCalc.marcos(p); const idx=codigos.indexOf(p.etapaAtual); const s=projSla(p); const lead=projLead(p);
+  let h='<div class="ed-back" onclick="projFechar()" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-weight:800;color:var(--orange)"><svg class="ed-ic"><use href="#ic-chevron"></use></svg> Voltar aos projetos</div>';
+  h+='<div class="lead"><h2>'+esc(p.numero||'Projeto')+' — '+esc(p.clienteNome||'')+'</h2></div>';
+  h+='<div class="pl-card"><div class="pl-hdrgrid">'
+    +projHdr('Cliente',p.clienteNome)+projHdr('Fazenda',p.fazenda)+projHdr('Município',p.municipio)+projHdr('Área',(+p.areaHa>0?fnum(p.areaHa)+' ha':'—'))
+    +projHdr('Vendedor',p.vendedor)+projHdr('Safra',p.safra)+projHdr('Serviços',(p.servicos||[]).join(', '))+projHdr('Status',(p.status||'ativo'))+'</div>';
+  h+='<div class="pl-hdrgrid" style="border-top:1px solid var(--line);padding-top:12px">'
+    +projHdr('Etapa atual','<span class="op-badge op-b-run">'+esc(pipeEtapaNome(tp,p.etapaAtual))+'</span>',true)
+    +projHdr('Progresso',projProgresso(p)+'%')
+    +projHdr('SLA da etapa','<span class="pl-sla"><span class="pl-dot '+s.status+'"></span>'+esc(projSlaTxt(s))+'</span>',true)
+    +projHdr('Lead time',(lead!=null?lead+' dias':'—'))
+    +projHdr('Próxima etapa',(projProxEtapa(p)?pipeEtapaNome(tp,projProxEtapa(p)):'—'))+'</div>';
+  h+='<div class="pl-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">';
+  const prox=projProxEtapa(p);
+  if(p.status!=='cancelado'){
+    if(prox)h+='<button class="edbtn primary" onclick="projAvancar(\''+p.id+'\')">✓ Avançar para '+esc(pipeEtapaNome(tp,prox))+'</button>';
+    h+='<span style="display:inline-flex;gap:6px;align-items:center"><select class="edinp" id="projMoveSel" style="min-width:150px">'+codigos.map(c=>'<option value="'+c+'"'+(c===p.etapaAtual?' selected':'')+'>'+esc(pipeEtapaNome(tp,c))+'</option>').join('')+'</select><button class="edbtn" onclick="projMoverUI(\''+p.id+'\')">mover</button></span>';
+    h+='<span style="display:inline-flex;gap:6px;align-items:center"><input class="edinp" id="projRespInp" placeholder="responsável da etapa" value="'+esc(projRespEtapa(p,p.etapaAtual))+'" style="min-width:150px"><button class="edbtn" onclick="projSetResp(\''+p.id+'\')">salvar resp.</button></span>';
+    h+='<button class="edbtn ghost" onclick="projCancelar(\''+p.id+'\')">cancelar projeto</button>';
+  } else { h+='<button class="edbtn" onclick="projReabrir(\''+p.id+'\')">reabrir projeto</button>'; }
+  h+='</div></div>';
+  // timeline
+  h+='<div class="pl-card"><h3 style="margin:0 0 4px">Linha do tempo</h3><div class="cap" style="margin-bottom:10px">Datas, responsáveis e tempos derivados dos eventos do projeto.</div><div class="pl-time">';
+  codigos.forEach((c,i)=>{ let cls=''; if(p.status==='concluido')cls=(i<=idx?'done':''); else if(p.status==='cancelado')cls=(i<idx?'done':''); else cls=(i<idx?'done':(i===idx?'atual':''));
+    const node=cls==='done'?'✓':(cls==='atual'?'●':String(i+1)); const dt=projDataBR(marcos[c]); const resp=projRespEtapa(p,c);
+    let tempo=''; if(cls==='atual'&&s.dias!=null)tempo=s.dias+'d nesta etapa'+(s.status==='vermelho'?' · atrasado':'');
+    h+='<div class="pl-step '+cls+'"><div class="pl-node">'+node+'</div><div class="pl-scont"><div class="pl-snome">'+esc(pipeEtapaNome(tp,c))+'</div><div class="pl-smeta">'
+      +(dt?('<span>📅 '+esc(dt)+'</span>'):'<span>—</span>')+(resp?('<span>👤 '+esc(resp)+'</span>'):'')+(tempo?('<span>⏱ '+esc(tempo)+'</span>'):'')+'</div></div></div>'; });
+  h+='</div></div>';
+  const tempos=PipelineCalc.temposEntreEtapas(p);
+  if(tempos.length){ h+='<div class="pl-card"><h3 style="margin:0 0 8px">Tempo entre etapas</h3><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>De</th><th>Para</th><th>Dias</th></tr></thead><tbody>'
+    +tempos.map(t=>'<tr><td data-label="De">'+esc(pipeEtapaNome(tp,t.de))+'</td><td data-label="Para">'+esc(pipeEtapaNome(tp,t.para))+'</td><td data-label="Dias">'+(t.dias!=null?t.dias+'d':'—')+'</td></tr>').join('')+'</tbody></table></div></div>'; }
+  h+='<div class="pl-card"><h3 style="margin:0 0 8px">Histórico de eventos</h3>'+projEventosHTML(p)+'</div>';
+  host.innerHTML=h; }
+function projEventosHTML(p){ const es=(p&&p.eventos)||[]; if(!es.length)return '<span class="cap">Sem eventos.</span>'; const tp=p.tipoWorkflowId;
+  return '<div style="display:flex;flex-direction:column;gap:6px">'+es.slice().reverse().map(e=>{ const mov=e.etapaPara?((e.etapaDe?esc(pipeEtapaNome(tp,e.etapaDe))+' → ':'')+esc(pipeEtapaNome(tp,e.etapaPara))):'';
+    return '<div style="font-size:12.5px"><b>'+esc(e.tipo||'')+'</b>'+(mov?(' · '+mov):'')+(e.responsavel?(' · 👤 '+esc(e.responsavel)):'')+(e.obs?(' — '+esc(e.obs)):'')+' <span class="cap">· '+esc(qzDataHora(e.em))+' · '+esc(e.quem||'')+(e.origem?(' · '+esc(e.origem)):'')+'</span></div>'; }).join('')+'</div>'; }
+/* ações controladas + auditadas (nada muda etapa sem persistir + registrar evento) */
+function projAvancar(id){ const p=projPorId(id); if(!p)return; const prox=projProxEtapa(p); if(!prox){uiToast('Já está na última etapa.','err');return;} if(!confirm('Avançar '+p.numero+' para "'+pipeEtapaNome(p.tipoWorkflowId,prox)+'"?'))return; projMover(p,prox,{origem:'manual'}); commit(); renderProjetosView(); uiToast('→ '+pipeEtapaNome(p.tipoWorkflowId,prox)); }
+function projMoverUI(id){ const p=projPorId(id); if(!p)return; const sel=document.getElementById('projMoveSel'); if(!sel)return; const cod=sel.value; if(!cod||cod===p.etapaAtual)return; if(!confirm('Mover '+p.numero+' para "'+pipeEtapaNome(p.tipoWorkflowId,cod)+'"? A mudança é registrada no histórico.'))return; projMover(p,cod,{origem:'manual'}); commit(); renderProjetosView(); uiToast('Etapa atualizada'); }
+function projSetResp(id){ const p=projPorId(id); if(!p)return; const el=document.getElementById('projRespInp'); if(!el)return; const nome=el.value.trim(); if(!p.responsaveis)p.responsaveis={}; p.responsaveis[p.etapaAtual]=nome; projLog(p,{tipo:'RESPONSAVEL',obs:'Responsável de '+pipeEtapaNome(p.tipoWorkflowId,p.etapaAtual)+': '+(nome||'—'),responsavel:nome,origem:'manual'}); commit(); renderProjetosView(); uiToast('Responsável atualizado'); }
+function projCancelar(id){ const p=projPorId(id); if(!p)return; if(!confirm('Cancelar o projeto '+p.numero+'? Ele sai do pipeline ativo (pode ser reaberto).'))return; const de=p.etapaAtual; p.status='cancelado'; projLog(p,{tipo:'CANCELADO',etapaDe:de,obs:'projeto cancelado',origem:'manual'}); commit(); renderProjetosView(); }
+function projReabrir(id){ const p=projPorId(id); if(!p)return; p.status='ativo'; if((p.etapaAtual===pipeCondConclusao(p.tipoWorkflowId)))p.concluidoEm=''; projLog(p,{tipo:'REABERTO',obs:'projeto reaberto',origem:'manual'}); commit(); renderProjetosView(); uiToast('Projeto reaberto'); }
 function orcConverter(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return;
   if(q.status!=='aceito' && q.status!=='convertido' && !confirm('Converter é recomendado para orçamentos ACEITOS (atual: '+(ORC_STATUS_LBL[q.status]||q.status)+'). Continuar?'))return;
   if(q.convertidoEm && !confirm('Este orçamento já foi convertido. Converter de novo pode duplicar os lançamentos operacionais. Continuar?'))return;
@@ -7758,6 +7890,31 @@ tr.op-total td{background:var(--soft2)!important;color:var(--head);font-weight:8
 .op-chip b{color:var(--head);font-variant-numeric:tabular-nums}
 .op-prod{margin-top:14px}
 .op-empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px}
+/* ===== Pipeline de projetos (Operação AP) — timeline + cards, tema-aware ===== */
+.pl-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0 14px}
+.pl-seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.pl-seg button{background:none;border:none;padding:9px 16px;font-weight:700;color:var(--muted);cursor:pointer;font-size:13px;min-height:40px}
+.pl-seg button.on{background:var(--green);color:#fff}
+.pl-prog{height:8px;border-radius:6px;background:var(--line);overflow:hidden;min-width:80px;max-width:130px}
+.pl-prog > i{display:block;height:100%;background:var(--leaf);border-radius:6px}
+.pl-sla{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;white-space:nowrap}
+.pl-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.pl-dot.verde{background:var(--leaf)}.pl-dot.amarelo{background:var(--orange)}.pl-dot.vermelho{background:var(--red)}.pl-dot.sem{background:var(--muted)}
+.pl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);margin-bottom:14px}
+.pl-hdrgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px 16px;margin:6px 0}
+.pl-hdrgrid .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.pl-cliblk{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--card);box-shadow:var(--shadow)}
+.pl-time{display:flex;flex-direction:column;gap:0;margin-top:4px}
+.pl-step{display:grid;grid-template-columns:34px 1fr;gap:12px;position:relative;padding-bottom:16px}
+.pl-step::before{content:"";position:absolute;left:16px;top:30px;bottom:-2px;width:2px;background:var(--line)}
+.pl-step:last-child::before{display:none}
+.pl-step.done::before{background:var(--leaf)}
+.pl-node{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;z-index:1;border:2px solid var(--line);background:var(--card);color:var(--muted)}
+.pl-step.done .pl-node{background:var(--leaf);border-color:var(--leaf);color:#fff}
+.pl-step.atual .pl-node{background:var(--orange);border-color:var(--orange);color:#fff;box-shadow:0 0 0 4px var(--tintGold)}
+.pl-scont{padding-top:5px}
+.pl-snome{font-weight:800;color:var(--head)}
+.pl-smeta{font-size:12.5px;color:var(--muted);margin-top:2px;display:flex;gap:12px;flex-wrap:wrap}
 .op-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:120;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
 .op-modal-bg.on{display:flex}
 .op-modal{background:var(--card);border:1px solid var(--line);border-radius:14px;width:100%;max-width:640px;box-shadow:var(--shadow)}
