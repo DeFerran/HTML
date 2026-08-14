@@ -1386,6 +1386,7 @@ header .htxt h1{display:none}
       <button class="mtab" data-ct="cli" onclick="cadTab('cli')">Clientes</button>
       <button class="mtab" data-ct="faz" onclick="cadTab('faz')">Fazendas</button>
       <button class="mtab" data-ct="muni" onclick="cadTab('muni')">Municípios</button>
+      <button class="mtab" data-ct="comercial" onclick="cadTab('comercial')">Comercial</button>
       <button class="mtab" data-ct="safras" onclick="cadTab('safras')">Safras</button>
       <button class="mtab" data-ct="params" onclick="cadTab('params')">Parâmetros</button>
     </div>
@@ -1405,6 +1406,8 @@ header .htxt h1{display:none}
     <div class="ctpane" data-pane="faz"><div class="edcard" id="cadFaz"></div></div>
 
     <div class="ctpane" data-pane="muni"><div class="edcard" id="cadMuni"></div></div>
+
+    <div class="ctpane" data-pane="comercial"><div class="edcard" id="cadComercial"></div></div>
 
     <div class="ctpane" data-pane="safras">
       <div class="panel"><h3>Safras</h3>
@@ -1688,6 +1691,23 @@ function hydrate(d){
   if(!Array.isArray(d.equipamentos)) d.equipamentos=[];
   if(!Array.isArray(d.municipios)) d.municipios=[];
   if(!Array.isArray(d.fazendas)) d.fazendas=[];
+  // ===== Orçamentos comerciais (módulo novo, aditivo) =====
+  if(!Array.isArray(d.quotes)) d.quotes=[];
+  if(!d.comercial || typeof d.comercial!=='object') d.comercial={};
+  { const co=d.comercial;
+    if(!Array.isArray(co.profundidades)||!co.profundidades.length){ const pc=(d.lab&&d.lab.pctColeta)||{p0020:1,p0010:0.30,p2040:0.20};
+      co.profundidades=[{id:'prof1',nome:'0–20 cm',fator:+pc.p0020||1,ativo:true},{id:'prof2',nome:'0–10 cm',fator:+pc.p0010||0.30,ativo:true},{id:'prof3',nome:'20–40 cm',fator:+pc.p2040||0.20,ativo:true}]; }
+    if(!Array.isArray(co.malhas)||!co.malhas.length) co.malhas=[{id:'malha1',nome:'1 ponto / 1 ha',haPorPonto:1,ativo:true},{id:'malha2',nome:'1 ponto / 2 ha',haPorPonto:2,ativo:true},{id:'malha3',nome:'1 ponto / 3 ha',haPorPonto:3,ativo:true},{id:'malha5',nome:'1 ponto / 5 ha',haPorPonto:5,ativo:true}];
+    if(!Array.isArray(co.condicoesPgto)||!co.condicoesPgto.length) co.condicoesPgto=[
+      {id:'cp1',nome:'À vista',parcelas:[{pct:1,dias:0}],ativo:true},
+      {id:'cp2',nome:'30 dias',parcelas:[{pct:1,dias:30}],ativo:true},
+      {id:'cp3',nome:'30/60',parcelas:[{pct:0.5,dias:30},{pct:0.5,dias:60}],ativo:true},
+      {id:'cp4',nome:'30/60/90',parcelas:[{pct:1/3,dias:30},{pct:1/3,dias:60},{pct:1/3,dias:90}],ativo:true}];
+    if(!Array.isArray(co.pacotes)) co.pacotes=[];
+    if(!co.alcadas||typeof co.alcadas!=='object') co.alcadas={vendedorMaxDescPct:5,gestorMaxDescPct:15,precoMinimoPct:null};
+    if(co.validadePadraoDias==null) co.validadePadraoDias=15;
+    if(!co.metodoPorServico||typeof co.metodoPorServico!=='object') co.metodoPorServico={};
+  }
   if(!Array.isArray(d.recorrencias)) d.recorrencias=[];
   if(!Array.isArray(d.orcamentos)) d.orcamentos=[];
   // colaboradores: deriva da Equipe quando ainda vazio (sem nomes fixos no código)
@@ -2124,6 +2144,45 @@ const OpColetaCalc=(function(){
   return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,MESES};
 })();
 // </op-coleta-calc>
+// <quote-calc>
+/* Motor de cálculo de orçamentos comerciais — PURO e testável (sem depender de D).
+   Cobre: malha→pontos→amostras, quantidade por método de cobrança, subtotal/
+   desconto/total, parcelas com reconciliação de centavos, desvio vs tabela e
+   reconciliação matemática. */
+const QuoteCalc=(function(){
+  const r2=v=>Math.round((+v||0)*100)/100;
+  function pontos(areaHa,haPorPonto){ const g=+haPorPonto||0; if(g<=0)return 0; return Math.round((+areaHa||0)/g); }
+  // amostras por profundidade: pontos × fator de amostragem de cada profundidade
+  function amostras(pts,fatores){ return (fatores||[]).map(f=>Math.round((+pts||0)*(+f||0))); }
+  function amostrasTotal(pts,fatores){ return amostras(pts,fatores).reduce((a,b)=>a+b,0); }
+  // quantidade cobrável conforme o método do serviço
+  function quantidade(metodo,ctx){ ctx=ctx||{};
+    switch(metodo){
+      case 'ponto': return +ctx.pontos||0;
+      case 'amostra': return +ctx.amostras||0;
+      case 'fixo': case 'servico': case 'pacote': return 1;
+      case 'ha': default: return +ctx.areaHa||0;
+    } }
+  function itemSubtotal(precoBase,qtd){ return r2((+precoBase||0)*(+qtd||0)); }
+  function itemTotal(subtotal,descPct){ return r2((+subtotal||0)*(1-(+descPct||0)/100)); }
+  function somaItens(itens){ return r2((itens||[]).reduce((a,it)=>a+(+it.total||0),0)); }
+  // desconto geral sobre a soma dos itens
+  function totais(itens,descGeralPct){ const sub=somaItens(itens); const descontoValor=r2(sub*(+descGeralPct||0)/100); return {subtotal:sub,descontoValor:descontoValor,total:r2(sub-descontoValor)}; }
+  function totalTabela(itens){ return r2((itens||[]).reduce((a,it)=>a+itemSubtotal(it.precoTabela!=null?it.precoTabela:it.precoBase,it.quantidade),0)); }
+  function desvioPct(total,totTab){ const t=+totTab||0; return t>0?((+total||0)-t)/t:null; }
+  function venc(dataBaseISO,dias){ if(!dataBaseISO)return ''; const t=Date.parse(String(dataBaseISO).slice(0,10)+'T00:00:00Z'); if(isNaN(t))return ''; return new Date(t+(+dias||0)*86400000).toISOString().slice(0,10); }
+  // parcelas: a ÚLTIMA absorve o resíduo de centavos → Σparcelas === total exato
+  function parcelas(total,condParcelas,dataBaseISO){ const T=r2(total); const ps=condParcelas||[]; let acc=0;
+    return ps.map((p,i)=>{ let v; if(i<ps.length-1){ v=r2(T*(+p.pct||0)); acc=r2(acc+v); } else { v=r2(T-acc); }
+      return {n:i+1,pct:+p.pct||0,dias:+p.dias||0,valor:v,venc:venc(dataBaseISO,+p.dias||0)}; }); }
+  function reconcilia(q){ q=q||{}; const erros=[];
+    const soma=somaItens(q.itens); if(Math.abs(soma-(+q.subtotal||0))>0.005) erros.push('subtotal≠Σitens');
+    const totCalc=r2((+q.subtotal||0)-(+q.descontoValor||0)); if(Math.abs(totCalc-(+q.total||0))>0.005) erros.push('total≠subtotal−desconto');
+    const pp=q.pagamento&&q.pagamento.parcelas; if(Array.isArray(pp)&&pp.length){ const sp=r2(pp.reduce((a,x)=>a+(+x.valor||0),0)); if(Math.abs(sp-(+q.total||0))>0.005) erros.push('Σparcelas≠total'); }
+    return {ok:erros.length===0,erros:erros}; }
+  return {round2:r2,pontos,amostras,amostrasTotal,quantidade,itemSubtotal,itemTotal,somaItens,totais,totalTabela,desvioPct,venc,parcelas,reconcilia};
+})();
+// </quote-calc>
 // <op-csv>
 /* CSV puro (separador ';' — padrão do Excel pt-BR). Ida (opToCsv) e volta
    (opParseCsv → objetos por cabeçalho). Testável. */
@@ -3605,6 +3664,7 @@ function renderConfig(){
   try{ renderMunicipiosEditor(); }catch(e){}
   try{ renderFazendasEditor(); }catch(e){}
   try{ renderEquipamentosEditor(); }catch(e){}
+  try{ renderComercialConfig(); }catch(e){}
 }
 function cfgAddSafra(){
   const el=document.getElementById('cfgNovaSafra'); let v=(el&&el.value||'').trim();
@@ -3791,7 +3851,7 @@ function mergeImport(prev, fresh){
   // (metasSafra/precosSafra) só existem aqui; sem preservar, a importação zera tudo.
   ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','municipios','fazendas','orcamentos','funil',
    'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa',
-   'opColeta','opAmostras','opEntregas','metasSafra','precosSafra']
+   'opColeta','opAmostras','opEntregas','metasSafra','precosSafra','quotes','comercial']
    .forEach(function(k){ if(_temDados(prev[k])) fresh[k]=prev[k]; });
   return fresh;
 }
@@ -5211,6 +5271,7 @@ function cadTab(t){ const sec=document.getElementById('v-config'); if(!sec)retur
   if(t==='muni'){ try{renderMunicipiosEditor();}catch(e){} }
   if(t==='faz'){ try{renderFazendasEditor();}catch(e){} }
   if(t==='equip'){ try{renderEquipamentosEditor();}catch(e){} }
+  if(t==='comercial'){ try{renderComercialConfig();}catch(e){} }
 }
 /* ===== cadastro de colaboradores (Fase 1) — nomes que alimentam os seletores da plataforma ===== */
 let _colabForm=null;
@@ -5477,6 +5538,99 @@ function renderIntegridade(){
     h+='</div><div class="note" style="margin-top:12px">Como resolver: cadastre o nome que falta (aba correspondente) <b>ou</b> corrija o valor na tela de origem escolhendo pela lista. Renomear um item de cadastro já atualiza as referências (cascata).</div>';
   }
   h+='</div>'; host.innerHTML=h;
+}
+/* ===== Fase 2 Orçamentos: configurações comerciais (cadastros do módulo) ===== */
+function qtMetodoServico(servico){ return ((D.comercial&&D.comercial.metodoPorServico)||{})[servico]||'ha'; }
+function renderComercialConfig(){
+  const host=document.getElementById('cadComercial'); if(!host)return;
+  if(!D.comercial||typeof D.comercial!=='object') D.comercial={};
+  const co=D.comercial;
+  if(!Array.isArray(co.malhas)) co.malhas=[]; if(!Array.isArray(co.profundidades)) co.profundidades=[];
+  if(!Array.isArray(co.condicoesPgto)) co.condicoesPgto=[]; if(!Array.isArray(co.pacotes)) co.pacotes=[];
+  if(!co.alcadas||typeof co.alcadas!=='object') co.alcadas={};
+  host.innerHTML='<div class="edhead"><h3>🧾 Configurações comerciais</h3><p class="edhelp">Parâmetros do módulo de <b>Orçamentos</b> — malhas, profundidades, condições de pagamento, pacotes e alçadas de desconto. Alimentam o assistente de novo orçamento. Tudo cadastrável, nada fixo no código.</p></div>'
+    +'<div id="ccMalhas" class="edcard" style="margin-bottom:14px"></div>'
+    +'<div id="ccProf" class="edcard" style="margin-bottom:14px"></div>'
+    +'<div id="ccCond" class="edcard" style="margin-bottom:14px"></div>'
+    +'<div id="ccPac" class="edcard" style="margin-bottom:14px"></div>'
+    +'<div id="ccAlc" class="edcard"></div>';
+  edTable('ccMalhas',{title:'Malhas de amostragem',help:'Densidade da grade (hectares por ponto). Estima pontos e amostras: pontos = área ÷ (ha/ponto).',
+    rows:co.malhas,cols:[{k:'nome',label:'Malha',type:'text'},{k:'haPorPonto',label:'ha por ponto',type:'num',num:true}],
+    newRow:()=>({id:'malha'+uidLanc(),nome:'',haPorPonto:1,ativo:true})});
+  edTable('ccProf',{title:'Profundidades',help:'Cada profundidade tem um fator de amostragem (fração dos pontos). Ex.: 0–20 = 1 (todos os pontos); adicionais 0–10 = 0,30; 20–40 = 0,20.',
+    rows:co.profundidades,cols:[{k:'nome',label:'Profundidade',type:'text'},{k:'fator',label:'Fator (0–1)',type:'num',num:true}],
+    newRow:()=>({id:'prof'+uidLanc(),nome:'',fator:0,ativo:true})});
+  renderCondPgto(); renderPacotes();
+  const A=co.alcadas;
+  edForm('ccAlc',{title:'Alçadas de desconto & validade',help:'Limite de desconto por papel; acima disso o orçamento vai para <b>Aguardando aprovação</b>. Preço mínimo (% da tabela) protege a margem (0 = sem mínimo). Validade padrão da proposta.',
+    fields:[
+      {label:'Desconto máx. do vendedor (%)',type:'num',get:()=>+A.vendedorMaxDescPct||0,set:v=>A.vendedorMaxDescPct=+v||0},
+      {label:'Desconto máx. do gestor (%)',type:'num',get:()=>+A.gestorMaxDescPct||0,set:v=>A.gestorMaxDescPct=+v||0},
+      {label:'Preço mínimo (% da tabela; 0 = sem mínimo)',type:'num',get:()=>+A.precoMinimoPct||0,set:v=>A.precoMinimoPct=+v||0},
+      {label:'Validade padrão da proposta (dias)',type:'num',get:()=>+co.validadePadraoDias||0,set:v=>co.validadePadraoDias=Math.round(+v||0)},
+    ]});
+}
+/* condições de pagamento (parcelas "%/dias") */
+let _condForm=null;
+function fmtParcelas(ps){ return (ps||[]).map(p=>Math.round((+p.pct||0)*100)+'% em '+(+p.dias||0)+'d').join(' + ')||'—'; }
+function parseParcelas(txt){ return String(txt||'').split(',').map(s=>s.trim()).filter(Boolean).map(s=>{ const a=s.split('/'); return {pct:(parseFloat(String(a[0]||'').replace(',','.'))||0)/100,dias:parseInt(a[1],10)||0}; }); }
+function condNovo(){ _condForm={id:'',nome:'',parcelasTxt:''}; renderComercialConfig(); }
+function condEditar(id){ const c=(D.comercial.condicoesPgto||[]).find(x=>x.id===id); if(c){ _condForm={id:c.id,nome:c.nome||'',parcelasTxt:(c.parcelas||[]).map(p=>Math.round((+p.pct||0)*100)+'/'+(+p.dias||0)).join(', ')}; renderComercialConfig(); } }
+function condSalvar(){ const F=_condForm; if(!F)return; if(!(F.nome||'').trim()){uiToast('Dê um nome à condição.','err');return;}
+  const parc=parseParcelas(F.parcelasTxt); if(!parc.length){uiToast('Informe as parcelas (ex.: 50/30, 50/60).','err');return;}
+  const soma=parc.reduce((a,p)=>a+p.pct,0); if(Math.abs(soma-1)>0.01){uiToast('As parcelas devem somar 100% (atual: '+Math.round(soma*100)+'%).','err');return;}
+  if(!Array.isArray(D.comercial.condicoesPgto))D.comercial.condicoesPgto=[];
+  const rec={id:F.id||('cp'+uidLanc()),nome:F.nome.trim(),parcelas:parc,ativo:true};
+  if(F.id){const i=D.comercial.condicoesPgto.findIndex(c=>c.id===F.id);if(i>=0)D.comercial.condicoesPgto[i]=rec;}else D.comercial.condicoesPgto.push(rec);
+  _condForm=null; commit(); renderComercialConfig(); uiToast('✓ Condição salva'); }
+function condSalvarUI(){ if(_condForm){ const n=document.getElementById('condNome'),p=document.getElementById('condParc'); if(n)_condForm.nome=n.value; if(p)_condForm.parcelasTxt=p.value; } condSalvar(); }
+function condCancelar(){ _condForm=null; renderComercialConfig(); }
+function condRemover(id){ if(!confirm('Remover esta condição de pagamento?'))return; D.comercial.condicoesPgto=(D.comercial.condicoesPgto||[]).filter(c=>c.id!==id); commit(); renderComercialConfig(); }
+function renderCondPgto(){ const host=document.getElementById('ccCond'); if(!host)return;
+  let h='<div class="edhead"><h3>Condições de pagamento</h3><p class="edhelp">Parcelas como "%/dias" separadas por vírgula (ex.: <b>50/30, 50/60</b>). Devem somar 100%. O orçamento calcula valores e vencimentos.</p></div>';
+  h+='<div style="margin-bottom:10px"><button class="edbtn primary" onclick="condNovo()">+ Nova condição</button></div>';
+  if(_condForm){ const F=_condForm;
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:12px"><div class="labprec" style="gap:10px 14px">'
+      +'<label class="lpf"><span>Nome</span><input class="edinp" id="condNome" value="'+esc(F.nome||'')+'" placeholder="ex.: 30/60/90"></label>'
+      +'<label class="lpf" style="min-width:240px"><span>Parcelas (%/dias)</span><input class="edinp" id="condParc" value="'+esc(F.parcelasTxt||'')+'" placeholder="50/30, 50/60"></label>'
+      +'</div><div style="margin-top:10px;display:flex;gap:10px"><button class="edbtn primary" onclick="condSalvarUI()">Salvar</button><button class="edbtn ghost" onclick="condCancelar()">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Condição</th><th>Parcelas</th><th></th></tr></thead><tbody>';
+  const list=D.comercial.condicoesPgto||[];
+  if(!list.length)h+='<tr><td colspan="3" style="color:var(--muted);padding:12px 6px">Nenhuma condição.</td></tr>';
+  list.forEach(c=>{ h+='<tr><td><b>'+esc(c.nome||'—')+'</b></td><td>'+esc(fmtParcelas(c.parcelas))+'</td><td style="text-align:right;white-space:nowrap"><button class="edbtn" onclick="condEditar(\''+c.id+'\')">editar</button> <button class="edbtn ghost" onclick="condRemover(\''+c.id+'\')">✕</button></td></tr>'; });
+  h+='</tbody></table></div>'; host.innerHTML=h;
+}
+/* pacotes comerciais (combos configuráveis) */
+let _pacForm=null;
+function pacCaptura(){ if(!_pacForm)return; const n=document.getElementById('pacNome'),d=document.getElementById('pacDesc'),dr=document.getElementById('pacDescr'); if(n)_pacForm.nome=n.value; if(d)_pacForm.descontoPct=pnum(d.value); if(dr)_pacForm.descricao=dr.value; }
+function pacNovo(){ _pacForm={id:'',nome:'',descricao:'',servicos:[],descontoPct:0}; renderComercialConfig(); }
+function pacEditar(id){ const p=(D.comercial.pacotes||[]).find(x=>x.id===id); if(p){ _pacForm=JSON.parse(JSON.stringify(p)); if(!Array.isArray(_pacForm.servicos))_pacForm.servicos=[]; renderComercialConfig(); } }
+function pacToggleServ(nome){ if(!_pacForm)return; pacCaptura(); const i=_pacForm.servicos.indexOf(nome); if(i>=0)_pacForm.servicos.splice(i,1); else _pacForm.servicos.push(nome); renderComercialConfig(); }
+function pacSalvar(){ pacCaptura(); const F=_pacForm; if(!F)return; if(!(F.nome||'').trim()){uiToast('Dê um nome ao pacote.','err');return;} if(!F.servicos.length){uiToast('Selecione ao menos um serviço.','err');return;}
+  F.nome=F.nome.trim(); F.descontoPct=+F.descontoPct||0;
+  if(!Array.isArray(D.comercial.pacotes))D.comercial.pacotes=[];
+  if(F.id){const i=D.comercial.pacotes.findIndex(p=>p.id===F.id);if(i>=0)D.comercial.pacotes[i]=F;}else{F.id='pac'+uidLanc();F.ativo=true;D.comercial.pacotes.push(F);}
+  _pacForm=null; commit(); renderComercialConfig(); uiToast('✓ Pacote salvo'); }
+function pacCancelar(){ _pacForm=null; renderComercialConfig(); }
+function pacRemover(id){ if(!confirm('Remover este pacote?'))return; D.comercial.pacotes=(D.comercial.pacotes||[]).filter(p=>p.id!==id); commit(); renderComercialConfig(); }
+function renderPacotes(){ const host=document.getElementById('ccPac'); if(!host)return;
+  let h='<div class="edhead"><h3>Pacotes comerciais</h3><p class="edhelp">Combos configuráveis (ex.: <b>Básico → Completo → Premium</b>). O vendedor toca no pacote e o assistente monta os serviços; ele ainda pode personalizar. Desconto do pacote é opcional.</p></div>';
+  h+='<div style="margin-bottom:10px"><button class="edbtn primary" onclick="pacNovo()">+ Novo pacote</button></div>';
+  if(_pacForm){ const F=_pacForm; const servs=(typeof funilServicoLista==='function')?funilServicoLista():((D.servicos||[]).map(s=>s.nome).filter(Boolean));
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:12px"><div class="labprec" style="gap:10px 14px">'
+      +'<label class="lpf"><span>Nome</span><input class="edinp" id="pacNome" value="'+esc(F.nome||'')+'" placeholder="ex.: Pacote Completo AP"></label>'
+      +'<label class="lpf" style="min-width:150px"><span>Desconto do pacote (%)</span><input inputmode="decimal" class="edinp num" id="pacDesc" value="'+esc(F.descontoPct||'')+'"></label>'
+      +'<label class="lpf" style="flex:1 1 100%"><span>Descrição</span><input class="edinp" id="pacDescr" value="'+esc(F.descricao||'')+'" placeholder="o que o pacote inclui"></label>'
+      +'</div><div style="margin-top:10px"><div class="cap" style="margin-bottom:6px">Serviços inclusos:</div><div style="display:flex;gap:8px;flex-wrap:wrap">'
+      + servs.map(s=>{ const on=F.servicos.indexOf(s)>=0; return '<button class="op-linkbtn" style="border:1px solid '+(on?'var(--leaf)':'var(--line)')+';'+(on?'background:var(--tintG);':'')+'" onclick="pacToggleServ(\''+esc(String(s).replace(/'/g,"\\'"))+'\')">'+(on?'✓ ':'+ ')+esc(s)+'</button>'; }).join('')
+      +'</div></div><div style="margin-top:10px;display:flex;gap:10px"><button class="edbtn primary" onclick="pacSalvar()">Salvar pacote</button><button class="edbtn ghost" onclick="pacCancelar()">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Pacote</th><th>Serviços</th><th>Desconto</th><th></th></tr></thead><tbody>';
+  const list=D.comercial.pacotes||[];
+  if(!list.length)h+='<tr><td colspan="4" style="color:var(--muted);padding:12px 6px">Nenhum pacote.</td></tr>';
+  list.forEach(p=>{ h+='<tr><td><b>'+esc(p.nome||'—')+'</b></td><td style="font-size:12px">'+(p.servicos||[]).map(esc).join(', ')+'</td><td>'+(p.descontoPct?(+p.descontoPct+'%'):'—')+'</td><td style="text-align:right;white-space:nowrap"><button class="edbtn" onclick="pacEditar(\''+p.id+'\')">editar</button> <button class="edbtn ghost" onclick="pacRemover(\''+p.id+'\')">✕</button></td></tr>'; });
+  h+='</tbody></table></div>'; host.innerHTML=h;
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
