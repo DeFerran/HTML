@@ -846,6 +846,12 @@ header .htxt h1{display:none}
       <div class="panel"><h3>Pedidos por mês — sazonalidade 26/27</h3><div class="cap">Nº de pedidos (barras) e receita (linha) por mês do pedido. Informe o <b>Mês do pedido</b> de cada venda em Lançamentos › Clientes.</div><div class="chartbox"><canvas id="cPedMes"></canvas></div><div class="note" id="notePedMes"></div></div>
       <div class="panel"><h3>Receita lançada por serviço</h3><div class="cap">Receita dos clientes somada pelo <b>Serviço</b> marcado em cada venda. Preencha a coluna Serviço em Lançamentos › Clientes.</div><div class="chartbox"><canvas id="cRecServCli"></canvas></div><div class="note" id="noteRecServ"></div></div>
     </div>
+    <div class="panel"><h3>Gestão por município — carteira 26/27</h3>
+      <div class="cap">Receita e área da carteira agrupadas pelo <b>município</b> da venda — vindo da <b>fazenda</b> escolhida em Lançamentos › Clientes (ou do município direto). Cadastre fazendas e municípios em <b>Cadastros</b>.</div>
+      <div class="kpis" id="kMuni" style="margin-bottom:14px"></div>
+      <div class="chartbox tall"><canvas id="cMuniRec"></canvas></div>
+      <div style="overflow-x:auto;margin-top:12px"><table id="tMuni" class="resp-cards"></table></div>
+      <div class="note" id="noteMuni" style="margin-top:8px"></div></div>
     <div class="panel"><h3>Matriz de cross-sell — serviços contratados por cliente</h3><div class="cap">Verde = já contrata. Vazio = oportunidade de venda.</div><div class="hm" id="heat"></div></div>
     <div class="panel"><h3>Pipeline de recompra — reamostragem prevista</h3><div class="cap">Quando cada cliente deve <b>reamostrar</b> (Última coleta + Ciclo, definidos em Lançamentos › Clientes). É a receita <b>recorrente</b> da sua carteira: planeje a venda antes do concorrente. Clientes de Fertilidade Grid já vêm com ciclo de 2 anos.</div><div class="kpis" id="kRecompra" style="margin-bottom:14px"></div><div style="overflow-x:auto"><table id="tRecompra" class="resp-cards"></table></div></div>
   </section>
@@ -1482,6 +1488,8 @@ function hydrate(d){
   if(!Array.isArray(d.clientes)) d.clientes=[];
   const _safraBaseHy=(d.safras&&d.safras.labels&&d.safras.labels[2])||'26/27';
   d.clientes.forEach(c=>{ if(!c)return; if(c.vendedor===undefined||c.vendedor===null||c.vendedor==='') c.vendedor='A definir'; if(c.servico==null)c.servico=''; if(c.mes==null)c.mes='';
+    // Fase 4: localização da venda (opcional) — fazenda escolhida auto-preenche o município
+    if(c.fazenda==null)c.fazenda=''; if(c.municipio==null)c.municipio='';
     // ciclo de reamostragem (recompra): última coleta (safra) + ciclo em anos
     if(c.ultimaColeta==null)c.ultimaColeta=''; if(c.cicloColeta==null)c.cicloColeta=0;
     // pré-preenche clientes de Fertilidade Grid já vendidos nesta safra: última = safra-base, ciclo padrão 2 anos
@@ -2865,10 +2873,48 @@ function renderRecompra(){
     '<td class="num" data-label="Receita estimada">'+BRL(x.estimativa)+'</td></tr>'; }).join('');
   tel.innerHTML='<thead><tr><th>Cliente</th><th>Serviço</th><th class="num">Área (ha)</th><th>Última coleta</th><th class="num">Ciclo</th><th>Próxima</th><th class="num">Receita estimada</th></tr></thead><tbody>'+rows+'</tbody>';
 }
+/* Fase 4: município efetivo de uma venda — direto, ou herdado da fazenda escolhida */
+function municipioDaVenda(c){ if(!c)return'';
+  if((c.municipio||'').trim())return c.municipio.trim();
+  if((c.fazenda||'').trim()){ const f=(D.fazendas||[]).find(x=>x.clienteNome===c.nome&&x.nome===c.fazenda); if(f&&(f.municipioNome||'').trim())return f.municipioNome.trim(); }
+  return ''; }
+/* Fase 4: gestão por município — rollup da carteira (reusa a receita já existente) */
+function renderGestaoMunicipio(){
+  if(typeof document==='undefined')return;
+  const clientes=D.clientes||[];
+  const agg={}; let semMun=0, semMunRec=0;
+  clientes.forEach(c=>{ const m=municipioDaVenda(c); const key=m||'Sem município';
+    if(!m){ semMun++; semMunRec+=(+c.receita||0); }
+    if(!agg[key])agg[key]={mun:key,semMun:!m,rec:0,ha:0,clis:new Set()};
+    agg[key].rec+=(+c.receita||0); agg[key].ha+=(+c.ha||0); if(c.nome)agg[key].clis.add(c.nome); });
+  const rows=Object.values(agg).map(r=>({mun:r.mun,semMun:r.semMun,rec:r.rec,ha:r.ha,ncli:r.clis.size})).sort((a,b)=>b.rec-a.rec);
+  const totRec=rows.reduce((a,r)=>a+r.rec,0)||1;
+  const comMun=rows.filter(r=>!r.semMun);
+  if(document.getElementById('kMuni')) kpi('kMuni',[
+    {lab:'Municípios com venda',val:comMun.length,sub:(D.municipios||[]).length+' cadastrados'},
+    {lab:'Município nº 1',val:comMun[0]?comMun[0].mun:'—',c:'g',sub:comMun[0]?PCT(comMun[0].rec/totRec)+' da receita':'nada vinculado'},
+    {lab:'Vendas sem município',val:semMun,c:semMun?'r':'',sub:semMun?BRLk(semMunRec)+' a vincular':'tudo vinculado ✓'},
+  ]);
+  const chartRows=comMun.slice(0,12);
+  mk('cMuniRec',{type:'bar',data:{labels:chartRows.map(r=>r.mun),datasets:[{label:'Receita',data:chartRows.map(r=>r.rec),
+    backgroundColor:chartRows.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:54}},plugins:{legend:{display:false},
+      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>v?BRLk(v):''},
+      tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/totRec)+' da carteira)'}}},
+      scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
+  const tel=document.getElementById('tMuni');
+  if(tel){ let t='<thead><tr><th>Município</th><th class="num">Clientes</th><th class="num">Área (ha)</th><th class="num">Receita</th><th class="num">% carteira</th></tr></thead><tbody>';
+    if(!rows.length)t+='<tr><td colspan="5" style="color:var(--muted)">Nada lançado na carteira.</td></tr>';
+    rows.forEach(r=>{ t+='<tr><td data-label="Município" class="cardttl">'+(r.semMun?'<span style="color:var(--muted)">Sem município</span>':esc(r.mun))+'</td><td data-label="Clientes">'+r.ncli+'</td><td data-label="Área (ha)">'+fnum(r.ha)+'</td><td data-label="Receita">'+BRL(r.rec)+'</td><td data-label="% carteira">'+PCT(r.rec/totRec)+'</td></tr>'; });
+    t+='</tbody>'; tel.innerHTML=t; }
+  const note=document.getElementById('noteMuni');
+  if(note){ note.innerHTML = semMun ? ('<b>'+semMun+'</b> venda(s) ainda sem município ('+BRLk(semMunRec)+'). Vincule a <b>fazenda</b> de cada venda em <b>Lançamentos › Clientes</b> — o município vem junto.') : (comMun.length?'Toda a carteira está vinculada a um município ✓':'Cadastre fazendas e municípios para ver a carteira por município.'); }
+}
 function renderCli(){
   if(baseGate('cli'))return;
   try{ renderSazonalidade(); }catch(e){ console.warn('sazonalidade',e); }
   try{ renderRecompra(); }catch(e){ console.warn('recompra',e); }
+  try{ renderGestaoMunicipio(); }catch(e){ console.warn('gestaoMuni',e); }
   const cl=(D.crossSell&&D.crossSell.clientes)||[], servN=(D.crossSell&&D.crossSell.servicos)||[];
   const nCl=cl.length||0;
   const nSub=cl.filter(c=>c.total<=1).length, avg=nCl?cl.reduce((s,c)=>s+c.total,0)/nCl:0;
@@ -3829,7 +3875,8 @@ function edTable(host,cfg){
         const dl=' data-label="'+esc(c.label)+'"';
         if(c.type==='calc'){ h+='<td class="calc"'+dl+'>'+c.calc(row)+'</td>'; }
         else if(c.type==='select'){
-          h+='<td'+dl+'><select data-i="'+i+'" data-k="'+c.k+'">'+c.opts.map(o=>'<option value="'+o.v+'"'+(row[c.k]===o.v?' selected':'')+'>'+o.t+'</option>').join('')+'</select></td>';
+          const _opts=(c.optsFor?c.optsFor(row):c.opts)||[];
+          h+='<td'+dl+'><select data-i="'+i+'" data-k="'+c.k+'">'+_opts.map(o=>'<option value="'+esc(o.v)+'"'+(row[c.k]===o.v?' selected':'')+'>'+esc(o.t)+'</option>').join('')+'</select></td>';
         } else {
           const val = c.type==='money'?fmoney(row[c.k]) : (c.type==='num'?fnum(row[c.k]) : (row[c.k]==null?'':row[c.k]));
           h+='<td'+dl+'><input '+(c.num?'inputmode="decimal" ':'')+'data-i="'+i+'" data-k="'+c.k+'" data-t="'+c.type+'" class="edinp'+(c.num?' num':'')+'" value="'+esc(val)+'"></td>';
@@ -3850,7 +3897,9 @@ function edTable(host,cfg){
       inp.onblur=()=>{ const t=inp.dataset.t,i=+inp.dataset.i,k=inp.dataset.k;
         if(t==='money')inp.value=fmoney(cfg.rows[i][k]); else if(t==='num')inp.value=fnum(cfg.rows[i][k]); };
     });
-    el.querySelectorAll('select').forEach(s=>{ s.onchange=()=>{ cfg.rows[+s.dataset.i][s.dataset.k]=s.value; if(cfg.onchange)cfg.onchange(); commit(); draw(); }; });
+    el.querySelectorAll('select').forEach(s=>{ s.onchange=()=>{ const i=+s.dataset.i,k=s.dataset.k; cfg.rows[i][k]=s.value;
+      const col=cfg.cols.find(c=>c.k===k); if(col&&col.onset){ try{col.onset(cfg.rows[i],s.value);}catch(e){} }
+      if(cfg.onchange)cfg.onchange(); commit(); draw(); }; });
     el.querySelectorAll('.edx').forEach(b=>{ b.onclick=()=>{ if(!confirm('Remover esta linha? Esta ação não pode ser desfeita.'))return; cfg.rows.splice(+b.dataset.i,1); if(cfg.onchange)cfg.onchange(); commit(); draw(); }; });
     el.querySelector('.edadd').onclick=()=>{ cfg.rows.push(cfg.newRow()); if(cfg.onchange)cfg.onchange(); commit(); draw(); };
   }
@@ -4815,13 +4864,15 @@ function renderCliEditor(){
       {k:'grupo',label:'Grupo',type:'select',opts:[{v:'fert',t:'Fertilidade'},{v:'coleta',t:'Coleta AP+'},{v:'outros',t:'Outros'},{v:'pend',t:'Pendência'}]},
       {k:'servico',label:'Serviço',type:'select',opts:servOpts},
       {k:'vendedor',label:'Vendedor',type:'select',opts:[{v:'A definir',t:'A definir'},{v:'De Ferran',t:'De Ferran'},{v:'Anderlirio',t:'Anderlirio'},{v:'Bruno',t:'Bruno'}]},
+      {k:'fazenda',label:'Fazenda',type:'select',optsFor:r=>[{v:'',t:'— fazenda —'}].concat((D.fazendas||[]).filter(f=>f.clienteNome===r.nome).map(f=>({v:f.nome,t:f.nome}))),onset:(r,val)=>{ const f=(D.fazendas||[]).find(x=>x.clienteNome===r.nome&&x.nome===val); if(f&&f.municipioNome)r.municipio=f.municipioNome; }},
+      {k:'municipio',label:'Município',type:'select',opts:[{v:'',t:'— município —'}].concat(nomesMunicipios().map(m=>({v:m,t:m})))},
       {k:'mes',label:'Mês do pedido',type:'select',opts:mesOpts},
       {k:'ha',label:'Área (ha)',type:'num',num:true},
       {k:'precoHa',label:'Preço/ha (R$)',type:'money',num:true},
       {label:'Receita (R$)',type:'calc',num:true,calc:r=>fmoney((+r.ha||0)*(+r.precoHa||0))},
       {k:'ultimaColeta',label:'Última coleta',type:'select',opts:safraOpts},
       {k:'cicloColeta',label:'Ciclo (anos)',type:'num',num:true}],
-    newRow:()=>({nome:'',grupo:'fert',servico:'',vendedor:'A definir',mes:'',ha:0,precoHa:0,receita:0,ultimaColeta:'',cicloColeta:0}),
+    newRow:()=>({nome:'',grupo:'fert',servico:'',vendedor:'A definir',fazenda:'',municipio:'',mes:'',ha:0,precoHa:0,receita:0,ultimaColeta:'',cicloColeta:0}),
     onchange:()=>{ D.clientes.forEach(r=>{ r.receita=(+r.ha||0)*(+r.precoHa||0); }); }});
 }
 /* ===================== MÓDULO DE CUSTOS · base única de lançamentos ===================== */
