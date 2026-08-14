@@ -368,6 +368,24 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 .orc-field input,.orc-field select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:15px;font-weight:600}
 .orc-qcard{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
 .orc-qtop{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+/* Fase 4 — mobile: passo-a-passo foco total + barra inferior fixa */
+.orc-mobstep{display:none}
+.orc-bottombar{display:none}
+@media(max-width:899px){
+  .orc-steps{display:none}
+  .orc-side{display:none}
+  .orc-mobstep{display:block;margin-bottom:14px}
+  .orc-mobstep .mst-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .orc-mobstep .mst-n{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .orc-mobstep .mst-t{font-size:18px;font-weight:800}
+  .orc-mobstep .mst-bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:9px}
+  .orc-mobstep .mst-bar>i{display:block;height:100%;background:var(--leaf);border-radius:6px;transition:width .25s}
+  .orc-scards{grid-template-columns:1fr 1fr;gap:10px}
+  .orc-bottombar{display:flex;position:sticky;bottom:0;gap:12px;align-items:center;justify-content:space-between;background:var(--card);border-top:1px solid var(--line);padding:11px 14px;margin:16px -14px -14px;box-shadow:0 -6px 18px rgba(0,0,0,.16);z-index:6}
+  .orc-bottombar .bt{font-size:10.5px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.4px}
+  .orc-bottombar .bv{font-size:20px;font-weight:800;line-height:1.1}
+  .orc-bottombar .edbtn{flex:0 0 auto}
+}
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -5723,9 +5741,12 @@ function qzToggleServ(servico){ if(!_qz)return; if(_qz.itens.some(it=>it.servico
 function qzAddPacote(id){ const p=(D.comercial.pacotes||[]).find(x=>x.id===id); if(!p||!_qz)return; (p.servicos||[]).forEach(s=>qzAddItem(s,p.descontoPct||0)); qzSalvarDraft(); renderOrcamentosView(); }
 function qzItemMalha(servico,malhaId){ const it=_qz.itens.find(x=>x.servico===servico); if(it&&it.config){ it.config.malhaId=malhaId; qzSalvarDraft(); renderOrcamentosView(); } }
 function qzItemProf(servico,profId){ const it=_qz.itens.find(x=>x.servico===servico); if(it&&it.config){ const a=it.config.profundidades||(it.config.profundidades=[]); const i=a.indexOf(profId); if(i>=0)a.splice(i,1); else a.push(profId); qzSalvarDraft(); renderOrcamentosView(); } }
-function qzGerar(){ if(!_qz)return; if(!_qz.clienteNome){uiToast('Selecione o cliente.','err');return qzStep(0);} if(!(+_qz.areaHa>0)){uiToast('Informe a área.','err');return qzStep(1);} if(!_qz.itens.length){uiToast('Adicione ao menos um serviço.','err');return qzStep(2);}
-  qzRecalc(); const rec=QuoteCalc.reconcilia(_qz); if(!rec.ok){ uiToast('Inconsistência: '+rec.erros.join(', '),'err'); return; }
-  qzSalvarDraft(); const num=_qz.numero; _qz=null; renderOrcamentosView(); uiToast('✓ Orçamento '+num+' salvo'); }
+let _qzGerando=false;
+function qzGerar(){ if(!_qz||_qzGerando)return; if(!_qz.clienteNome){uiToast('Selecione o cliente.','err');return qzStep(0);} if(!(+_qz.areaHa>0)){uiToast('Informe a área.','err');return qzStep(1);} if(!_qz.itens.length){uiToast('Adicione ao menos um serviço.','err');return qzStep(2);}
+  _qzGerando=true;
+  try{ qzRecalc(); const rec=QuoteCalc.reconcilia(_qz); if(!rec.ok){ uiToast('Inconsistência: '+rec.erros.join(', '),'err'); return; }
+    qzSalvarDraft(); const num=_qz.numero; _qz=null; renderOrcamentosView(); uiToast('✓ Orçamento '+num+' salvo'); }
+  finally{ _qzGerando=false; } }
 /* ---- render: lista x wizard ---- */
 function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)renderOrcWizard(host); else renderOrcLista(host); }
 const ORC_STATUS_LBL={rascunho:'Rascunho',aguardando_aprovacao:'Aguardando aprovação',aprovado:'Aprovado',enviado:'Enviado',negociacao:'Em negociação',aceito:'Aceito',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
@@ -5752,12 +5773,18 @@ function qzSummaryHTML(){ if(!_qz)return '';
   h+='<div style="margin-top:12px">'+(_qzStep<ORC_STEPS.length-1?('<button class="edbtn primary orc-big" style="width:100%" onclick="qzStep('+(_qzStep+1)+')">Continuar</button>'):('<button class="edbtn primary orc-big" style="width:100%;background:#0A6A30" onclick="qzGerar()">Gerar orçamento</button>'))+'</div>';
   h+='</div>'; return h;
 }
-function qzRefreshSummary(){ const s=document.getElementById('orcSummary'); if(s)s.innerHTML=qzSummaryHTML(); }
+/* barra inferior fixa (mobile): total corrente + ação primária */
+function qzBottomBarHTML(){ if(!_qz)return ''; const last=_qzStep>=ORC_STEPS.length-1;
+  const act=last?'<button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">Gerar orçamento</button>':'<button class="edbtn primary orc-big" onclick="qzStep('+(_qzStep+1)+')">Continuar ›</button>';
+  return '<div><div class="bt">Total'+((_qz.itens||[]).length?(' · '+(_qz.itens.length)+' serv.'):'')+'</div><div class="bv">'+BRL(+_qz.total||0)+'</div></div>'+act; }
+function qzRefreshSummary(){ const s=document.getElementById('orcSummary'); if(s)s.innerHTML=qzSummaryHTML(); const bb=document.getElementById('orcBottom'); if(bb)bb.innerHTML=qzBottomBarHTML(); }
 function renderOrcWizard(host){
   qzRecalc();
   let h='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><button class="edbtn ghost" onclick="orcFechar()">‹ Voltar aos orçamentos</button><span class="cap">'+esc(_qz.numero)+' · rascunho salvo automaticamente</span></div>';
   h+='<div class="orc-steps">'+ORC_STEPS.map((s,i)=>'<div class="orc-step'+(i===_qzStep?' on':(i<_qzStep?' done':''))+'" onclick="qzStep('+i+')"><span class="num">'+(i<_qzStep?'✓':(i+1))+'</span>'+esc(s)+'</div>').join('')+'</div>';
+  h+='<div class="orc-mobstep"><div class="mst-top"><span class="mst-n">Passo '+(_qzStep+1)+' de '+ORC_STEPS.length+'</span>'+(_qzStep>0?'<button class="op-linkbtn" onclick="qzStep('+(_qzStep-1)+')">‹ voltar</button>':'')+'</div><div class="mst-t">'+esc(ORC_STEPS[_qzStep])+'</div><div class="mst-bar"><i style="width:'+Math.round(((_qzStep+1)/ORC_STEPS.length)*100)+'%"></i></div></div>';
   h+='<div class="orc-wrap"><div class="orc-main"><div class="panel">'+qzStepHTML()+'</div></div><div class="orc-side" id="orcSummary">'+qzSummaryHTML()+'</div></div>';
+  h+='<div class="orc-bottombar" id="orcBottom">'+qzBottomBarHTML()+'</div>';
   host.innerHTML=h;
   const inp=document.getElementById('qzArea'); if(inp)inp.onchange=()=>qzSetField('areaHa',pnum(inp.value));
   const val=document.getElementById('qzValidade'); if(val)val.onchange=()=>qzSetField('validadeDias',Math.round(pnum(val.value)));
