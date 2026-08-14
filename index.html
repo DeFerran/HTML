@@ -300,6 +300,29 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 .edpill:focus-visible,.taxseg button:focus-visible,.sb-pills button:focus-visible,
 .iconbtn:focus-visible,summary:focus-visible,[tabindex]:focus-visible{
   outline:2px solid var(--orange);outline-offset:2px;border-radius:8px}
+/* Visão Geral — faixa de decisão (número-herói + contexto clicável + alertas) */
+.ghero{margin:0 0 16px}
+.ghero-empty{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:16px;color:var(--muted);font-size:13px}
+.ghmain{display:flex;gap:16px;flex-wrap:wrap;align-items:center;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--leaf);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+.ghmain.ghero-r{border-left-color:var(--red)} .ghmain.ghero-gold{border-left-color:var(--orange)}
+.ghhero{flex:1 1 240px;text-align:left;background:none;border:none;cursor:pointer;padding:0}
+.ghhlab{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ghhval{font-family:var(--serif);font-size:clamp(30px,5vw,44px);font-weight:800;line-height:1.05;color:var(--head)}
+.ghmain.ghero-r .ghhval{color:var(--red)} .ghmain.ghero-gold .ghhval{color:var(--orangeD)}
+.ghhsub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.ghchips{display:flex;gap:10px;flex-wrap:wrap}
+.ghchip{background:var(--soft);border:1px solid var(--line);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:1px;min-width:112px}
+.ghchip:hover{border-color:var(--leaf)}
+.ghlab{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.ghval{font-size:17px;font-weight:800;color:var(--head)}
+.ghsub{font-size:11px;color:var(--muted)}
+.ghalerts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ghalert{display:inline-flex;align-items:center;gap:7px;border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid transparent;text-align:left}
+.ghalert .gharr{margin-left:2px;opacity:.55;font-weight:800}
+.a-critico{background:var(--tintR);color:var(--red);border-color:rgba(192,57,43,.25)}
+.a-aviso{background:var(--tintGold);color:var(--goldT);border-color:rgba(192,138,44,.25)}
+.a-ok{background:var(--tintG);color:var(--leaf);border-color:rgba(30,125,60,.2)}
+@media(max-width:767px){ .ghhval{font-size:32px} .ghchip{flex:1 1 44%} }
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -753,6 +776,7 @@ header .htxt h1{display:none}
   <section class="view active" id="v-geral">
     <div class="lead"><h2>Visão Geral — Safra 26/27 como projeto</h2>
       <p>A 26/27 é um <b>projeto</b>: o custo sai ao longo de 2026 (jan–dez) e a receita só entra em 2027 (90% em abr, 10% em ago), com a comissão paga em mai/27. Aqui o resultado é medido por competência — receita bruta contratada, menos imposto sobre NF, menos o custo projetado de 2026, menos a comissão. A margem é o número que manda, não o faturamento.</p></div>
+    <div class="ghero" id="geralHero"></div>
     <div class="taxbar">
       <span class="lb">Imposto sobre NF (todos os clientes):</span>
       <span class="taxseg" id="taxseg">
@@ -2546,8 +2570,46 @@ function renderServGeral(){
   if(faltam.length) msg+=' Faltam apenas <b>'+faltam.map(esc).join(', ')+'</b> (não usam coleta/lab): informe o custo/ha em <b>Lançamentos → Preços por safra</b> para ver a margem dessas linhas.';
   nt.innerHTML=(nt?msg+'</div>':'');
 }
+/* navegação por clique (drill-down a partir da faixa de decisão) */
+function irPara(v){ if(typeof document==='undefined')return; const b=document.querySelector('#tabs button[data-v="'+v+'"]'); if(b)b.click(); }
+/* alertas de negócio derivados de funções JÁ existentes (sem nova regra):
+   margem líquida, ponto de equilíbrio, comissão vs margem, realizado vs meta. */
+function geralAlertas(){
+  const out=[]; if(recBruta()<=0) return out;
+  const mg=margemLiq(), mo=margemOper(), comV=comissaoVal(), ms=margemSeguranca(), mt=metasFoco();
+  if(mg<0) out.push({n:'critico',t:'Margem líquida negativa ('+BRL(mg)+')',ir:'fin'});
+  else if(ms<0) out.push({n:'critico',t:'Abaixo do ponto de equilíbrio ('+PCT(ms)+' de margem de segurança)',ir:'metas'});
+  else if(ms<0.2) out.push({n:'aviso',t:'Margem de segurança baixa ('+PCT(ms)+')',ir:'metas'});
+  if(comV>mo && mo>0) out.push({n:'aviso',t:'Comissão ('+BRLk(comV)+') maior que a margem operacional',ir:'metas'});
+  if(mt.receita>0){ const at=mt.receitaReal/mt.receita; if(at<0.999) out.push({n:'aviso',t:'Receita em '+PCT(at)+' da meta — faltam '+BRLk(mt.receita-mt.receitaReal),ir:'metas'}); }
+  if(!out.length) out.push({n:'ok',t:'Sem desvios críticos nesta safra.',ir:'metas'});
+  return out.slice(0,4);
+}
+function renderGeralHero(){
+  const host=document.getElementById('geralHero'); if(!host)return;
+  const rb=recBruta();
+  if(rb<=0){ host.innerHTML='<div class="ghero-empty">Sem receita lançada nesta safra ainda — os indicadores aparecem quando houver base.</div>'; return; }
+  const mg=margemLiq(), mp=margemPct(), mo=margemOper(), mt=metasFoco();
+  const cls=mg<0?'r':(mp>=0.15?'g':'gold');
+  const atRec = mt.receita>0? mt.receitaReal/mt.receita : null;
+  const chip=(lab,val,sub,ir)=>'<button class="ghchip" onclick="irPara(\''+ir+'\')"><span class="ghlab">'+lab+'</span><span class="ghval">'+val+'</span>'+(sub?'<span class="ghsub">'+esc(sub)+'</span>':'')+'</button>';
+  let h='<div class="ghmain ghero-'+cls+'">'
+    +'<button class="ghhero" onclick="irPara(\'fin\')" title="Abrir Financeiro">'
+      +'<div class="ghhlab">Margem líquida · safra '+esc(safraAtual())+'</div>'
+      +'<div class="ghhval">'+BRL(mg)+'</div>'
+      +'<div class="ghhsub">'+PCT(mp)+' da receita · operacional '+BRLk(mo)+'</div></button>'
+    +'<div class="ghchips">'
+      + chip('Receita', BRLk(rb), (atRec!=null?PCT(atRec)+' da meta':'faturamento contratado'), 'fin')
+      + chip('Hectares', fnum(Math.round(haTotal()))+' ha', 'área na safra', 'metas')
+      + chip('Comissão', BRLk(comissaoVal()), '30/05/27', 'metas')
+    +'</div></div>';
+  const al=geralAlertas();
+  h+='<div class="ghalerts">'+al.map(a=>'<button class="ghalert a-'+a.n+'" onclick="irPara(\''+a.ir+'\')">'+(a.n==='critico'?'●':(a.n==='aviso'?'▲':'✓'))+' '+esc(a.t)+' <span class="gharr">›</span></button>').join('')+'</div>';
+  host.innerHTML=h;
+}
 function renderGeral(){
   if(baseGate('geral'))return;
+  try{ renderGeralHero(); }catch(e){ console.warn('hero',e); }
   const rb=recBruta(), imp=imposto(), rl=recLiquida();
   const cReal=custoReal(), cInc=custoAincorrer(), cTot=custoTotal();
   const comV=comissaoVal();
