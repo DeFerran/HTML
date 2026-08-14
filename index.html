@@ -94,30 +94,48 @@ body.sidebar-collapsed .sidebar{width:64px}
 .sb-burger:hover{color:var(--head);background:var(--soft2)}
 .sb-nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 16px}
 .sb-nav::-webkit-scrollbar{width:8px}.sb-nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
-.sb-group{font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);
-  padding:16px 12px 6px;opacity:.85}
-.snav{display:flex;align-items:center;gap:11px;width:100%;background:none;border:none;text-align:left;
-  padding:10px 12px;border-radius:10px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;
+.sb-group{font-size:9.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);
+  padding:13px 12px 4px;opacity:.7}
+.sb-group:first-child{padding-top:4px}
+.snav{display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;text-align:left;
+  padding:7px 10px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;
   white-space:nowrap;transition:.14s;position:relative;font-family:var(--sans);letter-spacing:-.01em}
-.snav .sb-ic{font-size:15px;width:20px;text-align:center;flex:0 0 auto}
+.snav .sb-ic{width:17px;height:17px;flex:0 0 auto;color:var(--muted);stroke:currentColor;fill:none;
+  stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;transition:color .14s}
 .snav .sb-tx{overflow:hidden;text-overflow:ellipsis}
 .snav:hover{background:var(--soft)}
+.snav:hover .sb-ic{color:var(--head)}
 .snav.active{background:var(--tintG);color:var(--head)}
-.snav.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--orange)}
-.sb-foot{border-top:1px solid var(--line);padding:12px 14px}
+.snav.active .sb-ic{color:var(--leaf,#2E9E52)}
+.snav.active::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--orange)}
+.sb-foot{border-top:1px solid var(--line);padding:10px 14px}
 .sb-foot a{font-size:11px;color:var(--muted);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .sb-foot a:hover{color:var(--head)}
-.snav-sub{font-size:12px;font-weight:600;padding:6px 12px 6px 40px;color:var(--muted)}
-.snav-sub .sb-ic{font-size:12.5px;width:16px}
+.snav-sub{font-size:11.5px;font-weight:600;padding:5px 10px 5px 34px;color:var(--muted)}
+.snav-sub .sb-ic{width:15px;height:15px;stroke-width:1.9}
 .snav-sub:hover{color:var(--head)}
+.sb-iahead{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--head);
+  padding:12px 12px 5px;font-size:11.5px;letter-spacing:.2px}
+.sb-iahead .sb-ic{width:16px;height:16px;flex:0 0 auto;color:var(--leaf,#2E9E52);stroke:currentColor;fill:none;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+/* seta de recolher — pino na borda direita da sidebar (padrão premium) */
+.sb-collapse{position:absolute;top:72px;right:-13px;width:26px;height:26px;border-radius:50%;
+  background:var(--card);border:1px solid var(--line);color:var(--muted);cursor:pointer;z-index:62;
+  display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 9px -2px rgba(0,60,25,.32);transition:.16s}
+.sb-collapse:hover{color:var(--head);border-color:var(--leaf,#2E9E52);box-shadow:0 3px 12px -2px rgba(0,60,25,.4)}
+.sb-collapse svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
+body.sidebar-collapsed .sb-collapse svg{transform:rotate(180deg)}
 body.sidebar-collapsed .snav-sub{display:none}
 #dreGeral,#cTimeline,#reconPanel,#estrCusto{scroll-margin-top:104px}
 body.sidebar-collapsed .sb-brand .sb-mark,
 body.sidebar-collapsed .snav .sb-tx,
 body.sidebar-collapsed .sb-group,
+body.sidebar-collapsed .sb-iahead .sb-tx,
 body.sidebar-collapsed .sb-foot{display:none}
-body.sidebar-collapsed .snav{justify-content:center;padding:10px 0}
+body.sidebar-collapsed .sb-iahead{justify-content:center;padding:12px 0 5px}
+body.sidebar-collapsed .snav{justify-content:center;padding:8px 0}
 body.sidebar-collapsed .sb-brand{justify-content:center;padding:16px 8px}
+@media(max-width:900px){.sb-collapse{display:none}}
 /* botão para reativar a nova barra quando o layout clássico está ativo */
 .sb-reenable{display:none;position:fixed;left:14px;bottom:14px;z-index:59;background:var(--card);border:1px solid var(--line);
   color:var(--head);font-size:12px;font-weight:700;padding:9px 14px;border-radius:10px;cursor:pointer;box-shadow:var(--shadow)}
@@ -577,7 +595,38 @@ header .htxt h1{display:none}
 </div>
 
 <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+<svg class="sb-sprite" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg"><defs>
+  <symbol id="ic-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="9" rx="1.4"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.4"/><rect x="13.5" y="12" width="7.5" height="9" rx="1.4"/><rect x="3" y="16" width="7.5" height="5" rx="1.4"/></symbol>
+  <symbol id="ic-wallet" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 9h16"/><circle cx="16.5" cy="13.5" r="1.1"/></symbol>
+  <symbol id="ic-cash" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v6M18 9v6"/></symbol>
+  <symbol id="ic-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 16.5h4"/></symbol>
+  <symbol id="ic-tag" viewBox="0 0 24 24"><path d="M3.5 11.5l8-8 9 9-8 8z"/><circle cx="7.8" cy="7.8" r="1.3"/></symbol>
+  <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.3"/><path d="M3.2 19a5.8 5.8 0 0 1 11.6 0"/><path d="M16 5.4a3.2 3.2 0 0 1 0 6.2"/><path d="M17.4 19a5.8 5.8 0 0 0-3-5"/></symbol>
+  <symbol id="ic-flask" viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6.5l-4.6 8A2 2 0 0 0 7.2 20.5h9.6a2 2 0 0 0 1.8-3l-4.6-8V3"/><path d="M8 15h8"/></symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24"><path d="M9.5 14.5l5-5"/><path d="M11 6.5l1.4-1.4a3.6 3.6 0 0 1 5.1 5.1L16 11.7"/><path d="M13 17.5l-1.4 1.4a3.6 3.6 0 0 1-5.1-5.1L8 12.3"/></symbol>
+  <symbol id="ic-funnel" viewBox="0 0 24 24"><path d="M3.5 5h17l-6.5 7.5V19l-4-2v-4.5z"/></symbol>
+  <symbol id="ic-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.1"/></symbol>
+  <symbol id="ic-team" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.3"/><path d="M3.2 19a5.8 5.8 0 0 1 11.6 0"/><path d="M15.5 11l1.8 1.8L21 9"/></symbol>
+  <symbol id="ic-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.6z"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
+  <symbol id="ic-bars" viewBox="0 0 24 24"><path d="M3 21h18"/><rect x="4.5" y="12" width="3.4" height="6" rx="1"/><rect x="10.3" y="6" width="3.4" height="12" rx="1"/><rect x="16.1" y="9" width="3.4" height="9" rx="1"/></symbol>
+  <symbol id="ic-tractor" viewBox="0 0 24 24"><path d="M3 6h6l1.5 5"/><path d="M4 6v6"/><circle cx="7" cy="16.5" r="3.3"/><circle cx="17.5" cy="17" r="2.8"/><path d="M10 13h5.5l1.5 1.5"/><path d="M9.5 11h7"/></symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="ic-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5L19 9.9 13.9 12 12 17l-1.9-5L5 9.9 10.1 8z"/><path d="M18.5 15l.8 2.1 2.2.9-2.2.9-.8 2.1-.8-2.1-2.2-.9 2.2-.9z"/></symbol>
+  <symbol id="ic-bot" viewBox="0 0 24 24"><rect x="4.5" y="8" width="15" height="10" rx="2.5"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1.2"/><circle cx="9.2" cy="13" r="1.1"/><circle cx="14.8" cy="13" r="1.1"/><path d="M2.5 12v3M21.5 12v3"/></symbol>
+  <symbol id="ic-hex" viewBox="0 0 24 24"><path d="M12 3l7.5 4.3v8.6L12 20.2 4.5 15.9V7.3z"/><path d="M12 8.5v7M8.7 10.2l6.6 3.8M15.3 10.2l-6.6 3.8"/></symbol>
+  <symbol id="ic-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13.5h5L9 21l9-11.5h-5z"/></symbol>
+  <symbol id="ic-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 4.5 1.8 5.8 2.2 6H3.8C4.2 14.8 6 13.5 6 9z"/><path d="M10 19.5a2.2 2.2 0 0 0 4 0"/></symbol>
+  <symbol id="ic-book" viewBox="0 0 24 24"><path d="M5 4.5h10a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2z"/><path d="M17 6.5h2v13h-2"/><path d="M8 8.5h5M8 11.5h5"/></symbol>
+  <symbol id="ic-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v2.5M15 3v2.5M9 18.5V21M15 18.5V21M3 9h2.5M3 15h2.5M18.5 9H21M18.5 15H21"/></symbol>
+  <symbol id="ic-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M8.3 12.3l2.6 2.6 4.8-5.4"/></symbol>
+  <symbol id="ic-archive" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="4" rx="1.2"/><path d="M5 8v10.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V8"/><path d="M10 12h4"/></symbol>
+  <symbol id="ic-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.8M12 18.7v2.8M4.2 4.2l2 2M17.8 17.8l2 2M2.5 12h2.8M18.7 12h2.8M4.2 19.8l2-2M17.8 6.2l2-2"/></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.6-3 7.8-7 9.2-4-1.4-7-4.6-7-9.2V6z"/><path d="M9 12l2 2 4-4.2"/></symbol>
+  <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+</defs></svg>
 <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+  <button class="sb-collapse" id="sbCollapse" title="Recolher / expandir menu" aria-label="Recolher menu" onclick="toggleSidebarCollapse()"><svg viewBox="0 0 24 24"><use href="#ic-chevron"></use></svg></button>
   <div class="sb-brand">
     <button class="sb-burger" id="sbBurger" title="Recolher / expandir menu" aria-label="Recolher menu" onclick="toggleSidebarCollapse()">☰</button>
     <span class="logo-sw">
@@ -587,39 +636,39 @@ header .htxt h1{display:none}
     <div class="sb-mark">DF AGRO 360<small>Painel de Gestão</small></div>
   </div>
   <nav class="sb-nav" id="sbNav">
-    <button class="snav" data-target="geral"><span class="sb-ic">📊</span><span class="sb-tx">Visão Geral</span></button>
+    <button class="snav" data-target="geral"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Visão Geral</span></button>
     <div class="sb-group">Financeiro</div>
-    <button class="snav" data-target="fin"><span class="sb-ic">💰</span><span class="sb-tx">Financeiro / Margem</span></button>
-    <button class="snav snav-sub" data-target="fin" data-scroll="cTimeline"><span class="sb-ic">💧</span><span class="sb-tx">Fluxo de Caixa</span></button>
-    <button class="snav snav-sub" data-target="geral" data-scroll="dreGeral"><span class="sb-ic">📄</span><span class="sb-tx">DRE da safra</span></button>
-    <button class="snav" data-target="margem"><span class="sb-ic">🏷️</span><span class="sb-tx">Preços &amp; Margem</span></button>
+    <button class="snav" data-target="fin"><svg class="sb-ic"><use href="#ic-wallet"></use></svg><span class="sb-tx">Financeiro / Margem</span></button>
+    <button class="snav snav-sub" data-target="fin" data-scroll="cTimeline"><svg class="sb-ic"><use href="#ic-cash"></use></svg><span class="sb-tx">Fluxo de Caixa</span></button>
+    <button class="snav snav-sub" data-target="geral" data-scroll="dreGeral"><svg class="sb-ic"><use href="#ic-doc"></use></svg><span class="sb-tx">DRE da safra</span></button>
+    <button class="snav" data-target="margem"><svg class="sb-ic"><use href="#ic-tag"></use></svg><span class="sb-tx">Preços &amp; Margem</span></button>
     <div class="sb-group">Comercial</div>
-    <button class="snav" data-target="cli"><span class="sb-ic">👥</span><span class="sb-tx">Clientes</span></button>
-    <button class="snav" data-target="serv"><span class="sb-ic">🧪</span><span class="sb-tx">Serviços</span></button>
-    <button class="snav snav-sub" data-target="serv" data-scroll="reconPanel"><span class="sb-ic">🔗</span><span class="sb-tx">Conciliação</span></button>
-    <button class="snav" data-target="funil"><span class="sb-ic">📈</span><span class="sb-tx">Funil &amp; Projeção</span></button>
+    <button class="snav" data-target="cli"><svg class="sb-ic"><use href="#ic-users"></use></svg><span class="sb-tx">Clientes</span></button>
+    <button class="snav" data-target="serv"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Serviços</span></button>
+    <button class="snav snav-sub" data-target="serv" data-scroll="reconPanel"><svg class="sb-ic"><use href="#ic-link"></use></svg><span class="sb-tx">Conciliação</span></button>
+    <button class="snav" data-target="funil"><svg class="sb-ic"><use href="#ic-funnel"></use></svg><span class="sb-tx">Funil &amp; Projeção</span></button>
     <div class="sb-group">Metas &amp; Equipe</div>
-    <button class="snav" data-target="metas"><span class="sb-ic">🎯</span><span class="sb-tx">Metas &amp; Margem/ha</span></button>
-    <button class="snav" data-target="equipe"><span class="sb-ic">🧑‍🌾</span><span class="sb-tx">Equipe &amp; Metas</span></button>
+    <button class="snav" data-target="metas"><svg class="sb-ic"><use href="#ic-target"></use></svg><span class="sb-tx">Metas &amp; Margem/ha</span></button>
+    <button class="snav" data-target="equipe"><svg class="sb-ic"><use href="#ic-team"></use></svg><span class="sb-tx">Equipe &amp; Metas</span></button>
     <div class="sb-group">Operação</div>
-    <button class="snav" data-target="custos"><span class="sb-ic">🧾</span><span class="sb-tx">Custos &amp; Coleta</span></button>
-    <button class="snav snav-sub" data-target="custos" data-scroll="estrCusto"><span class="sb-ic">📊</span><span class="sb-tx">Estrutura de Custo</span></button>
-    <button class="snav" data-target="op"><span class="sb-ic">🚜</span><span class="sb-tx">Operação</span></button>
+    <button class="snav" data-target="custos"><svg class="sb-ic"><use href="#ic-receipt"></use></svg><span class="sb-tx">Custos &amp; Coleta</span></button>
+    <button class="snav snav-sub" data-target="custos" data-scroll="estrCusto"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Estrutura de Custo</span></button>
+    <button class="snav" data-target="op"><svg class="sb-ic"><use href="#ic-tractor"></use></svg><span class="sb-tx">Operação</span></button>
     <div class="sb-group">Gestão</div>
-    <button class="snav" data-target="edit"><span class="sb-ic">✎</span><span class="sb-tx">Lançamentos</span></button>
-    <div class="snav-sub" id="sbIAHead" style="display:none;font-weight:800;color:var(--head);padding-top:12px">🧠 Inteligência Artificial</div>
-    <button class="snav snav-sub" data-target="iahub" data-ia="visao"><span class="sb-ic">📊</span><span class="sb-tx">Visão Geral</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="copiloto"><span class="sb-ic">🤖</span><span class="sb-tx">Copiloto AP</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="agentes"><span class="sb-ic">🧩</span><span class="sb-tx">Agentes</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="automacoes"><span class="sb-ic">⚡</span><span class="sb-tx">Automações</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="alertas"><span class="sb-ic">🔔</span><span class="sb-tx">Alertas Inteligentes</span></button>
-    <button class="snav snav-sub" data-target="ia"><span class="sb-ic">📚</span><span class="sb-tx">Conhecimento</span></button>
-    <button class="snav snav-sub" data-target="iamem"><span class="sb-ic">🧠</span><span class="sb-tx">Memória</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="whatsapp"><span class="sb-ic">💬</span><span class="sb-tx">WhatsApp</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="aprovacoes"><span class="sb-ic">✅</span><span class="sb-tx">Aprovações</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="historico"><span class="sb-ic">🗂️</span><span class="sb-tx">Histórico &amp; Auditoria</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="config"><span class="sb-ic">⚙</span><span class="sb-tx">Configurações</span></button>
-    <button class="snav" data-target="admin" id="sbAdmin" style="display:none"><span class="sb-ic">⚙</span><span class="sb-tx">Administração</span></button>
+    <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
+    <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
+    <button class="snav snav-sub" data-target="iahub" data-ia="visao"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Visão Geral</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="copiloto"><svg class="sb-ic"><use href="#ic-bot"></use></svg><span class="sb-tx">Copiloto AP</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="agentes"><svg class="sb-ic"><use href="#ic-hex"></use></svg><span class="sb-tx">Agentes</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="automacoes"><svg class="sb-ic"><use href="#ic-bolt"></use></svg><span class="sb-tx">Automações</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="alertas"><svg class="sb-ic"><use href="#ic-bell"></use></svg><span class="sb-tx">Alertas Inteligentes</span></button>
+    <button class="snav snav-sub" data-target="ia"><svg class="sb-ic"><use href="#ic-book"></use></svg><span class="sb-tx">Conhecimento</span></button>
+    <button class="snav snav-sub" data-target="iamem"><svg class="sb-ic"><use href="#ic-cpu"></use></svg><span class="sb-tx">Memória</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="whatsapp"><svg class="sb-ic"><use href="#ic-chat"></use></svg><span class="sb-tx">WhatsApp</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="aprovacoes"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Aprovações</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="historico"><svg class="sb-ic"><use href="#ic-archive"></use></svg><span class="sb-tx">Histórico &amp; Auditoria</span></button>
+    <button class="snav snav-sub" data-target="iahub" data-ia="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Configurações</span></button>
+    <button class="snav" data-target="admin" id="sbAdmin" style="display:none"><svg class="sb-ic"><use href="#ic-shield"></use></svg><span class="sb-tx">Administração</span></button>
   </nav>
   <div class="sb-foot">
     <a onclick="setSidebar(false)" title="Voltar ao menu horizontal clássico">↔ Layout clássico</a>
@@ -1152,11 +1201,16 @@ function hydrate(d){
     if(o.valor==null||isNaN(+o.valor)) o.valor=0; });
   if(!d.metasSafra || typeof d.metasSafra!=='object'){
     const m=d.metas||{};
-    d.metasSafra={'26/27':{receita:+m.receitaMeta||0,area:+m.hectaresMeta||0},'27/28':{receita:0,area:0}};
+    d.metasSafra={
+      '26/27':{receita:+m.receitaMeta||0,area:+m.hectaresMeta||0,receitaReal:(m.receitaReal!=null?+m.receitaReal:0)||0,areaReal:(m.hectaresReal!=null?+m.hectaresReal:0)||0},
+      '27/28':{receita:0,area:0,receitaReal:0,areaReal:0}
+    };
   }
-  ['26/27','27/28'].forEach(s=>{ if(!d.metasSafra[s]) d.metasSafra[s]={receita:0,area:0};
+  ['26/27','27/28'].forEach(s=>{ if(!d.metasSafra[s]) d.metasSafra[s]={receita:0,area:0,receitaReal:0,areaReal:0};
     if(d.metasSafra[s].receita==null) d.metasSafra[s].receita=0;
-    if(d.metasSafra[s].area==null) d.metasSafra[s].area=0; });
+    if(d.metasSafra[s].area==null) d.metasSafra[s].area=0;
+    if(d.metasSafra[s].receitaReal==null) d.metasSafra[s].receitaReal=(s==='26/27'&&d.metas&&d.metas.receitaReal!=null?+d.metas.receitaReal:0)||0;
+    if(d.metasSafra[s].areaReal==null) d.metasSafra[s].areaReal=(s==='26/27'&&d.metas&&d.metas.hectaresReal!=null?+d.metas.hectaresReal:0)||0; });
   // tabela de preços por serviço, por safra: precosSafra[safra][servico]={preco,custo,un}
   if(!d.precosSafra || typeof d.precosSafra!=='object') d.precosSafra={};
   ['26/27','27/28'].forEach(s=>{ if(!d.precosSafra[s]||typeof d.precosSafra[s]!=='object') d.precosSafra[s]={};
@@ -1305,6 +1359,11 @@ let _safraAtiva='26/27';
 let _margFiltro='fechadas';   // 'fechadas' = só vendas fechadas · 'todas' = inclui pipeline
 const SAFRA_BASE='26/27';     // safra com base operacional/financeira lançada (Geral, Financeiro, Custos...)
 function safraAtual(){ if(FUNIL_SAFRAS.indexOf(_safraAtiva)<0)_safraAtiva='26/27'; return _safraAtiva; }
+/* metas/realizado da safra em foco (fonte por-safra; nunca a global legada D.metas) */
+function metasFoco(S){ S=S||safraAtual(); if(!D.metasSafra||typeof D.metasSafra!=='object') D.metasSafra={};
+  const m=D.metasSafra[S]||(D.metasSafra[S]={receita:0,area:0,receitaReal:0,areaReal:0});
+  if(m.receita==null)m.receita=0; if(m.area==null)m.area=0; if(m.receitaReal==null)m.receitaReal=0; if(m.areaReal==null)m.areaReal=0;
+  return m; }
 /* índice da safra no vetor D.safras.labels e teste de "base lançada" (receita/custo de competência da safra) */
 function safraIdx(S){ S=S||safraAtual(); return (D.safras&&Array.isArray(D.safras.labels))?D.safras.labels.indexOf(S):-1; }
 function baseLancada(S){ S=S||safraAtual(); if(S===SAFRA_BASE) return true;
@@ -1938,7 +1997,7 @@ function renderMetasSegmentos(){
   const realFat=segs.map(s=>segReceita(s));
   const metasMar=segs.map(s=>(+s.metaMargem||0)*100);
   const realMar=segs.map(s=>segMC(s).pct*100);
-  const gReal=recBruta(), gMeta=(+((D.metas&&D.metas.receitaMeta))||0)||segs.reduce((a,s)=>a+(+s.metaReceita||0),0);
+  const gReal=recBruta(), gMeta=(+metasFoco().receita||0)||segs.reduce((a,s)=>a+(+s.metaReceita||0),0);
   const gMC=geralMC(), gMarMetaF=(MS.margemGeralMeta||0);
   const fatPct=gMeta?gReal/gMeta:0;
   if(document.getElementById('kSeg')) kpi('kSeg',[
@@ -1989,14 +2048,15 @@ function renderMetas(){
   const com7=comBase()*(M.anderlirio&&M.anderlirio.base||0.07);
   const com10=comBase()*(M.anderlirio&&M.anderlirio.meta||0.10);
   const mlq7=moper-com7, mlq10=moper-com10;
-  const recMeta=M.receitaMeta||rb, recReal=(M.receitaReal!=null?M.receitaReal:rb);
-  const haMeta=M.hectaresMeta||totha, haReal=(M.hectaresReal!=null?M.hectaresReal:totha);
+  const MF=metasFoco();
+  const recMeta=(+MF.receita||0)||rb, recReal=((+MF.receitaReal||0)>0?+MF.receitaReal:rb);
+  const haMeta=(+MF.area||0)||totha, haReal=((+MF.areaReal||0)>0?+MF.areaReal:totha);
   const recPct=recMeta?recReal/recMeta:0, haPct=haMeta?haReal/haMeta:0;
   const recFalta=Math.max(recMeta-recReal,0), haFalta=Math.max(haMeta-haReal,0);
   const nHa=v=>Math.round(v).toLocaleString('pt-BR')+' ha';
   const elHa=document.getElementById('haTot'); if(elHa)elHa.textContent=nHa(totha);
   kpi('kMetas',[
-    {lab:'Meta de receita 26/27',val:BRLk(recMeta),sub:'realizado '+BRLk(recReal)+' · '+PCT(recPct)},
+    {lab:'Meta de receita '+safraAtual(),val:BRLk(recMeta),sub:'realizado '+BRLk(recReal)+' · '+PCT(recPct)},
     {lab:'Falta p/ meta (receita)',val:BRLk(recFalta),c:recFalta>0?'gold':'g',sub:recFalta>0?'ainda a vender':'meta atingida'},
     {lab:'Meta de hectares',val:nHa(haMeta),sub:'realizado '+nHa(haReal)+' · '+PCT(haPct)},
     {lab:'Falta p/ meta (hectares)',val:nHa(haFalta),c:haFalta>0?'gold':'g',sub:haFalta>0?'ainda a contratar':'meta atingida'},
@@ -2354,6 +2414,8 @@ function setSafra(s){ if(FUNIL_SAFRAS.indexOf(s)<0)return; _safraAtiva=s; _funil
   try{ if(document.getElementById('edPrecos')&&document.querySelector('#v-edit.active')) renderPrecoEditor(safraAtual()); }catch(e){}
   /* editor de carteira acompanha a safra em foco */
   try{ if(document.getElementById('edCli')&&document.querySelector('#v-edit.active')) renderCliEditor(); }catch(e){}
+  /* editor de Metas gerais é por safra — reconstrói p/ refletir a safra em foco */
+  try{ if(document.getElementById('edMetas')&&document.querySelector('#v-edit.active')) renderMetasEditor(); }catch(e){}
 }
 /* pills dentro de Lançamentos */
 document.querySelectorAll('#edPills button').forEach(b=>b.onclick=()=>{
@@ -4021,14 +4083,18 @@ function renderEditors(){
     newRow:()=>({cliente:'',visitas:0,relatorios:0,km:0}),
     onchange:()=>{ D.visitas=vis; }});
 
+  renderMetasEditor();
+}
+/* editor de Metas & parâmetros — extraído p/ reconstruir ao trocar a safra em foco */
+function renderMetasEditor(){
   edForm('edMetas',{title:'Metas e parâmetros',
-    help:'Metas de venda e as premissas financeiras que movem a margem em todo o painel. Alterar o imposto aqui também muda o seletor da Visão Geral.',
+    help:'Metas de venda e as premissas financeiras que movem a margem em todo o painel. A seção "Metas gerais de venda" é por safra (acompanha a safra em foco). Alterar o imposto aqui também muda o seletor da Visão Geral.',
     fields:[
-      {section:'Metas gerais de venda',sub:'safra 26/27',accent:'#1E7D3C'},
-      {label:'Meta de receita (R$)',type:'money',get:()=>D.metas.receitaMeta,set:v=>D.metas.receitaMeta=v,hint:'Suba conforme fechar novas vendas.'},
-      {label:'Meta de área (ha)',type:'num',get:()=>D.metas.hectaresMeta,set:v=>D.metas.hectaresMeta=v},
-      {label:'Realizado — receita (R$)',type:'money',get:()=>D.metas.receitaReal,set:v=>D.metas.receitaReal=v,hint:'Total contratado na safra.'},
-      {label:'Realizado — área (ha)',type:'num',get:()=>D.metas.hectaresReal,set:v=>D.metas.hectaresReal=v},
+      {section:'Metas gerais de venda',sub:'safra '+safraAtual(),accent:'#1E7D3C'},
+      {label:'Meta de receita (R$)',type:'money',get:()=>metasFoco().receita,set:v=>metasFoco().receita=v,hint:'Suba conforme fechar novas vendas. Valor por safra.'},
+      {label:'Meta de área (ha)',type:'num',get:()=>metasFoco().area,set:v=>metasFoco().area=v},
+      {label:'Realizado — receita (R$)',type:'money',get:()=>metasFoco().receitaReal,set:v=>metasFoco().receitaReal=v,hint:'Total contratado na safra.'},
+      {label:'Realizado — área (ha)',type:'num',get:()=>metasFoco().areaReal,set:v=>metasFoco().areaReal=v},
       {section:'Premissas financeiras',sub:'movem a margem de todo o painel',accent:'#C08A2C'},
       {label:'Imposto sobre NF (%)',type:'pct',get:()=>D.impostoNF.rate,set:v=>{D.impostoNF.rate=v;taxRate=v;document.querySelectorAll('#taxseg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.t)-v)<1e-9));},hint:'Reflete na margem de todo o painel.'},
       {label:'Comissão (%)',type:'pct',get:()=>D.comissao.rate,set:v=>D.comissao.rate=v,hint:'Base do vendedor.'},
@@ -5137,6 +5203,31 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 .ia-arow{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line,#eee);font-size:13px}
 .ia-arow:last-child{border-bottom:none}
 .ia-arow span{flex:0 0 130px;color:var(--muted,#777);font-weight:700}
+/* ===== Central de IA — formulários e polish do layout ===== */
+#v-iahub .panel h3, #v-ia .panel h3, #v-iamem .panel h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#v-iahub .edform, #v-ia .edform, #v-iamem .edform{gap:14px 16px;align-items:end;margin-top:12px}
+/* labels "cruas" (label>input) só existem nos painéis de IA — o app usa .edfield */
+.edform > label{display:flex;flex-direction:column;gap:6px;font-size:10.5px;color:var(--muted,#9fb0a4);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:0;min-width:0}
+.edform > label br{display:none}
+.edform > label > input,.edform > label > select,.edform > label > textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 12px;color:var(--ink);font:400 13.5px/1.4 var(--sans,inherit);text-transform:none;letter-spacing:0;transition:border-color .15s,box-shadow .15s}
+.edform > label > input::placeholder,.edform > label > textarea::placeholder{color:var(--muted);opacity:.65}
+.edform > label > input:focus,.edform > label > select:focus,.edform > label > textarea:focus{outline:none;border-color:var(--leaf,#2E9E52);box-shadow:0 0 0 3px rgba(30,125,60,.16)}
+.edform > label > input[type=file]{padding:8px 10px;font-size:12px;color:var(--muted)}
+.edform > label.chk,.edform > label:has(> input[type=checkbox]){flex-direction:row;align-items:center;gap:8px;text-transform:none;font-size:12.5px;font-weight:600;color:var(--ink)}
+.edform > label > input[type=checkbox]{width:16px;height:16px;accent-color:var(--green,#1E7D3C)}
+/* botões e mensagens */
+#v-iahub .edbtn,#v-ia .edbtn,#v-iamem .edbtn{min-height:38px}
+#v-iahub .authmsg,#v-ia .authmsg,#v-iamem .authmsg{font-size:12.5px}
+#v-iahub .authmsg.ok,#v-ia .authmsg.ok,#v-iamem .authmsg.ok{color:var(--green,#1E7D3C)}
+#v-iahub .authmsg.err,#v-ia .authmsg.err,#v-iamem .authmsg.err{color:#c0392b}
+/* KPIs e pills um pouco mais refinados */
+.ia-kpi{background:var(--soft,#0f1a12);border-radius:12px}
+.ia-kpi-v{letter-spacing:-.3px}
+.ia-nav{gap:8px;margin-bottom:16px}
+.ia-pill{transition:background .15s,border-color .15s,color .15s}
+/* tabelas dentro da Central: respiro e cabeçalho discreto */
+#v-iahub table.resp-cards th,#v-ia table.resp-cards th,#v-iamem table.resp-cards th{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+#v-iahub table.resp-cards td,#v-ia table.resp-cards td,#v-iamem table.resp-cards td{font-size:13px}
 </style>
 <button id="copFab" title="Copiloto IA" aria-label="Abrir Copiloto" onclick="copToggle()">🤖</button>
 <div id="copDrawer" aria-hidden="true" aria-label="Copiloto DF AGRO">
