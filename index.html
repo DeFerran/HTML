@@ -323,6 +323,14 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 .a-aviso{background:var(--tintGold);color:var(--goldT);border-color:rgba(192,138,44,.25)}
 .a-ok{background:var(--tintG);color:var(--leaf);border-color:rgba(30,125,60,.2)}
 @media(max-width:767px){ .ghhval{font-size:32px} .ghchip{flex:1 1 44%} }
+/* Metas — abas internas (fragmenta a super-view; mesmos dados, uma seção por vez) */
+.mtabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.mtab{background:var(--soft);border:1px solid var(--line);color:var(--ink);font-weight:700;font-size:13px;padding:8px 15px;border-radius:20px;cursor:pointer}
+.mtab:hover{border-color:var(--leaf)}
+.mtab.on{background:var(--leaf);border-color:var(--leaf);color:#fff}
+#v-metas[data-mt=venda] .mt-comissao,#v-metas[data-mt=venda] .mt-margem,
+#v-metas[data-mt=comissao] .mt-venda,#v-metas[data-mt=comissao] .mt-margem,
+#v-metas[data-mt=margem] .mt-venda,#v-metas[data-mt=margem] .mt-comissao{display:none}
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -858,9 +866,14 @@ header .htxt h1{display:none}
   </section>
 
   <!-- METAS & MARGEM/HA -->
-  <section class="view" id="v-metas">
+  <section class="view" id="v-metas" data-mt="venda">
     <div class="lead"><h2>Metas &amp; Margem por hectare</h2>
       <p>Acompanhamento das metas de venda (receita e hectares) e a economia da safra por hectare. A meta está ancorada no que já foi contratado na 26/27 — suba a meta conforme novas vendas entrarem para acompanhar quanto falta.</p></div>
+    <div class="mtabs" id="metasTabs">
+      <button class="mtab on" data-mt="venda" onclick="metasTab('venda')">Metas de venda</button>
+      <button class="mtab" data-mt="comissao" onclick="metasTab('comissao')">Comissão</button>
+      <button class="mtab" data-mt="margem" onclick="metasTab('margem')">Margem/ha &amp; custos</button>
+    </div>
     <div class="kpis" id="kMetas"></div>
     <div class="grid g33">
       <div class="panel"><h3>Meta de receita — realizado vs. meta</h3><div class="cap">Barra clara = meta (R$); barra verde = já contratado. O rótulo mostra quanto falta faturar.</div><div class="chartbox sm"><canvas id="cMetaRec"></canvas></div></div>
@@ -3040,8 +3053,30 @@ function renderMetasSegmentos(){
       noteEl.innerHTML='<b>'+prog+'%</b> da receita de clientes já tem serviço marcado. O realizado vem das <b>vendas por serviço</b> (rótulo <i>vendas</i>); onde falta, usa o agregado da aba Serviços (<i>agregado</i>).'+(semSrv>0?' Faltam <b>'+BRL(semSrv)+'</b> sem serviço.':' Apuração 100% pelas vendas.'); }
     else { noteEl.textContent='Realizado por segmento vindo do agregado da aba Serviços. Marque o Serviço nas vendas (Lançamentos › Clientes) para apurar pelo que foi realmente vendido (0% marcado).'; } }
 }
+/* Abas internas da tela Metas — agrupa as seções temáticas (marcadas por .lead)
+   em 3 abas mostrando uma por vez. Não remove nada; só organiza a super-view. */
+function metasTabsAssign(){
+  const sec=document.getElementById('v-metas'); if(!sec)return;
+  let bucket='venda', started=false;
+  Array.prototype.forEach.call(sec.children,function(ch){
+    ch.classList.remove('mt-venda','mt-comissao','mt-margem','mt-always');
+    if(ch.id==='metasTabs'){ ch.classList.add('mt-always'); started=true; return; }
+    if(!started){ ch.classList.add('mt-always'); return; } // título antes da barra de abas
+    if(ch.classList.contains('lead')){ const t=(ch.textContent||'').trim();
+      if(/^Comissão por colaborador/.test(t)) bucket='comissao';
+      else if(/^Margem por hectare/.test(t)) bucket='margem'; }
+    ch.classList.add('mt-'+bucket);
+  });
+}
+function metasTab(t){ const sec=document.getElementById('v-metas'); if(!sec)return;
+  sec.setAttribute('data-mt',t);
+  document.querySelectorAll('#metasTabs .mtab').forEach(b=>b.classList.toggle('on',b.dataset.mt===t));
+  try{ renderMetas(); }catch(e){}            // redesenha os gráficos da aba agora visível no tamanho certo
+  try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){}
+}
 function renderMetas(){
   if(baseGate('metas'))return;
+  try{ metasTabsAssign(); }catch(e){}
   try{ renderMetasSegmentos(); }catch(e){ console.warn('metasSeg',e); }
   try{ renderMargemLiq(); }catch(e){ console.warn('margemLiq',e); }
   try{ renderComissaoColab(); }catch(e){ console.warn('comColab',e); }
