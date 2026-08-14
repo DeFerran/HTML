@@ -416,6 +416,16 @@ body.prop-open .orc-prop-overlay{display:block}
   .orc-prop-tools{display:none!important}
   .orc-prop-doc{box-shadow:none;max-width:none;margin:0;border-radius:0;padding:0 6px}
 }
+/* Fase 8 — tiles + filtros da lista */
+.orc-tiles{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.orc-tile{border:1px solid var(--line);border-radius:12px;padding:10px 15px;cursor:pointer;background:var(--card);min-width:92px}
+.orc-tile:hover{border-color:var(--leaf)}
+.orc-tile.on{border-color:var(--leaf);background:var(--tintG)}
+.orc-tile .tv{font-size:21px;font-weight:800;line-height:1}
+.orc-tile .tl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:4px}
+.orc-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end}
+.orc-filters label{display:flex;flex-direction:column;font-size:10.5px;color:var(--muted);gap:3px;text-transform:uppercase;letter-spacing:.3px}
+.orc-filters select,.orc-filters input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:13px;min-height:40px}
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -5865,23 +5875,67 @@ function orcRejeitar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)re
 /* ---- render: lista x wizard ---- */
 function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)renderOrcWizard(host); else renderOrcLista(host); }
 const ORC_STATUS_LBL={rascunho:'Rascunho',aguardando_aprovacao:'Aguardando aprovação',aprovado:'Aprovado',enviado:'Enviado',negociacao:'Em negociação',aceito:'Aceito',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
+/* Fase 8: filtros, períodos, status e "Meus Orçamentos" */
+let _orcFiltro={status:'',vendedor:'',cliente:'',periodo:'',servico:'',busca:''};
+function qzHojeISO(){ try{return new Date().toISOString().slice(0,10);}catch(e){return '';} }
+function qzNoPeriodo(dISO,per){ if(!per)return true; if(!dISO)return false; const hoje=qzHojeISO();
+  if(per==='hoje')return dISO===hoje; if(per==='mes')return dISO.slice(0,7)===hoje.slice(0,7);
+  if(per==='semana'){ const t=Date.parse(dISO+'T00:00:00Z'),n=Date.parse(hoje+'T00:00:00Z'); return !isNaN(t)&&(n-t)>=0&&(n-t)<=7*86400000; } return true; }
+function qzExpirando(q){ if(!q||!q.validoAte)return false; if(['aceito','recusado','expirado','cancelado','convertido'].indexOf(q.status)>=0)return false; const t=Date.parse(q.validoAte+'T00:00:00Z'),n=Date.parse(qzHojeISO()+'T00:00:00Z'); if(isNaN(t))return false; const d=(t-n)/86400000; return d>=0&&d<=7; }
+function orcHeads(){ return (D.quotes||[]).filter(q=>q&&!q.substituidoPor); }
+function orcFiltradas(){ const f=_orcFiltro||{};
+  return orcHeads().filter(q=>{
+    if(f.status){ if(f.status==='expirando'){ if(!qzExpirando(q))return false; } else if(q.status!==f.status)return false; }
+    if(f.vendedor && (q.vendedor||'')!==f.vendedor)return false;
+    if(f.cliente && (q.clienteNome||'')!==f.cliente)return false;
+    if(f.servico && !((q.itens||[]).some(it=>it.servico===f.servico)))return false;
+    if(f.periodo && !qzNoPeriodo((q.emitidoEm||q.criadoEm||'').slice(0,10),f.periodo))return false;
+    if(f.busca){ const b=f.busca.toLowerCase(); if(((q.numero||'')+' '+(q.clienteNome||'')+' '+(q.fazenda||'')+' '+(q.vendedor||'')).toLowerCase().indexOf(b)<0)return false; }
+    return true;
+  }).sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||''))); }
+function orcSetFiltro(k,v){ _orcFiltro[k]=v; renderOrcamentosView(); }
+function orcTileFiltro(status){ _orcFiltro={status:(_orcFiltro.status===status?'':status),vendedor:'',cliente:'',periodo:'',servico:'',busca:''}; renderOrcamentosView(); }
+function orcLimparFiltro(){ _orcFiltro={status:'',vendedor:'',cliente:'',periodo:'',servico:'',busca:''}; renderOrcamentosView(); }
+const ORC_STATUS_MANUAL=['enviado','negociacao','aceito','recusado','expirado'];
+function orcSetStatus(id,st){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q||!st||q.status===st)return; q.status=st; qzLog(q,'status → '+(ORC_STATUS_LBL[st]||st),''); commit(); renderOrcamentosView(); uiToast('Status: '+(ORC_STATUS_LBL[st]||st)); }
 function renderOrcLista(host){
-  const qs=(D.quotes||[]).filter(q=>q&&!q.substituidoPor).slice().sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||'')));
-  let h='<div style="margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
-  // Aprovações comerciais (gestor)
-  if(qzPodeAprovar()){ const pend=(D.quotes||[]).filter(q=>q&&q.status==='aguardando_aprovacao');
+  const qs=orcFiltradas(); const heads=orcHeads();
+  const cnt=st=>heads.filter(q=>q.status===st).length;
+  let h='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
+  // tiles "Meus Orçamentos" (clicáveis)
+  const tiles=[['','Total',heads.length],['rascunho','Rascunhos',cnt('rascunho')],['aguardando_aprovacao','Aguardando',cnt('aguardando_aprovacao')],['aprovado','Aprovados',cnt('aprovado')],['enviado','Enviados',cnt('enviado')],['negociacao','Negociação',cnt('negociacao')],['aceito','Aceitos',cnt('aceito')],['expirando','Expirando',heads.filter(qzExpirando).length]];
+  h+='<div class="orc-tiles">'+tiles.map(t=>'<div class="orc-tile'+((_orcFiltro.status===t[0]&&(t[0]!==''))?' on':(t[0]===''&&!_orcFiltro.status&&!_orcFiltro.vendedor&&!_orcFiltro.cliente&&!_orcFiltro.periodo&&!_orcFiltro.servico&&!_orcFiltro.busca?' on':''))+'" onclick="orcTileFiltro(\''+t[0]+'\')"><div class="tv">'+t[2]+'</div><div class="tl">'+esc(t[1])+'</div></div>').join('')+'</div>';
+  // aprovações (gestor)
+  if(qzPodeAprovar()){ const pend=heads.filter(q=>q.status==='aguardando_aprovacao');
     if(pend.length){ h+='<div class="panel" style="border-left:3px solid var(--gold);margin-bottom:14px"><h3>⏳ Aprovações comerciais ('+pend.length+')</h3><div class="cap">Desconto acima da alçada ou abaixo do preço mínimo. Aprove, devolva para ajuste ou recuse.</div>';
       pend.forEach(q=>{ const desc=QuoteCalc.descontoEfetivoPct(q.total,q.totalTabela); const m=qzMargem(q);
         h+='<div class="orc-qcard" style="margin-top:10px"><div class="orc-qtop"><b>'+esc(q.numero)+' · '+esc(q.clienteNome||'—')+(q.vendedor?(' · '+esc(q.vendedor)):'')+'</b><span><b>'+BRL(+q.total||0)+'</b></span></div>'
           +'<div class="cap">Tabela '+BRL(+q.totalTabela||0)+' · Desconto '+PCT(desc/100)+(qzPodeVerMargem()?(' · Margem '+PCT(m.mcPct)+' ('+BRLk(m.mc)+')'):'')+'</div>'
           +'<div class="note" style="margin:6px 0">⚠ '+esc((q.aprovacao&&q.aprovacao.motivo)||'')+'</div>'
-          +'<div class="orc-navbtns"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">ver</button><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="edbtn primary" style="background:#0A6A30" onclick="orcAprovar(\''+q.id+'\')">Aprovar</button><button class="edbtn" onclick="orcDevolver(\''+q.id+'\')">Devolver</button><button class="edbtn ghost" onclick="orcRejeitar(\''+q.id+'\')">Rejeitar</button></span></div></div>'; });
+          +'<div class="orc-navbtns"><button class="edbtn" onclick="orcProposta(\''+q.id+'\')">ver proposta</button><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="edbtn primary" style="background:#0A6A30" onclick="orcAprovar(\''+q.id+'\')">Aprovar</button><button class="edbtn" onclick="orcDevolver(\''+q.id+'\')">Devolver</button><button class="edbtn ghost" onclick="orcRejeitar(\''+q.id+'\')">Rejeitar</button></span></div></div>'; });
       h+='</div>'; } }
-  if(!qs.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento ainda. Clique em <b>+ Novo orçamento</b> — leva cerca de 1–3 minutos.</div></div>'; host.innerHTML=h; return; }
-  h+='<div class="panel"><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th class="num">Área</th><th class="num">Serviços</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>';
-  qs.forEach(q=>{ const vbadge=(+q.versao>1)?(' <span class="tag md">v'+q.versao+'</span>'):''; const histOn=!!_orcHist[q.id];
-    h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
-    if(histOn)h+='<tr><td colspan="8" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
+  if(!heads.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento ainda. Clique em <b>+ Novo orçamento</b> — leva cerca de 1–3 minutos.</div></div>'; host.innerHTML=h; return; }
+  // barra de filtros
+  const vends=[...new Set(heads.map(q=>q.vendedor).filter(Boolean))].sort();
+  const clis=[...new Set(heads.map(q=>q.clienteNome).filter(Boolean))].sort();
+  const servs=[...new Set(heads.flatMap(q=>(q.itens||[]).map(it=>it.servico)).filter(Boolean))].sort();
+  const optSel=(arr,val,ph)=>'<option value="">'+ph+'</option>'+arr.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  h+='<div class="orc-filters">'
+    +'<label>Status<select onchange="orcSetFiltro(\'status\',this.value)"><option value="">Todos</option>'+Object.keys(ORC_STATUS_LBL).map(k=>'<option value="'+k+'"'+(_orcFiltro.status===k?' selected':'')+'>'+esc(ORC_STATUS_LBL[k])+'</option>').join('')+'<option value="expirando"'+(_orcFiltro.status==='expirando'?' selected':'')+'>Expirando</option></select></label>'
+    +'<label>Vendedor<select onchange="orcSetFiltro(\'vendedor\',this.value)">'+optSel(vends,_orcFiltro.vendedor,'Todos')+'</select></label>'
+    +'<label>Cliente<select onchange="orcSetFiltro(\'cliente\',this.value)">'+optSel(clis,_orcFiltro.cliente,'Todos')+'</select></label>'
+    +'<label>Serviço<select onchange="orcSetFiltro(\'servico\',this.value)">'+optSel(servs,_orcFiltro.servico,'Todos')+'</select></label>'
+    +'<label>Período<select onchange="orcSetFiltro(\'periodo\',this.value)"><option value="">Todos</option><option value="hoje"'+(_orcFiltro.periodo==='hoje'?' selected':'')+'>Hoje</option><option value="semana"'+(_orcFiltro.periodo==='semana'?' selected':'')+'>Esta semana</option><option value="mes"'+(_orcFiltro.periodo==='mes'?' selected':'')+'>Este mês</option></select></label>'
+    +'<label>Busca<input value="'+esc(_orcFiltro.busca||'')+'" placeholder="número, cliente…" onchange="orcSetFiltro(\'busca\',this.value)"></label>'
+    +'<button class="edbtn ghost" onclick="orcLimparFiltro()">Limpar</button></div>';
+  if(!qs.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento com esses filtros. <button class="op-linkbtn" onclick="orcLimparFiltro()">limpar filtros</button></div></div>'; host.innerHTML=h; return; }
+  h+='<div class="panel"><div class="cap" style="margin-bottom:8px">'+qs.length+' de '+heads.length+' orçamento(s)</div><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th class="num">Área</th><th class="num">Serviços</th><th class="num">Total</th><th>Vendedor</th><th>Emissão</th><th>Validade</th><th>Status</th><th></th></tr></thead><tbody>';
+  qs.forEach(q=>{ const vbadge=(+q.versao>1)?(' <span class="tag md">v'+q.versao+'</span>'):''; const histOn=!!_orcHist[q.id]; const exp=qzExpirando(q);
+    const stTag='<span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span>';
+    const stSel='<select class="edinp" style="margin-top:5px;font-size:11px;padding:3px" onchange="orcSetStatus(\''+q.id+'\',this.value)"><option value="">marcar…</option>'+ORC_STATUS_MANUAL.map(k=>'<option value="'+k+'">'+esc(ORC_STATUS_LBL[k])+'</option>').join('')+'</select>';
+    h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Vendedor">'+esc(q.vendedor||'—')+'</td><td data-label="Emissão">'+esc(qzDataBR(q.emitidoEm))+'</td><td data-label="Validade">'+(q.validoAte?('<span'+(exp?' style="color:var(--gold);font-weight:700"':'')+'>'+esc(qzDataBR(q.validoAte))+(exp?' ⏳':'')+'</span>'):'—')+'</td><td data-label="Status">'+stTag+stSel+'</td>'
+      +'<td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
+    if(histOn)h+='<tr><td colspan="11" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
   h+='</tbody></table></div></div>'; host.innerHTML=h;
 }
 function qzSummaryHTML(){ if(!_qz)return '';
