@@ -1810,6 +1810,26 @@ function hydrate(d){
     if(!co.metodoPorServico||typeof co.metodoPorServico!=='object') co.metodoPorServico={};
     if(!co.descServico||typeof co.descServico!=='object') co.descServico={};
   }
+  // ===== Pipeline operacional de AP (Fase 2, aditivo) — projetos + workflow por tipo de serviço =====
+  if(!Array.isArray(d.projetos)) d.projetos=[];
+  if(!d.pipelineCfg || typeof d.pipelineCfg!=='object') d.pipelineCfg={};
+  { const pc=d.pipelineCfg;
+    if(!Array.isArray(pc.tipos)||!pc.tipos.length) pc.tipos=[{
+      id:'wf_ap', nome:'Agricultura de Precisão (padrão)', condicaoConclusaoCodigo:'CONCLUIDO', ativo:true,
+      etapas:[
+        {codigo:'PEDIDO',         nome:'Pedido recebido',              slaDias:0,  responsavelPadrao:'', checklist:[]},
+        {codigo:'PLANEJAMENTO',   nome:'Planejamento',                 slaDias:3,  responsavelPadrao:'', checklist:[]},
+        {codigo:'COLETA',         nome:'Coleta',                       slaDias:7,  responsavelPadrao:'', checklist:[]},
+        {codigo:'LABORATORIO',    nome:'Laboratório',                  slaDias:7,  responsavelPadrao:'', checklist:[]},
+        {codigo:'PROCESSAMENTO',  nome:'Interpolação / processamento', slaDias:3,  responsavelPadrao:'', checklist:[]},
+        {codigo:'MAPAS',          nome:'Mapas / recomendação',         slaDias:3,  responsavelPadrao:'', checklist:[]},
+        {codigo:'APRESENTACAO',   nome:'Apresentação',                 slaDias:5,  responsavelPadrao:'', checklist:[]},
+        {codigo:'REGULAGEM',      nome:'Regulagem',                    slaDias:7,  responsavelPadrao:'', checklist:[]},
+        {codigo:'ACOMPANHAMENTO', nome:'Acompanhamento',               slaDias:15, responsavelPadrao:'', checklist:[]},
+        {codigo:'CONCLUIDO',      nome:'Concluído',                    slaDias:0,  responsavelPadrao:'', checklist:[]}
+      ]}];
+    if(!pc.tipoPadraoId) pc.tipoPadraoId=(pc.tipos[0]||{}).id||'wf_ap';
+  }
   if(!Array.isArray(d.recorrencias)) d.recorrencias=[];
   if(!Array.isArray(d.orcamentos)) d.orcamentos=[];
   // colaboradores: deriva da Equipe quando ainda vazio (sem nomes fixos no código)
@@ -2292,6 +2312,48 @@ const QuoteCalc=(function(){
   return {round2:r2,pontos,amostras,amostrasTotal,quantidade,itemSubtotal,itemTotal,somaItens,totais,totalTabela,desvioPct,descontoEfetivoPct,aprovacaoNecessaria,venc,parcelas,reconcilia};
 })();
 // </quote-calc>
+// <pipeline-calc>
+/* Pipeline operacional de AP — motor PURO e testável (sem D/DOM). Deriva, a partir
+   dos EVENTOS de cada projeto: marcos por etapa, tempos entre etapas, lead time,
+   aging (dias na etapa atual) e status de SLA. Nunca guarda tempo redundante. */
+const PipelineCalc=(function(){
+  const ETAPAS_PADRAO=['PEDIDO','PLANEJAMENTO','COLETA','LABORATORIO','PROCESSAMENTO','MAPAS','APRESENTACAO','REGULAGEM','ACOMPANHAMENTO','CONCLUIDO'];
+  const BACKLOG={PEDIDO:1,PLANEJAMENTO:1};
+  function ms(iso){ const t=Date.parse(String(iso||'')); return isNaN(t)?null:t; }
+  // diferença em DIAS DE CALENDÁRIO (ignora a hora) — mesma unidade dos exemplos
+  // do gestor: "pedido 01/08 → conclusão 21/08 = 20 dias"; mesmo dia = 0.
+  function diaUTC(iso){ const s=String(iso||'').slice(0,10); const t=Date.parse(s+'T00:00:00Z'); return isNaN(t)?null:t; }
+  function diasEntre(aISO,bISO){ const a=diaUTC(aISO),b=diaUTC(bISO); if(a==null||b==null)return null; return Math.round((b-a)/86400000); }
+  function ordem(etapas,codigo){ return (etapas||ETAPAS_PADRAO).indexOf(codigo); }
+  // eventos de MUDANÇA de etapa (têm etapaPara), em ordem cronológica
+  function movimentos(proj){ return ((proj&&proj.eventos)||[]).filter(e=>e&&e.etapaPara).slice().sort((x,y)=>String(x.em||'').localeCompare(String(y.em||''))); }
+  // primeira data em que o projeto ENTROU em cada etapa: {codigo: ISO}
+  function marcos(proj){ const m={}; movimentos(proj).forEach(e=>{ if(!(e.etapaPara in m)) m[e.etapaPara]=e.em; }); return m; }
+  // data de entrada na etapa atual (último movimento) — base do aging
+  function entradaEtapaAtual(proj){ const mv=movimentos(proj); return mv.length?mv[mv.length-1].em:((proj&&proj.criadoEm)||null); }
+  function diasNaEtapa(proj,nowISO){ const d=diasEntre(entradaEtapaAtual(proj),nowISO); return d==null?null:Math.max(0,d); }
+  // lead time = criadoEm → concluidoEm (ou agora, se em aberto)
+  function leadTime(proj,nowISO){ const ini=(proj&&proj.criadoEm)||null; const fim=(proj&&proj.concluidoEm)||nowISO; const d=diasEntre(ini,fim); return d==null?null:Math.max(0,d); }
+  // SLA: sem prazo -> 'sem'; ≤80% verde; ≤100% amarelo (atenção); >100% vermelho (atrasado)
+  function slaStatus(dias,slaDias){ const s=+slaDias||0; if(!(s>0)||dias==null)return 'sem'; if(dias<=s*0.8)return 'verde'; if(dias<=s)return 'amarelo'; return 'vermelho'; }
+  // durações entre etapas consecutivas movimentadas: [{de,para,dias}]
+  function temposEntreEtapas(proj){ const mv=movimentos(proj); const out=[]; for(let i=1;i<mv.length;i++){ out.push({de:mv[i-1].etapaPara,para:mv[i].etapaPara,dias:diasEntre(mv[i-1].em,mv[i].em)}); } return out; }
+  // tempo entre dois marcos quaisquer (por código de etapa) — null se algum não ocorreu
+  function tempoEntreMarcos(proj,codDe,codPara){ const m=marcos(proj); return (m[codDe]!=null&&m[codPara]!=null)?diasEntre(m[codDe],m[codPara]):null; }
+  // agregação da carteira: contagem por etapa, WIP, backlog, concluídos, atrasados, sem responsável
+  function agg(projetos,opts){ opts=opts||{}; const etapas=opts.etapas||ETAPAS_PADRAO; const slaMap=opts.slaPorEtapa||{}; const nowISO=opts.nowISO;
+    projetos=projetos||[]; const porEtapa={}; etapas.forEach(c=>porEtapa[c]=0);
+    let ativos=0,concluidos=0,cancelados=0,atrasados=0,semResp=0,backlog=0;
+    projetos.forEach(p=>{ const st=(p&&p.status)||'ativo';
+      if(st==='concluido'){concluidos++;return;} if(st==='cancelado'){cancelados++;return;}
+      ativos++; const et=(p&&p.etapaAtual)||etapas[0]; porEtapa[et]=(porEtapa[et]||0)+1;
+      if(BACKLOG[et])backlog++;
+      const dias=diasNaEtapa(p,nowISO); if(slaStatus(dias,slaMap[et])==='vermelho')atrasados++;
+      if(!p.responsaveis||!p.responsaveis[et])semResp++; });
+    return {porEtapa,ativos,concluidos,cancelados,atrasados,semResp,backlog,wip:ativos,total:projetos.length}; }
+  return {ETAPAS_PADRAO,ms,diasEntre,ordem,movimentos,marcos,entradaEtapaAtual,diasNaEtapa,leadTime,slaStatus,temposEntreEtapas,tempoEntreMarcos,agg};
+})();
+// </pipeline-calc>
 // <op-csv>
 /* CSV puro (separador ';' — padrão do Excel pt-BR). Ida (opToCsv) e volta
    (opParseCsv → objetos por cabeçalho). Testável. */
@@ -3961,7 +4023,7 @@ function mergeImport(prev, fresh){
   // (metasSafra/precosSafra) só existem aqui; sem preservar, a importação zera tudo.
   ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','municipios','fazendas','orcamentos','funil',
    'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa',
-   'opColeta','opAmostras','opEntregas','metasSafra','precosSafra','quotes','comercial']
+   'opColeta','opAmostras','opEntregas','metasSafra','precosSafra','quotes','comercial','projetos','pipelineCfg']
    .forEach(function(k){ if(_temDados(prev[k])) fresh[k]=prev[k]; });
   return fresh;
 }
@@ -5878,6 +5940,27 @@ let _orcHist={};
 function orcToggleHist(id){ _orcHist[id]=!_orcHist[id]; renderOrcamentosView(); }
 /* Fase 10: conversão do orçamento ACEITO → projeto operacional (mesmos dados) + registro no funil.
    Não lança receita automaticamente: a receita segue a regra existente (carteira/safra). */
+/* ===== Pipeline operacional de AP (Fase 2) — acesso à config + eventos ===== */
+function pipeTipos(){ return ((D.pipelineCfg&&D.pipelineCfg.tipos)||[]); }
+function pipeTipoPadraoId(){ return (D.pipelineCfg&&D.pipelineCfg.tipoPadraoId)||((pipeTipos()[0]||{}).id)||'wf_ap'; }
+function pipeTipo(id){ const ts=pipeTipos(); return ts.find(t=>t&&t.id===id)||ts.find(t=>t&&t.id===pipeTipoPadraoId())||ts[0]||null; }
+function pipeEtapas(tipoId){ const t=pipeTipo(tipoId); return ((t&&t.etapas)||[]); }
+function pipeEtapasCodigos(tipoId){ return pipeEtapas(tipoId).map(e=>e.codigo); }
+function pipeEtapaDef(tipoId,codigo){ return pipeEtapas(tipoId).find(e=>e.codigo===codigo)||null; }
+function pipeEtapaNome(tipoId,codigo){ const e=pipeEtapaDef(tipoId,codigo); return (e&&e.nome)||codigo||'—'; }
+function pipeSlaMap(tipoId){ const m={}; pipeEtapas(tipoId).forEach(e=>m[e.codigo]=+e.slaDias||0); return m; }
+function pipeCondConclusao(tipoId){ const t=pipeTipo(tipoId); return (t&&t.condicaoConclusaoCodigo)||'CONCLUIDO'; }
+function projNumero(){ const ano=(function(){try{return new Date().getFullYear();}catch(e){return 2026;}})(); const pre='PRJ-'+ano+'-'; const n=(D.projetos||[]).filter(p=>p&&String(p.numero||'').indexOf(pre)===0).length+1; return pre+String(n).padStart(4,'0'); }
+function projDoQuote(quoteId){ return (D.projetos||[]).find(p=>p&&p.quoteId===quoteId)||null; }
+function projPorId(id){ return (D.projetos||[]).find(p=>p&&p.id===id)||null; }
+/* registra um evento no projeto (event sourcing leve — mesmo padrão de qzLog) */
+function projLog(p,ev){ if(!p)return; if(!Array.isArray(p.eventos))p.eventos=[]; ev=ev||{};
+  p.eventos.push({em:ev.em||nowISO(),quem:ev.quem||((typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local'),tipo:ev.tipo||'ETAPA',etapaDe:ev.etapaDe||'',etapaPara:ev.etapaPara||'',responsavel:ev.responsavel||'',obs:ev.obs||'',origem:ev.origem||'sistema'}); }
+/* move o projeto para uma etapa (persistindo o evento e cuidando da conclusão/reabertura) */
+function projMover(p,novaEtapa,opts){ if(!p||!novaEtapa)return; opts=opts||{}; const de=p.etapaAtual||''; if(de===novaEtapa&&!opts.forcar)return;
+  p.etapaAtual=novaEtapa; projLog(p,{tipo:'ETAPA',etapaDe:de,etapaPara:novaEtapa,responsavel:opts.responsavel||'',obs:opts.obs||'',origem:opts.origem||'manual',em:opts.em});
+  if(novaEtapa===pipeCondConclusao(p.tipoWorkflowId)){ p.status='concluido'; p.concluidoEm=opts.em||nowISO(); }
+  else if(p.status==='concluido'){ p.status='ativo'; p.concluidoEm=''; } }
 function orcConverter(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return;
   if(q.status!=='aceito' && q.status!=='convertido' && !confirm('Converter é recomendado para orçamentos ACEITOS (atual: '+(ORC_STATUS_LBL[q.status]||q.status)+'). Continuar?'))return;
   if(q.convertidoEm && !confirm('Este orçamento já foi convertido. Converter de novo pode duplicar os lançamentos operacionais. Continuar?'))return;
@@ -5887,17 +5970,30 @@ function orcConverter(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)r
   const amostras=samp.reduce((a,it)=>a+((it.config&&it.config.amostras)||0),0);
   const base=(q.safra||qtSafraAtual())===SAFRA_BASE;
   const vai=[]; if(samp.length){ vai.push('Coleta de Pontos'); vai.push('Envio de Amostras (~'+amostras+' amostras)'); } vai.push('Controle de Entregas'); if(!base)vai.push('Oportunidade "Fechado" no funil');
-  if(!confirm('Converter '+q.numero+' em projeto operacional?\n\nSerá criado (com cliente/fazenda/área/serviços do orçamento):\n· '+vai.join('\n· ')+'\n\nA receita NÃO é lançada automaticamente — segue a regra da carteira/safra.'))return;
+  if(!confirm('Converter '+q.numero+' em projeto operacional?\n\nSerá criado (com cliente/fazenda/área/serviços do orçamento):\n· Projeto (pipeline)\n· '+vai.join('\n· ')+'\n\nA receita NÃO é lançada automaticamente — segue a regra da carteira/safra.'))return;
   const criados=[];
+  // Projeto (pipeline): 1 por orçamento, idempotente
+  let proj=projDoQuote(q.id); const novoProj=!proj;
+  if(novoProj){ const pid='prj'+uidLanc();
+    proj={id:pid,numero:projNumero(),quoteId:q.id,clienteNome:q.clienteNome||'',fazenda:q.fazenda||'',municipio:q.municipio||'',
+      servicos:inclui.map(it=>it.servico),vendedor:q.vendedor||'',safra:q.safra||qtSafraAtual(),areaHa:+q.areaHa||0,
+      tipoWorkflowId:pipeTipoPadraoId(),etapaAtual:'PEDIDO',status:'ativo',
+      responsaveis:(q.vendedor?{PEDIDO:q.vendedor}:{}),refs:{coletaIds:[],remessaIds:[],entregaId:'',funil:false},eventos:[],criadoEm:nowISO()};
+    projLog(proj,{tipo:'PEDIDO_CRIADO',etapaPara:'PEDIDO',em:(q.emitidoEm?q.emitidoEm+'T12:00:00.000Z':(q.criadoEm||nowISO())),responsavel:q.vendedor||'',obs:'Orçamento '+q.numero,origem:'orcamento'});
+    if(!Array.isArray(D.projetos))D.projetos=[]; D.projetos.push(proj); q.projetoId=pid; criados.push('Projeto '+proj.numero); }
   if(samp.length){ if(!D.opColeta||typeof D.opColeta!=='object')D.opColeta={lancamentos:[],hectaresFator:null}; if(!Array.isArray(D.opColeta.lancamentos))D.opColeta.lancamentos=[];
-    D.opColeta.lancamentos.push({id:'opc'+uidLanc(),data:'',equipe:'',cliente:q.clienteNome||'',fazenda:q.fazenda||'',talhao:'',fator:(fator||''),status:'planejada',obs:'Orçamento '+q.numero,colaboradores:[]}); criados.push('Coleta');
+    const coletaId='opc'+uidLanc();
+    D.opColeta.lancamentos.push({id:coletaId,projetoId:proj.id,data:'',equipe:'',cliente:q.clienteNome||'',fazenda:q.fazenda||'',talhao:'',fator:(fator||''),status:'planejada',obs:'Orçamento '+q.numero,colaboradores:[]}); proj.refs.coletaIds.push(coletaId); criados.push('Coleta');
     if(!D.opAmostras||typeof D.opAmostras!=='object')D.opAmostras={remessas:[]}; if(!Array.isArray(D.opAmostras.remessas))D.opAmostras.remessas=[];
-    D.opAmostras.remessas.push({id:'opa'+uidLanc(),dataEnvio:'',respEnvio:'',volume:(amostras||''),arquivoMaquina:'',dataResultado:'',obs:'Orçamento '+q.numero,fazendas:(q.fazenda?[q.fazenda]:[]),talhoes:[],etiquetagem:[]}); criados.push('Amostras'); }
+    const remessaId='opa'+uidLanc();
+    D.opAmostras.remessas.push({id:remessaId,projetoId:proj.id,dataEnvio:'',respEnvio:'',volume:(amostras||''),arquivoMaquina:'',dataResultado:'',obs:'Orçamento '+q.numero,fazendas:(q.fazenda?[q.fazenda]:[]),talhoes:[],etiquetagem:[]}); proj.refs.remessaIds.push(remessaId); criados.push('Amostras'); }
   if(!D.opEntregas||typeof D.opEntregas!=='object')D.opEntregas={linhas:[],mibPadrao:20}; if(!Array.isArray(D.opEntregas.linhas))D.opEntregas.linhas=[];
   const itens={}; inclui.forEach(it=>{ if(/mapa/i.test(it.servico))itens.mapas={status:'pendente'}; if(/qu[íi]mic|an[áa]lise|fertil/i.test(it.servico))itens.propQuimicas={status:'pendente'}; });
-  D.opEntregas.linhas.push({id:'ope'+uidLanc(),cliente:q.clienteNome||'',fazenda:q.fazenda||'',areaHa:(+q.areaHa||''),obs:'Orçamento '+q.numero,itens:itens}); criados.push('Entregas');
+  const entregaId='ope'+uidLanc();
+  D.opEntregas.linhas.push({id:entregaId,projetoId:proj.id,cliente:q.clienteNome||'',fazenda:q.fazenda||'',areaHa:(+q.areaHa||''),obs:'Orçamento '+q.numero,itens:itens}); proj.refs.entregaId=entregaId; criados.push('Entregas');
   if(!base){ if(!Array.isArray(D.funil))D.funil=[]; const primServ=(inclui[0]||{}).servico||'';
-    D.funil.push({cliente:q.clienteNome||'',safra:q.safra||qtSafraAtual(),servico:primServ,estagio:'Fechado',vendedor:q.vendedor||'A definir',mes:'',area:+q.areaHa||0,precoHa:(+q.areaHa>0?(+q.total||0)/(+q.areaHa):0),valor:+q.total||0}); criados.push('Funil'); }
+    D.funil.push({cliente:q.clienteNome||'',safra:q.safra||qtSafraAtual(),servico:primServ,estagio:'Fechado',vendedor:q.vendedor||'A definir',mes:'',area:+q.areaHa||0,precoHa:(+q.areaHa>0?(+q.total||0)/(+q.areaHa):0),valor:+q.total||0}); proj.refs.funil=true; criados.push('Funil'); }
+  if(novoProj) projMover(proj,'PLANEJAMENTO',{origem:'orcamento',obs:'Convertido de '+q.numero,responsavel:q.vendedor||''});
   q.status='convertido'; q.convertidoEm=nowISO(); qzLog(q,'convertido em projeto',criados.join(' · ')); commit(); renderOrcamentosView();
   uiToast('✓ '+q.numero+' convertido — '+criados.join(' · ')); }
 function qzStep(n){ if(!_qz)return; _qzStep=Math.max(0,Math.min(ORC_STEPS.length-1,n)); qzSalvarDraft(); renderOrcamentosView(); }
