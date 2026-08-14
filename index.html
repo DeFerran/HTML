@@ -1682,6 +1682,7 @@ if(window.Chart){ try{ if(window.ChartDataLabels)Chart.register(ChartDataLabels)
   Chart.defaults.font.family="'Manrope','Segoe UI',system-ui,sans-serif"; }catch(e){ console.warn('Chart init',e); } }
 /* cor dos rótulos externos (varia com o tema) */
 let _labInk='#1b2a1f';
+let _labAmber='#9A6B00'; /* âmbar de rótulo (tema-consciente): claro escuro p/ ler no claro, brilhante no escuro */
 /* rótulos: dinheiro (abreviado), % e número simples */
 const DLm={anchor:'end',align:'end',clamp:true,clip:false,color:()=>_labInk,font:{weight:'700',size:10.5},formatter:v=>v?BRLk(v):''};
 const DLpct={anchor:'end',align:'end',clamp:true,clip:false,color:()=>_labInk,font:{weight:'700',size:11},formatter:v=>(Math.round(v*10)/10)+'%'};
@@ -1698,10 +1699,10 @@ const C = {navy:'#004820',moss:'#1E7D3C',gold:'#C08A2C',red:'#C0392B',mut:'#8a99
   set:['#004820','#C08A2C','#1E7D3C','#7BA05B','#C0392B','#DDB25A','#0A6A30','#A0651A','#3C9A54']};
 const C_LIGHT={navy:'#004820',moss:'#1E7D3C',gold:'#C08A2C',red:'#C0392B',mut:'#8a9990',
   set:['#004820','#C08A2C','#1E7D3C','#7BA05B','#C0392B','#DDB25A','#0A6A30','#A0651A','#3C9A54'],
-  grid:'rgba(20,40,25,.08)',axis:'#707d73',labInk:'#1b2a1f'};
+  grid:'rgba(20,40,25,.08)',axis:'#707d73',labInk:'#1b2a1f',labAmber:'#9A6B00'};
 const C_DARK={navy:'#34D399',moss:'#4ADE80',gold:'#FBBF24',red:'#FB7185',mut:'#94A3B8',
   set:['#34D399','#FBBF24','#38BDF8','#A3E635','#FB7185','#C084FC','#2DD4BF','#FB923C','#4ADE80'],
-  grid:'rgba(210,228,215,.12)',axis:'#A6B6AB',labInk:'#E8F0EA'};
+  grid:'rgba(210,228,215,.12)',axis:'#A6B6AB',labInk:'#E8F0EA',labAmber:'#FBBF24'};
 /* ---- funil de vendas / projeção ---- */
 const FUNIL_ESTAGIOS=['Fechado','Provável','Possível','Prospecção'];
 const FUNIL_PROB={'Fechado':1,'Provável':0.7,'Possível':0.4,'Prospecção':0.15};
@@ -1830,6 +1831,7 @@ function applyTheme(t,skipRender){
   const pal = (t==='dark') ? C_DARK : C_LIGHT;
   Object.assign(C, pal);
   _labInk = pal.labInk;
+  _labAmber = pal.labAmber;
   if(window.Chart && Chart.defaults){ Chart.defaults.color = pal.axis; Chart.defaults.borderColor = pal.grid; }
   const btn = document.getElementById('themeBtn');
   if(btn){ btn.textContent = (t==='dark') ? '☀️' : '🌙'; btn.title = (t==='dark')?'Mudar para tema claro':'Mudar para tema escuro'; }
@@ -2710,7 +2712,7 @@ function renderGeral(){
   mk('cMargem',{type:'bar',data:{labels:s.labels,datasets:[{label:'Margem %',data:mpct,
     backgroundColor:mpct.map(v=>v>=30?C.moss:(v>0?C.gold:C.red)),borderRadius:5}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:c=>mpct[c.dataIndex]>=30?C.moss:(mpct[c.dataIndex]>0?'#9A6B00':C.red),font:{weight:'800',size:11},formatter:v=>v.toFixed(1)+'%'},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:c=>mpct[c.dataIndex]>=30?C.moss:(mpct[c.dataIndex]>0?_labAmber:C.red),font:{weight:'800',size:11},formatter:v=>v.toFixed(1)+'%'},
       tooltip:{callbacks:{label:c=>c.raw.toFixed(1)+'%'}}},
       scales:{y:{ticks:{callback:v=>v+'%'}}}}});
   // sensibilidade ao imposto
@@ -2779,7 +2781,7 @@ function renderFin(){
   mk('cCat',{type:'bar',data:{labels:top.map(x=>x[0]),datasets:[{data:top.map(x=>x[1]),
     backgroundColor:top.map((x,i)=>C.set[i%C.set.length]),borderRadius:4}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:46}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
   /* (Fase 3c) removido o gráfico gêmeo cCatPie (doughnut "Composição do custo") —
      redundante com o ranking cCat acima; o ranking em barras é mais acionável. */
@@ -2846,14 +2848,14 @@ function renderCli(){
   mk('cServCli',{type:'bar',data:{labels:['0','1','2','3','4','5+'],datasets:[{label:'clientes',data:dist,
     backgroundColor:['#C0392B','#D9761E','#E87808','#7BA05B','#3C9A54','#1E7D3C'],borderRadius:5}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:18}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:'#1b2a1f',font:{weight:'800',size:11},formatter:v=>v||''},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:11},formatter:v=>v||''},
       tooltip:{callbacks:{title:c=>c&&c[0]?c[0].label+' serviço(s)':'',label:c=>c.raw+' clientes'}}},
       scales:{y:{ticks:{stepSize:2}}}}});
   const topkm=[...D.visitas].filter(v=>v.km>0).sort((a,b)=>b.km-a.km).slice(0,10);
   mk('cKm',{type:'bar',data:{labels:topkm.map(v=>v.cliente),datasets:[{data:topkm.map(v=>v.km),
     backgroundColor:C.navy,borderRadius:4}]},options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:44}},
     plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:9.5},formatter:v=>Math.round(v).toLocaleString('pt-BR')+' km'},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:9.5},formatter:v=>Math.round(v).toLocaleString('pt-BR')+' km'},
       tooltip:{callbacks:{label:c=>Math.round(c.raw)+' km'}}}}});
   // heatmap
   let h='<table><thead><tr><th class="nm">Cliente</th>'+servN.map(s=>`<th>${esc(s)}</th>`).join('')+'<th>Total</th></tr></thead><tbody>';
@@ -2878,7 +2880,7 @@ function renderServ(){
     {label:'26/27',data:sv.map(s=>s.rec2627),backgroundColor:C.navy,borderRadius:4},
     {label:'25/26',data:sv.map(s=>s.rec2526),backgroundColor:'#c3c0b2',borderRadius:4}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:46}},plugins:{legend:{position:'bottom'},
-      datalabels:{display:c=>c.datasetIndex===0&&c.dataset.data[c.dataIndex]>0,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:9.5},formatter:v=>BRLk(v)},
+      datalabels:{display:c=>c.datasetIndex===0&&c.dataset.data[c.dataIndex]>0,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:9.5},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>c.dataset.label+': '+BRL(c.raw)}}},scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
   const act=sv.filter(s=>s.rec2627>0);
   mk('cServPie',{type:'doughnut',data:{labels:act.map(s=>s.nome),datasets:[{data:act.map(s=>s.rec2627),
@@ -3043,7 +3045,7 @@ function renderMetasSegmentos(){
     {type:'bar',label:'Realizado',data:realMar,backgroundColor:names.map((_,i)=>realMar[i]>=metasMar[i]?C.moss:C.gold),borderRadius:5},
     {type:'line',label:'Meta',data:metasMar,showLine:false,pointStyle:'rectRot',pointRadius:8,pointHoverRadius:9,pointBackgroundColor:C.navy,pointBorderColor:'#fff',pointBorderWidth:1.5}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,labels:{boxWidth:12,font:{size:10}}},
-      datalabels:{display:c=>c.datasetIndex===0,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:c=>realMar[c.dataIndex]>=metasMar[c.dataIndex]?C.moss:'#9A6B00',font:{weight:'800',size:10},formatter:v=>Math.round(v)+'%'},
+      datalabels:{display:c=>c.datasetIndex===0,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:c=>realMar[c.dataIndex]>=metasMar[c.dataIndex]?C.moss:_labAmber,font:{weight:'800',size:10},formatter:v=>Math.round(v)+'%'},
       tooltip:{callbacks:{label:c=>c.dataset.label+': '+(+c.raw).toFixed(1)+'%'}}},
       scales:{y:{beginAtZero:true,ticks:{callback:v=>v+'%'}},x:{ticks:{font:{size:10}}}}}});
   const pctTxt=v=>v.toFixed(1).replace('.',',')+'%';
@@ -3113,19 +3115,19 @@ function renderMetas(){
   mk('cMetaRec',{type:'bar',data:{labels:['Meta','Realizado'],datasets:[
     {data:[recMeta,recReal],backgroundColor:['#d7d2c4',C.moss],borderRadius:6}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:60}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:11},formatter:v=>BRLk(v)},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:11},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{title:c=>c&&c[0]?c[0].label:'',label:c=>BRL(c.raw)+(c.dataIndex===1&&recFalta>0?' · falta '+BRLk(recFalta):'')}}},
       scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
   mk('cMetaHa',{type:'bar',data:{labels:['Meta','Realizado'],datasets:[
     {data:[haMeta,haReal],backgroundColor:['#d7d2c4',C.navy],borderRadius:6}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:70}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:11},formatter:v=>nHa(v)},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:11},formatter:v=>nHa(v)},
       tooltip:{callbacks:{title:c=>c&&c[0]?c[0].label:'',label:c=>nHa(c.raw)+(c.dataIndex===1&&haFalta>0?' · falta '+nHa(haFalta):'')}}},
       scales:{x:{ticks:{callback:v=>Math.round(v/1000)+'k'}}}}});
   mk('cComimp',{type:'bar',data:{labels:[pctBase+'% (base)',pctMeta+'% (meta batida)'],datasets:[
     {label:'Comissão',data:[com7,com10],backgroundColor:[C.gold,C.red],borderRadius:6}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:'#1b2a1f',font:{weight:'800',size:11},formatter:v=>BRLk(v)},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:11},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>BRL(c.raw)+' → margem líq. '+BRLk(moper-c.raw)+' ('+PCT((moper-c.raw)/rb)+')'}}},
       scales:{y:{ticks:{callback:v=>BRLk(v)}}}}});
   kpi('kHa',[
@@ -3140,7 +3142,7 @@ function renderMetas(){
   mk('cRecHa',{type:'bar',data:{labels:svs.map(s=>s.nome),datasets:[{data:svs.map(s=>s.rec2627/s.ha2627),
     backgroundColor:svs.map((_,i)=>C.set[i%C.set.length]),borderRadius:4}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:60}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>BRL(v)+'/ha'},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRL(v)+'/ha'},
       tooltip:{callbacks:{label:c=>BRL(c.raw)+'/ha'}}},scales:{x:{ticks:{callback:v=>BRL(v)}}}}});
 
   /* ---- custo por hectare: laboratório (real) e coleta (rateio de campo) ---- */
@@ -3188,7 +3190,7 @@ function renderMetas(){
   mk('cCatPct',{type:'bar',data:{labels:cats.map(c=>c.k),datasets:[{data:cats.map(c=>c.p),
     backgroundColor:cats.map(c=>c.p>=12?C.red:(c.p>=5?C.gold:C.moss)),borderRadius:4}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:48}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>v.toFixed(1)+'%'},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>v.toFixed(1)+'%'},
       tooltip:{callbacks:{label:c=>{const o=cats[c.dataIndex];return o.p.toFixed(1).replace('.',',')+'% · '+BRL(o.v);}}}},scales:{x:{ticks:{callback:v=>v+'%'}}}}});
   /* ---- custeio direto por grupo de serviço + pool de estrutura ---- */
   const rateC=comRate();
@@ -3221,14 +3223,14 @@ function renderMetas(){
     {label:'Preço venda/ha',data:GP.map(g=>g.preHa),backgroundColor:GP.map(g=>gCol(g.nome)),borderRadius:5},
     {label:'Custo direto/ha',data:GP.map(g=>g.dirHa),backgroundColor:'#d7d2c4',borderRadius:5}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{position:'bottom'},
-      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>v>0?BRL(v):''},
+      datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>v>0?BRL(v):''},
       tooltip:{callbacks:{label:c=>{const g=GP[c.dataIndex];if(c.datasetIndex===0)return 'Preço '+BRL(g.preHa)+'/ha';return 'Custo direto '+BRL(g.dirHa)+'/ha'+(g.campoDef?'':' (só lab; campo a definir)');}}}},
       scales:{y:{ticks:{callback:v=>BRL(v)}}}}});
   /* contribuição por grupo + pool de estrutura */
   mk('cGrupoMC',{type:'bar',data:{labels:GP.map(g=>g.nome).concat(['Pool estrutura']),datasets:[
     {data:GP.map(g=>g.mc).concat([-poolEstrut]),backgroundColor:GP.map(g=>gCol(g.nome)).concat([C.red]),borderRadius:5}]},
     options:{maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false},
-      datalabels:{display:true,anchor:c=>{const i=c.dataIndex;const v=i<GP.length?GP[i].mc:-poolEstrut;return v>=0?'end':'start';},align:c=>{const i=c.dataIndex;const v=i<GP.length?GP[i].mc:-poolEstrut;return v>=0?'end':'start';},clamp:true,clip:false,offset:2,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+      datalabels:{display:true,anchor:c=>{const i=c.dataIndex;const v=i<GP.length?GP[i].mc:-poolEstrut;return v>=0?'end':'start';},align:c=>{const i=c.dataIndex;const v=i<GP.length?GP[i].mc:-poolEstrut;return v>=0?'end':'start';},clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>{const i=c.dataIndex;if(i<GP.length){const g=GP[i];return 'Contribuição '+BRL(g.mc)+' · '+BRL(g.mcHa)+'/ha';}return 'Estrutura a cobrir '+BRL(poolEstrut);}}}},
       scales:{y:{ticks:{callback:v=>BRLk(v)}}}}});
   /* tabela de custeio direto por grupo */
@@ -3273,13 +3275,13 @@ function renderMetas(){
     const tR=porRec.slice(0,10);
     mk('cCliRec',{type:'bar',data:{labels:tR.map(r=>r.nome),datasets:[{data:tR.map(r=>r.receita),backgroundColor:C.navy,borderRadius:4}]},
       options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:52}},plugins:{legend:{display:false},
-        datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+        datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
         tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
     const tM=porMC.slice(0,10);
     mk('cCliLucro',{type:'bar',data:{labels:tM.map(r=>r.nome),datasets:[{data:tM.map(r=>r.mc),
       backgroundColor:tM.map(r=>r.mc>=0?C.moss:C.red),borderRadius:4}]},
       options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:60}},plugins:{legend:{display:false},
-        datalabels:{display:true,anchor:'end',align:c=>tM[c.dataIndex].mc>=0?'end':'start',clamp:true,clip:false,offset:3,color:c=>tM[c.dataIndex].mc>=0?C.moss:C.red,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+        datalabels:{display:true,anchor:'end',align:c=>tM[c.dataIndex].mc>=0?'end':'start',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
         tooltip:{callbacks:{label:c=>[BRL(c.raw),BRL(tM[c.dataIndex].mcHa)+'/ha · margem '+PCT(tM[c.dataIndex].mm)]}}},scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
     const th='<tr><th>Cliente</th><th>Grupo</th><th class="num">Receita</th><th class="num">Ha</th><th class="num">Preço/ha</th><th class="num">Contribuição</th><th class="num">R$/ha</th><th>Classificação</th></tr>';
     const gname=g=>g==='coleta'?'Coleta AP+':'Fertilidade';
@@ -4325,7 +4327,7 @@ function renderPrecoMargem(){
   mk('cMargCli',{type:'bar',data:{labels:tMC.map(c=>c.cliente),datasets:[{data:tMC.map(c=>c.mc),
       backgroundColor:tMC.map(c=>c.mc>=0?C.moss:C.red),borderRadius:4}]},
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:60}},plugins:{legend:{display:false},
-      datalabels:{anchor:'end',align:c=>tMC[c.dataIndex].mc>=0?'end':'start',clamp:true,clip:false,offset:3,color:c=>tMC[c.dataIndex].mc>=0?C.moss:C.red,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
+      datalabels:{anchor:'end',align:c=>tMC[c.dataIndex].mc>=0?'end':'start',clamp:true,clip:false,offset:3,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>{const o=tMC[c.dataIndex];return [BRL(o.mc)+' · '+PCT(o.mcPct),'Receita: '+BRL(o.receita),'Lucro cheio: '+BRL(o.lucro)];}}}},scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
   // ---- gráfico margem % por cliente ----
   const tPct=comRec.slice().sort((a,b)=>b.mcPct-a.mcPct).slice(0,12);
