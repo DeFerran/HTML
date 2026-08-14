@@ -1808,6 +1808,7 @@ function hydrate(d){
     if(!co.alcadas||typeof co.alcadas!=='object') co.alcadas={vendedorMaxDescPct:5,gestorMaxDescPct:15,precoMinimoPct:null};
     if(co.validadePadraoDias==null) co.validadePadraoDias=15;
     if(!co.metodoPorServico||typeof co.metodoPorServico!=='object') co.metodoPorServico={};
+    if(!co.descServico||typeof co.descServico!=='object') co.descServico={};
   }
   if(!Array.isArray(d.recorrencias)) d.recorrencias=[];
   if(!Array.isArray(d.orcamentos)) d.orcamentos=[];
@@ -5650,6 +5651,7 @@ function renderIntegridade(){
 }
 /* ===== Fase 2 Orçamentos: configurações comerciais (cadastros do módulo) ===== */
 function qtMetodoServico(servico){ return ((D.comercial&&D.comercial.metodoPorServico)||{})[servico]||'ha'; }
+function qtDescServico(servico){ const m=(D.comercial&&D.comercial.descServico)||{}; const d=m[servico]; return (d&&typeof d==='object')?d:null; }
 function renderComercialConfig(){
   const host=document.getElementById('cadComercial'); if(!host)return;
   if(!D.comercial||typeof D.comercial!=='object') D.comercial={};
@@ -5662,6 +5664,7 @@ function renderComercialConfig(){
     +'<div id="ccProf" class="edcard" style="margin-bottom:14px"></div>'
     +'<div id="ccCond" class="edcard" style="margin-bottom:14px"></div>'
     +'<div id="ccPac" class="edcard" style="margin-bottom:14px"></div>'
+    +'<div id="ccDesc" class="edcard" style="margin-bottom:14px"></div>'
     +'<div id="ccAlc" class="edcard"></div>';
   edTable('ccMalhas',{title:'Malhas de amostragem',help:'Densidade da grade (hectares por ponto). Estima pontos e amostras: pontos = área ÷ (ha/ponto).',
     rows:co.malhas,cols:[{k:'nome',label:'Malha',type:'text'},{k:'haPorPonto',label:'ha por ponto',type:'num',num:true}],
@@ -5669,7 +5672,7 @@ function renderComercialConfig(){
   edTable('ccProf',{title:'Profundidades',help:'Cada profundidade tem um fator de amostragem (fração dos pontos). Ex.: 0–20 = 1 (todos os pontos); adicionais 0–10 = 0,30; 20–40 = 0,20.',
     rows:co.profundidades,cols:[{k:'nome',label:'Profundidade',type:'text'},{k:'fator',label:'Fator (0–1)',type:'num',num:true}],
     newRow:()=>({id:'prof'+uidLanc(),nome:'',fator:0,ativo:true})});
-  renderCondPgto(); renderPacotes();
+  renderCondPgto(); renderPacotes(); renderDescServicos();
   const A=co.alcadas;
   edForm('ccAlc',{title:'Alçadas de desconto & validade',help:'Limite de desconto por papel; acima disso o orçamento vai para <b>Aguardando aprovação</b>. Preço mínimo (% da tabela) protege a margem (0 = sem mínimo). Validade padrão da proposta.',
     fields:[
@@ -5741,6 +5744,25 @@ function renderPacotes(){ const host=document.getElementById('ccPac'); if(!host)
   list.forEach(p=>{ h+='<tr><td><b>'+esc(p.nome||'—')+'</b></td><td style="font-size:12px">'+(p.servicos||[]).map(esc).join(', ')+'</td><td>'+(p.descontoPct?(+p.descontoPct+'%'):'—')+'</td><td style="text-align:right;white-space:nowrap"><button class="edbtn" onclick="pacEditar(\''+p.id+'\')">editar</button> <button class="edbtn ghost" onclick="pacRemover(\''+p.id+'\')">✕</button></td></tr>'; });
   h+='</tbody></table></div>'; host.innerHTML=h;
 }
+/* descrições comerciais por serviço (nome comercial + escopo padrão p/ a proposta) */
+function descServSet(servico,field,val){ if(!D.comercial||typeof D.comercial!=='object')D.comercial={};
+  if(!D.comercial.descServico||typeof D.comercial.descServico!=='object')D.comercial.descServico={};
+  const m=D.comercial.descServico; const cur=(m[servico]&&typeof m[servico]==='object')?m[servico]:{nome:'',desc:''};
+  cur[field]=String(val||'').trim(); m[servico]=cur;
+  if(!(cur.nome||'').trim() && !(cur.desc||'').trim()) delete m[servico];
+  commit(); }
+function renderDescServicos(){ const host=document.getElementById('ccDesc'); if(!host)return;
+  const servs=(typeof funilServicoLista==='function')?funilServicoLista():((D.servicos||[]).map(s=>s.nome).filter(Boolean));
+  const m=(D.comercial&&D.comercial.descServico)||{};
+  let h='<div class="edhead"><h3>Descrições comerciais por serviço</h3><p class="edhelp">Nome comercial e escopo padrão que aparecem na <b>proposta ao cliente</b> para cada serviço. Opcional: sem preencher, a proposta usa o nome do serviço + o escopo técnico (malha/profundidade). O texto daqui entra <b>antes</b> do escopo técnico.</p></div>';
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Serviço</th><th>Nome comercial (proposta)</th><th>Descrição comercial / escopo padrão</th></tr></thead><tbody>';
+  if(!servs.length)h+='<tr><td colspan="3" style="color:var(--muted);padding:12px 6px">Nenhum serviço cadastrado ainda (cadastre em Lançamentos › Serviços).</td></tr>';
+  servs.forEach(sv=>{ const d=(m[sv]&&typeof m[sv]==='object')?m[sv]:{}; const k=esc(String(sv).replace(/'/g,"\\'"));
+    h+='<tr><td><b>'+esc(sv)+'</b></td>'
+      +'<td><input class="edinp" style="min-width:160px" value="'+esc(d.nome||'')+'" placeholder="ex.: Mapa de Fertilidade" onchange="descServSet(\''+k+'\',\'nome\',this.value)"></td>'
+      +'<td><input class="edinp" style="min-width:240px;width:100%" value="'+esc(d.desc||'')+'" placeholder="ex.: Coleta georreferenciada + análise de fertilidade" onchange="descServSet(\''+k+'\',\'desc\',this.value)"></td></tr>'; });
+  h+='</tbody></table></div>'; host.innerHTML=h;
+}
 /* ================= Fase 3: Orçamentos — wizard Web ================= */
 const ORC_STEPS=['Cliente','Área','Serviços','Configuração','Pagamento','Resumo'];
 let _qz=null, _qzStep=0;
@@ -5793,14 +5815,17 @@ function qzDataHora(iso){ const s=String(iso||''); if(s.length<16)return s; retu
 function qzHistHTML(q){ const hs=(q&&q.historico)||[]; if(!hs.length)return '<span class="cap">Sem histórico.</span>';
   return '<div style="display:flex;flex-direction:column;gap:5px">'+hs.slice().reverse().map(e=>'<div style="font-size:12.5px"><b>'+esc(e.acao||'')+'</b>'+(e.detalhe?(' — '+esc(e.detalhe)):'')+' <span class="cap">· '+esc(qzDataHora(e.em))+' · '+esc(e.quem||'')+'</span></div>').join('')+'</div>'; }
 /* Fase 7: proposta imprimível (documento para o cliente — sem custo/margem/regras internas) */
-function qzItemEscopo(it){ if(!it)return ''; const base=(it.descricao||'').trim(); if(!it.config)return base;
-  const m=(D.comercial.malhas||[]).find(x=>x.id===it.config.malhaId); const profs=(it.config.profundidades||[]).map(pid=>{const p=(D.comercial.profundidades||[]).find(x=>x.id===pid);return p?p.nome:'';}).filter(Boolean);
-  const parts=[]; if(base)parts.push(base); if(m)parts.push('Malha '+m.nome); if(profs.length)parts.push('Prof.: '+profs.join(', ')); if(it.config.amostras)parts.push('~'+it.config.amostras+' amostras'); return parts.join(' · '); }
+function qzItemEscopo(it){ if(!it)return ''; const dc=qtDescServico(it.servico); const comDesc=dc&&(dc.desc||'').trim(); const base=(it.descricao||'').trim();
+  const parts=[]; if(comDesc)parts.push(comDesc); if(base)parts.push(base);
+  if(it.config){ const m=(D.comercial.malhas||[]).find(x=>x.id===it.config.malhaId); const profs=(it.config.profundidades||[]).map(pid=>{const p=(D.comercial.profundidades||[]).find(x=>x.id===pid);return p?p.nome:'';}).filter(Boolean);
+    if(m)parts.push('Malha '+m.nome); if(profs.length)parts.push('Prof.: '+profs.join(', ')); if(it.config.amostras)parts.push('~'+it.config.amostras+' amostras'); }
+  return parts.join(' · '); }
+function qzItemTitulo(it){ if(!it)return ''; const dc=qtDescServico(it.servico); const nome=dc&&(dc.nome||'').trim(); return nome||it.servico||''; }
 function qzItemIncluso(servico){ if(!_qz)return; const it=_qz.itens.find(x=>x.servico===servico); if(!it)return; it.incluso=(it.incluso==='opcional')?'incluso':'opcional'; qzSalvarDraft(); renderOrcamentosView(); }
 function qzPropostaHTML(q){
   const incl=(q.itens||[]).filter(it=>it.incluso!=='opcional'), opc=(q.itens||[]).filter(it=>it.incluso==='opcional');
   const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===q.pagamentoCondId);
-  const linha=it=>{ const e0=qzItemEscopo(it); return '<tr><td><b>'+esc(it.servico)+'</b>'+(e0?('<br><span style="color:#5a675e;font-size:12px">'+esc(e0)+'</span>'):'')+'</td><td class="num">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+'</td><td class="num">'+BRL(+it.total||0)+'</td></tr>'; };
+  const linha=it=>{ const e0=qzItemEscopo(it); return '<tr><td><b>'+esc(qzItemTitulo(it))+'</b>'+(e0?('<br><span style="color:#5a675e;font-size:12px">'+esc(e0)+'</span>'):'')+'</td><td class="num">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+'</td><td class="num">'+BRL(+it.total||0)+'</td></tr>'; };
   let h='<div class="orc-prop-hd"><div><img src="logo-verde.png" alt="DF AGRO" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><h1 style="display:none">DF AGRO — Consultoria Agrícola</h1><div style="color:#5a675e;font-size:12px;margin-top:4px">Agricultura de Precisão</div></div>'
     +'<div class="orc-prop-num"><div class="s">Proposta comercial</div><div class="n">'+esc(q.numero||'')+(q.versao>1?(' · v'+q.versao):'')+'</div><div class="s" style="margin-top:6px">Emissão '+esc(qzDataBR(q.emitidoEm))+'</div><div class="s">Validade '+(q.validadeDias||0)+' dias'+(q.validoAte?(' (até '+esc(qzDataBR(q.validoAte))+')'):'')+'</div></div></div>';
   h+='<div class="orc-prop-sec">Cliente</div><div class="orc-prop-grid">'
