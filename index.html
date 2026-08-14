@@ -810,10 +810,9 @@ header .htxt h1{display:none}
       <div class="panel"><h3>Margem % por safra</h3><div class="cap">A 26/27 já está líquida de imposto. O gatilho de comissão cheia é 30%.</div><div class="chartbox"><canvas id="cMargem"></canvas></div></div>
       <div class="panel"><h3>Sensibilidade da margem ao imposto</h3><div class="cap">Como a margem 26/27 responde a 12% / 15% / 17% de NF.</div><div class="chartbox"><canvas id="cSens"></canvas></div></div>
     </div>
-    <div class="grid two">
-      <div class="panel"><h3>Top clientes por receita — 26/27</h3><div class="cap">Concentração da carteira: quanto os maiores clientes representam do faturamento contratado.</div><div class="chartbox"><canvas id="cTopCli"></canvas></div></div>
-      <div class="panel"><h3>Receita por serviço — 26/27</h3><div class="cap">De onde vem o faturamento contratado, por linha de serviço.</div><div class="chartbox"><canvas id="cTopServ"></canvas></div></div>
-    </div>
+    <!-- (Consolidação de gráficos) Os rankings "Top clientes por receita" e
+         "Receita por serviço" saíram daqui — viviam repetidos em 3 telas. Ficam
+         nas telas donas: Clientes, Serviços e Metas (versões mais completas). -->
     <div class="callrow" id="callGeral"></div>
   </section>
 
@@ -2722,23 +2721,9 @@ function renderGeral(){
     options:{maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:false},
       datalabels:{display:true,anchor:c=>sv[c.dataIndex]>=0?'end':'start',align:c=>sv[c.dataIndex]>=0?'end':'start',clamp:true,clip:false,offset:2,color:c=>sv[c.dataIndex]>=0?C.moss:C.red,font:{weight:'800',size:10.5},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/rb)+')'}}},scales:{y:{ticks:{callback:v=>BRLk(v)}}}}});
-  // top clientes por receita (26/27) — concentração da carteira
-  const recCliTot=sum((D.clientes||[]).map(x=>+x.receita||0))||1;
-  const topCli=(D.clientes||[]).slice().filter(c=>(+c.receita||0)>0).sort((a,b)=>(+b.receita||0)-(+a.receita||0)).slice(0,6);
-  mk('cTopCli',{type:'bar',data:{labels:topCli.map(c=>c.nome),datasets:[{label:'Receita',data:topCli.map(c=>+c.receita||0),
-    backgroundColor:topCli.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
-    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:52}},plugins:{legend:{display:false},
-      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
-      tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/recCliTot)+' da carteira)'}}},
-      scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
-  // receita por serviço (26/27)
-  const topServ=(D.servicos||[]).slice().filter(s=>(+s.rec2627||0)>0).sort((a,b)=>(+b.rec2627||0)-(+a.rec2627||0)).slice(0,6);
-  mk('cTopServ',{type:'bar',data:{labels:topServ.map(s=>s.nome),datasets:[{label:'Receita',data:topServ.map(s=>+s.rec2627||0),
-    backgroundColor:topServ.map((_,i)=>C.set[i%C.set.length]),borderRadius:5}]},
-    options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:52}},plugins:{legend:{display:false},
-      datalabels:{anchor:'end',align:'end',clamp:true,clip:false,offset:2,color:()=>_labInk,font:{weight:'800',size:10},formatter:v=>BRLk(v)},
-      tooltip:{callbacks:{label:c=>BRL(c.raw)+' ('+PCT(c.raw/rb)+' da receita)'}}},
-      scales:{x:{ticks:{callback:v=>BRLk(v)}},y:{ticks:{font:{size:10.5}}}}}});
+  // (Consolidação de gráficos) Os rankings "Top clientes por receita" (cTopCli) e
+  // "Receita por serviço" (cTopServ) saíram da Visão Geral — viviam repetidos em 3 telas.
+  // Ficam nas telas donas: Clientes, Serviços e Metas (versões mais completas).
   const nSub=D.crossSell.clientes.filter(c=>c.total<=1).length;
   const fert=D.servicos.filter(x=>x.nome.includes('Fertilidade')).reduce((a,b)=>a+b.rec2627,0);
   call('callGeral',[
