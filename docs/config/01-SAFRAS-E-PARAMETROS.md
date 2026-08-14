@@ -59,3 +59,14 @@ cadastros estruturais no futuro (ex.: catálogo de serviços/grupos, centros de
 custo padrão). Fica para quando você pedir.
 
 **PARADO** conforme a regra de implementação incremental.
+
+## Correção de layout (conferência)
+
+Durante a conferência visual (desktop claro/escuro + celular), encontrei e
+corrigi um **bug de layout pré-existente**: a regra mobile `#v-edit{display:flex}`
+(seletor de id) vencia `.view{display:none}`, então a tela **Lançamentos**
+continuava visível **por baixo de qualquer outra aba no celular** (vazava o
+launcher de cards). Escopado para `#v-edit.active` — corrige o vazamento em
+**todas** as telas no celular e preserva o launcher do Lançamentos quando ativo.
+Verificado: fin/metas/cli/opentregas/config no mobile → 0 vazamento, 0 overflow
+horizontal, 0 erros JS.

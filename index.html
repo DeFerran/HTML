@@ -6382,7 +6382,9 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 .ed-back{display:none}
 .ed-back .ed-ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:767px){
-  #v-edit{display:flex;flex-direction:column}
+  /* .active: senão o id #v-edit (specificity > .view) mantinha Lançamentos
+     visível no celular mesmo em outra aba, vazando o launcher por baixo. */
+  #v-edit.active{display:flex;flex-direction:column}
   #v-edit>.lead{display:none}                 /* texto longo não ajuda no celular */
   #v-edit .edpills{order:-2}                    /* grade de cards primeiro */
   #v-edit .ed-back{order:-1}
