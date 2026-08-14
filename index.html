@@ -386,6 +386,36 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
   .orc-bottombar .bv{font-size:20px;font-weight:800;line-height:1.1}
   .orc-bottombar .edbtn{flex:0 0 auto}
 }
+/* Fase 7 — proposta imprimível (documento claro, independente do tema) */
+.orc-prop-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);overflow:auto;padding:24px}
+body.prop-open{overflow:hidden}
+body.prop-open .orc-prop-overlay{display:block}
+.orc-prop-tools{max-width:820px;margin:0 auto 14px;display:flex;gap:10px;justify-content:flex-end}
+.orc-prop-doc{max-width:820px;margin:0 auto;background:#fff;color:#1b2a1f;border-radius:10px;padding:40px 44px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:13.5px;line-height:1.5}
+.orc-prop-doc h1{font-size:16px;color:#0A6A30;margin:0}
+.orc-prop-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:2px solid #0A6A30;padding-bottom:16px;margin-bottom:18px}
+.orc-prop-hd img{max-height:54px;max-width:190px}
+.orc-prop-num{text-align:right;white-space:nowrap}
+.orc-prop-num .n{font-size:19px;font-weight:800;color:#0A6A30}
+.orc-prop-num .s{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#5a675e}
+.orc-prop-doc table{width:100%;border-collapse:collapse;margin:8px 0}
+.orc-prop-doc th,.orc-prop-doc td{text-align:left;padding:9px 8px;border-bottom:1px solid #e3e8e3;font-size:13px;vertical-align:top}
+.orc-prop-doc th{color:#5a675e;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
+.orc-prop-doc td.num,.orc-prop-doc th.num{text-align:right;white-space:nowrap}
+.orc-prop-sec{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:#0A6A30;font-weight:800;margin:20px 0 2px}
+.orc-prop-tot{display:flex;justify-content:flex-end;margin-top:6px}
+.orc-prop-tot table{width:auto;min-width:300px}
+.orc-prop-tot td{border:none;padding:4px 8px}
+.orc-prop-tot .g td{font-size:17px;font-weight:800;color:#0A6A30;border-top:2px solid #0A6A30;padding-top:8px}
+.orc-prop-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 24px;margin:2px 0 6px}
+.orc-prop-grid .k{color:#5a675e;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+.orc-prop-foot{margin-top:26px;padding-top:14px;border-top:1px solid #e3e8e3;color:#5a675e;font-size:11.5px}
+@media print{
+  body.prop-open>*{display:none!important}
+  body.prop-open .orc-prop-overlay{display:block!important;position:static!important;background:#fff;padding:0;overflow:visible}
+  .orc-prop-tools{display:none!important}
+  .orc-prop-doc{box-shadow:none;max-width:none;margin:0;border-radius:0;padding:0 6px}
+}
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -5739,9 +5769,10 @@ function qzRecalc(){ if(!_qz)return; const area=+_qz.areaHa||0;
     it.quantidade=QuoteCalc.quantidade(met,{areaHa:area,pontos:pontos,amostras:amostras});
     it.subtotal=QuoteCalc.itemSubtotal(it.precoBase,it.quantidade);
     it.total=QuoteCalc.itemTotal(it.subtotal,it.descontoPct||0); });
-  const t=QuoteCalc.totais(_qz.itens,_qz.descontoGeralPct||0);
+  const incl=(_qz.itens||[]).filter(it=>it.incluso!=='opcional'); // opcionais não entram no total
+  const t=QuoteCalc.totais(incl,_qz.descontoGeralPct||0);
   _qz.subtotal=t.subtotal; _qz.descontoValor=t.descontoValor; _qz.total=t.total;
-  _qz.totalTabela=QuoteCalc.totalTabela(_qz.itens); _qz.desvioPct=QuoteCalc.desvioPct(_qz.total,_qz.totalTabela);
+  _qz.totalTabela=QuoteCalc.totalTabela(incl); _qz.desvioPct=QuoteCalc.desvioPct(_qz.total,_qz.totalTabela);
   const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
   const base=_qz.emitidoEm||'';
   _qz.pagamento={condId:_qz.pagamentoCondId,parcelas:cond?QuoteCalc.parcelas(_qz.total,cond.parcelas,base):[]};
@@ -5751,6 +5782,39 @@ function qzLog(q,acao,detalhe){ if(!q)return; if(!Array.isArray(q.historico))q.h
 function qzDataHora(iso){ const s=String(iso||''); if(s.length<16)return s; return qzDataBR(s.slice(0,10))+' '+s.slice(11,16); }
 function qzHistHTML(q){ const hs=(q&&q.historico)||[]; if(!hs.length)return '<span class="cap">Sem histórico.</span>';
   return '<div style="display:flex;flex-direction:column;gap:5px">'+hs.slice().reverse().map(e=>'<div style="font-size:12.5px"><b>'+esc(e.acao||'')+'</b>'+(e.detalhe?(' — '+esc(e.detalhe)):'')+' <span class="cap">· '+esc(qzDataHora(e.em))+' · '+esc(e.quem||'')+'</span></div>').join('')+'</div>'; }
+/* Fase 7: proposta imprimível (documento para o cliente — sem custo/margem/regras internas) */
+function qzItemEscopo(it){ if(!it)return ''; const base=(it.descricao||'').trim(); if(!it.config)return base;
+  const m=(D.comercial.malhas||[]).find(x=>x.id===it.config.malhaId); const profs=(it.config.profundidades||[]).map(pid=>{const p=(D.comercial.profundidades||[]).find(x=>x.id===pid);return p?p.nome:'';}).filter(Boolean);
+  const parts=[]; if(base)parts.push(base); if(m)parts.push('Malha '+m.nome); if(profs.length)parts.push('Prof.: '+profs.join(', ')); if(it.config.amostras)parts.push('~'+it.config.amostras+' amostras'); return parts.join(' · '); }
+function qzItemIncluso(servico){ if(!_qz)return; const it=_qz.itens.find(x=>x.servico===servico); if(!it)return; it.incluso=(it.incluso==='opcional')?'incluso':'opcional'; qzSalvarDraft(); renderOrcamentosView(); }
+function qzPropostaHTML(q){
+  const incl=(q.itens||[]).filter(it=>it.incluso!=='opcional'), opc=(q.itens||[]).filter(it=>it.incluso==='opcional');
+  const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===q.pagamentoCondId);
+  const linha=it=>{ const e0=qzItemEscopo(it); return '<tr><td><b>'+esc(it.servico)+'</b>'+(e0?('<br><span style="color:#5a675e;font-size:12px">'+esc(e0)+'</span>'):'')+'</td><td class="num">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+'</td><td class="num">'+BRL(+it.total||0)+'</td></tr>'; };
+  let h='<div class="orc-prop-hd"><div><img src="logo-verde.png" alt="DF AGRO" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><h1 style="display:none">DF AGRO — Consultoria Agrícola</h1><div style="color:#5a675e;font-size:12px;margin-top:4px">Agricultura de Precisão</div></div>'
+    +'<div class="orc-prop-num"><div class="s">Proposta comercial</div><div class="n">'+esc(q.numero||'')+(q.versao>1?(' · v'+q.versao):'')+'</div><div class="s" style="margin-top:6px">Emissão '+esc(qzDataBR(q.emitidoEm))+'</div><div class="s">Validade '+(q.validadeDias||0)+' dias'+(q.validoAte?(' (até '+esc(qzDataBR(q.validoAte))+')'):'')+'</div></div></div>';
+  h+='<div class="orc-prop-sec">Cliente</div><div class="orc-prop-grid">'
+    +'<div><span class="k">Cliente</span><br><b>'+esc(q.clienteNome||'—')+'</b></div>'
+    +'<div><span class="k">Fazenda</span><br>'+esc(q.fazenda||'—')+'</div>'
+    +'<div><span class="k">Município</span><br>'+esc(q.municipio||'—')+'</div>'
+    +'<div><span class="k">Área</span><br>'+fnum(+q.areaHa||0)+' ha</div>'
+    +'<div><span class="k">Responsável comercial</span><br>'+esc(q.vendedor||'—')+'</div></div>';
+  h+='<div class="orc-prop-sec">Serviços inclusos</div><table><thead><tr><th>Serviço / escopo</th><th class="num">Quantidade</th><th class="num">Valor</th></tr></thead><tbody>'+(incl.map(linha).join('')||'<tr><td colspan="3" style="color:#5a675e">—</td></tr>')+'</tbody></table>';
+  h+='<div class="orc-prop-tot"><table><tr><td>Subtotal</td><td class="num">'+BRL(+q.subtotal||0)+'</td></tr>'
+    +(+q.descontoValor>0?('<tr><td>Desconto</td><td class="num">−'+BRL(+q.descontoValor||0)+'</td></tr>'):'')
+    +'<tr class="g"><td>Total</td><td class="num">'+BRL(+q.total||0)+'</td></tr></table></div>';
+  if(opc.length)h+='<div class="orc-prop-sec">Serviços opcionais (não inclusos no total)</div><table><thead><tr><th>Serviço / escopo</th><th class="num">Quantidade</th><th class="num">Valor</th></tr></thead><tbody>'+opc.map(linha).join('')+'</tbody></table>';
+  h+='<div class="orc-prop-sec">Condição de pagamento</div><div><b>'+esc(cond?cond.nome:'—')+'</b></div>';
+  if(q.pagamento&&q.pagamento.parcelas&&q.pagamento.parcelas.length>1)h+='<table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor</th></tr></thead><tbody>'+q.pagamento.parcelas.map(p=>'<tr><td>'+p.n+'ª ('+p.dias+' dias)</td><td>'+esc(qzDataBR(p.venc))+'</td><td class="num">'+BRL(p.valor)+'</td></tr>').join('')+'</tbody></table>';
+  if((q.obsCliente||'').trim())h+='<div class="orc-prop-sec">Observações</div><div>'+esc(q.obsCliente)+'</div>';
+  h+='<div class="orc-prop-foot">Proposta emitida por <b>'+esc(q.vendedor||'DF AGRO')+'</b> · DF AGRO — Consultoria em Agricultura de Precisão.<br>Valores sujeitos à validade indicada acima.</div>';
+  return h; }
+function orcProposta(id){ const stored=(D.quotes||[]).find(x=>x&&x.id===id); const q=stored||((_qz&&_qz.id===id)?_qz:null); if(!q)return;
+  if(stored){ qzLog(stored,'proposta gerada',''); commit(); }
+  let host=document.getElementById('orcPropostaHost'); if(!host){ host=document.createElement('div'); host.id='orcPropostaHost'; host.className='orc-prop-overlay'; document.body.appendChild(host); }
+  host.innerHTML='<div class="orc-prop-tools"><button class="edbtn primary" onclick="try{window.print()}catch(e){}">🖨 Imprimir / Salvar PDF</button><button class="edbtn" onclick="orcPropostaFechar()">Fechar</button></div><div class="orc-prop-doc">'+qzPropostaHTML(q)+'</div>';
+  document.body.classList.add('prop-open'); }
+function orcPropostaFechar(){ document.body.classList.remove('prop-open'); const h=document.getElementById('orcPropostaHost'); if(h)h.innerHTML=''; }
 function qzEditavel(q){ return !q || q.status==='rascunho' || (q.aprovacao&&q.aprovacao.status==='devolvido'); }
 function orcNovo(){ const base=(function(){try{return new Date().toISOString().slice(0,10);}catch(e){return '';}})();
   _qz={id:'q'+uidLanc(),numero:qtNumero(),versao:1,versaoDe:null,substituidoPor:null,status:'rascunho',clienteNome:'',fazenda:'',municipio:'',vendedor:'',safra:qtSafraAtual(),areaHa:0,itens:[],descontoGeralPct:0,subtotal:0,descontoValor:0,total:0,totalTabela:0,desvioPct:null,pagamentoCondId:((D.comercial.condicoesPgto||[])[0]||{}).id||'',pagamento:{parcelas:[]},validadeDias:+D.comercial.validadePadraoDias||15,emitidoEm:base,validoAte:'',obsCliente:'',obsInterna:'',historico:[],criadoEm:nowISO(),criadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||''};
@@ -5816,7 +5880,7 @@ function renderOrcLista(host){
   if(!qs.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento ainda. Clique em <b>+ Novo orçamento</b> — leva cerca de 1–3 minutos.</div></div>'; host.innerHTML=h; return; }
   h+='<div class="panel"><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th class="num">Área</th><th class="num">Serviços</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>';
   qs.forEach(q=>{ const vbadge=(+q.versao>1)?(' <span class="tag md">v'+q.versao+'</span>'):''; const histOn=!!_orcHist[q.id];
-    h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
+    h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
     if(histOn)h+='<tr><td colspan="8" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
   h+='</tbody></table></div></div>'; host.innerHTML=h;
 }
@@ -5851,6 +5915,7 @@ function renderOrcWizard(host){
   const inp=document.getElementById('qzArea'); if(inp)inp.onchange=()=>qzSetField('areaHa',pnum(inp.value));
   const val=document.getElementById('qzValidade'); if(val)val.onchange=()=>qzSetField('validadeDias',Math.round(pnum(val.value)));
   const oc=document.getElementById('qzObsCli'); if(oc)oc.onchange=()=>qzSetField('obsCliente',oc.value);
+  const oi=document.getElementById('qzObsInt'); if(oi)oi.onchange=()=>qzSetField('obsInterna',oi.value);
   const dsc=document.getElementById('qzDesc'); if(dsc)dsc.onchange=()=>{ qzSetField('descontoGeralPct',pnum(dsc.value)); renderOrcamentosView(); };
 }
 function qzStepHTML(){ const s=_qzStep;
@@ -5909,9 +5974,11 @@ function qzStepHTML(){ const s=_qzStep;
   let h='<h3>Resumo do orçamento</h3><div class="cap">Confira antes de gerar. A qualquer momento você pode voltar e ajustar.</div>';
   h+='<div style="margin-top:12px"><b>'+esc(_qz.clienteNome||'—')+'</b>'+(_qz.fazenda?(' · '+esc(_qz.fazenda)):'')+' · '+fnum(+_qz.areaHa||0)+' ha · vendedor '+esc(_qz.vendedor||'A definir')+'</div>';
   h+='<div style="margin-top:12px">';
-  (_qz.itens||[]).forEach(it=>{ h+='<div class="orc-qcard"><div class="orc-qtop"><b>'+esc(it.servico)+'</b><span><b>'+BRL(+it.total||0)+'</b></span></div><div class="cap">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+' × '+BRL(+it.precoBase||0)+(it.config&&it.config.amostras?(' · malha/'+((D.comercial.malhas.find(m=>m.id===it.config.malhaId)||{}).nome||'')+' · ~'+it.config.amostras+' amostras'):'')+'</div></div>'; });
+  (_qz.itens||[]).forEach(it=>{ const opc=it.incluso==='opcional'; h+='<div class="orc-qcard"'+(opc?' style="opacity:.75"':'')+'><div class="orc-qtop"><b>'+esc(it.servico)+'</b><span><b>'+BRL(+it.total||0)+'</b></span></div><div class="cap">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+' × '+BRL(+it.precoBase||0)+(it.config&&it.config.amostras?(' · malha/'+((D.comercial.malhas.find(m=>m.id===it.config.malhaId)||{}).nome||'')+' · ~'+it.config.amostras+' amostras'):'')+'</div>'
+    +'<div style="margin-top:6px"><button class="op-linkbtn" style="border:1px solid var(--line)" onclick="qzItemIncluso(\''+esc(String(it.servico).replace(/\x27/g,"\\x27"))+'\')">'+(opc?'☆ Opcional (fora do total) — tornar incluso':'★ Incluso — tornar opcional')+'</button></div></div>'; });
   h+='</div>';
-  h+='<label class="orc-field"><span>Observações para o cliente (opcional)</span><input id="qzObsCli" value="'+esc(_qz.obsCliente||'')+'" placeholder="condições, prazos, escopo…"></label>';
+  h+='<label class="orc-field"><span>Observações para o cliente (aparecem na proposta)</span><input id="qzObsCli" value="'+esc(_qz.obsCliente||'')+'" placeholder="condições, prazos, escopo…"></label>';
+  h+='<label class="orc-field"><span>Observações internas (NÃO aparecem na proposta)</span><input id="qzObsInt" value="'+esc(_qz.obsInterna||'')+'" placeholder="notas da negociação, contexto…"></label>';
   const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
   const descEf=qzDescEfetivoPct();
   h+='<label class="orc-field" style="max-width:220px"><span>Desconto geral (%)</span><input id="qzDesc" inputmode="decimal" value="'+esc(_qz.descontoGeralPct||'')+'"></label>';
@@ -5922,7 +5989,7 @@ function qzStepHTML(){ const s=_qzStep;
   if(qzPodeVerMargem()){ const m=qzMargem(); h+='<div class="orc-sumrow" style="margin-top:10px"><span class="lbl">Custo previsto</span><span>'+BRL(m.custo)+'</span></div><div class="orc-sumrow"><span class="lbl">Margem de contribuição</span><span>'+BRL(m.mc)+' · '+PCT(m.mcPct)+'</span></div>'; }
   h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(cond?cond.nome:'—')+'</span></div>';
   h+='<div class="orc-sumrow"><span class="lbl">Validade</span><span>'+(_qz.validadeDias||0)+' dias'+(_qz.validoAte?(' (até '+qzDataBR(_qz.validoAte)+')'):'')+'</span></div>';
-  h+='<div class="orc-navbtns"><button class="edbtn" onclick="qzStep(0)">Editar</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">'+(ap.exigida?'Enviar para aprovação':'Gerar orçamento')+'</button></div>';
+  h+='<div class="orc-navbtns"><button class="edbtn" onclick="qzStep(0)">Editar</button><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="edbtn" onclick="orcProposta(\''+_qz.id+'\')">👁 Ver proposta</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">'+(ap.exigida?'Enviar para aprovação':'Gerar orçamento')+'</button></span></div>';
   return h;
 }
 function renderCustoVeiculo(){
