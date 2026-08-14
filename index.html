@@ -1038,6 +1038,7 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Fator padrão (ha/ponto)</label>
           <input type="number" id="opFator" min="0" step="0.5" style="width:150px" list="opFatorList" placeholder="ex.: 3" onchange="opColetaSetFator()" title="Fator sugerido para novos lançamentos (ha por ponto). Varia por cliente/grade: 1, 2, 3, 5, 10… O valor real fica em cada lançamento."></div>
+        <button class="btn" style="align-self:end" onclick="opColetaExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
       </div>
     </div>
@@ -1116,6 +1117,7 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Prazo esperado (dias)</label>
           <input type="number" id="oaPrazo" min="0" style="width:120px" placeholder="a validar" onchange="opAmSetPrazo()" title="Configurável — acima deste prazo sem resultado, a remessa fica 'atrasada'"></div>
+        <button class="btn" style="align-self:end" onclick="opAmExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opAmNovo()">+ Novo envio</button>
       </div>
     </div>
@@ -1186,6 +1188,7 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Dose MIB padrão</label>
           <input type="number" id="oeMibPadrao" min="0" style="width:120px" placeholder="20" onchange="opEnSetMibPadrao()" title="Dose MIB é estipulada por fazenda (varia). Este é só o valor sugerido quando a linha não tem MIB preenchido; pode ser sobrescrito por linha."></div>
+        <button class="btn" style="align-self:end" onclick="opEnExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opEnNovo()">+ Nova entrega</button>
       </div>
     </div>
@@ -1954,6 +1957,13 @@ const OpColetaCalc=(function(){
   return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,MESES};
 })();
 // </op-coleta-calc>
+// <op-csv>
+/* CSV puro para exportação (separador ';' — padrão do Excel pt-BR). Testável. */
+function opToCsv(matrix){
+  const cell=v=>{ let s=(v==null?'':String(v)); return /[";\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s; };
+  return (matrix||[]).map(row=>(row||[]).map(cell).join(';')).join('\r\n');
+}
+// </op-csv>
 /* ===== Controle Operacional · Visão do ciclo (reusa os cálculos puros das telas) ===== */
 function opAbrir(v){ const b=document.querySelector('#tabs button[data-v="'+v+'"]'); if(b) b.click(); }
 function renderOpResumo(){
@@ -2054,6 +2064,21 @@ function opColetaSalvar(){
   else { rec.id='opc'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opColeta.lancamentos.push(rec); }
   opColetaFecha(); if(typeof commit==='function') commit(); renderOpColeta(); }
 function opColetaExcluir(){ if(!_opColEdit)return; if(!confirm('Excluir este lançamento?'))return; D.opColeta.lancamentos=(D.opColeta.lancamentos||[]).filter(x=>x.id!==_opColEdit); opColetaFecha(); if(typeof commit==='function') commit(); renderOpColeta(); }
+/* download de CSV (Blob + BOM p/ acentos no Excel) */
+function opDownload(filename,text){ try{ const blob=new Blob(['﻿'+text],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},120); }catch(e){ alert('Não foi possível exportar: '+((e&&e.message)||e)); } }
+function opColetaExportar(){ const lancs=OpColetaCalc.filtra(D.opColeta.lancamentos||[],_opColFiltro);
+  const rows=[['Data','Equipe','Cliente','Fazenda','Talhão','Fator (ha/ponto)','Colaboradores/Pontos','Total','Status','Observações']];
+  lancs.forEach(l=>rows.push([l.data,l.equipe,l.cliente,l.fazenda,l.talhao,(l.fator!=null?l.fator:''),(l.colaboradores||[]).map(c=>c.nome+': '+(+c.pontos||0)).join(' | '),OpColetaCalc.totalDia(l),OpColetaCalc.statusInfo(l.status).label,l.obs]));
+  opDownload('coleta-de-pontos.csv',opToCsv(rows)); }
+function opAmExportar(){ const hoje=opHoje(),prazo=D.opAmostras.prazoDias; let rem=OpAmostrasCalc.filtra(D.opAmostras.remessas||[],_opAmFiltro); if(_opAmFiltro.situacao) rem=rem.filter(r=>OpAmostrasCalc.situacao(r,hoje,prazo)===_opAmFiltro.situacao);
+  const rows=[['Data envio','Fazendas','Talhões','Etiquetagem','Resp. envio','Volume','Arquivo na máquina','Data resultado','Dias','Situação']];
+  rem.forEach(r=>{ const ai=opArqInfo(r.arquivoMaquina); rows.push([r.dataEnvio,(r.fazendas||[]).join(' | '),(r.talhoes||[]).join(' | '),(r.etiquetagem||[]).join(' | '),r.respEnvio,r.volume,(ai?ai.label:''),r.dataResultado,OpAmostrasCalc.diasRemessa(r,hoje),OpAmostrasCalc.situacaoInfo(OpAmostrasCalc.situacao(r,hoje,prazo)).label]); });
+  opDownload('envio-de-amostras.csv',opToCsv(rows)); }
+function opEnExportar(){ const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas||[],_opEnFiltro); const items=OpEntregasCalc.ITENS;
+  const head=['Cliente','Fazenda','Área (ha)']; items.forEach(it=>{ if(it.media) head.push(it.label+' (média)'); head.push(it.label); }); head.push('Progresso %');
+  const rows=[head]; const lbl={concluido:'Concluído',andamento:'Em andamento',pendente:'Pendente',na:'—'};
+  linhas.forEach(l=>{ const row=[l.cliente,l.fazenda,(l.areaHa!=null?l.areaHa:'')]; items.forEach(it=>{ const c=(l.itens&&l.itens[it.k])||{}; if(it.media) row.push(c.media!=null?c.media:''); row.push(lbl[OpEntregasCalc.statusItem(l,it.k)]||'—'); }); row.push(OpEntregasCalc.progresso(l).pct); rows.push(row); });
+  opDownload('controle-de-entregas.csv',opToCsv(rows)); }
 // <op-amostras-calc>
 /* Controle Operacional · Tela 2 — CÁLCULO PURO (sem DOM/D): dias de análise,
    situação (recebido/aguardando/atrasado), tempo médio e agregados.
