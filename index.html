@@ -659,6 +659,7 @@ header .htxt h1{display:none}
     <div class="sb-group">Controle Operacional</div>
     <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
     <button class="snav" data-target="opamostras"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Envio de Amostras</span></button>
+    <button class="snav" data-target="opentregas"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Controle de Entregas</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
@@ -711,6 +712,7 @@ header .htxt h1{display:none}
   <button data-v="op">Operação</button>
   <button data-v="opcoleta">Coleta de Pontos</button>
   <button data-v="opamostras">Envio de Amostras</button>
+  <button data-v="opentregas">Controle de Entregas</button>
   <button data-v="edit">✎ Lançamentos</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
@@ -1161,6 +1163,80 @@ header .htxt h1{display:none}
   </div>
   <datalist id="oaFazendasList"></datalist>
 
+  <!-- CONTROLE OPERACIONAL · Tela 3 — Controle de Entregas -->
+  <section class="view" id="v-opentregas">
+    <div class="op-head">
+      <div class="lead" style="margin:0"><h2>Controle de Entregas</h2>
+        <p>Matriz/checklist por cliente e fazenda. Progresso automático por linha. Substitui a planilha "Controle de Entregas".</p></div>
+      <div class="op-actions">
+        <button class="btn" style="background:#0A6A30;align-self:end" onclick="opEnNovo()">+ Nova entrega</button>
+      </div>
+    </div>
+    <div class="op-cards" id="oeCards"></div>
+    <div class="op-filtros">
+      <div class="op-campo"><label>Cliente</label><select id="oeCliente"></select></div>
+      <div class="op-campo"><label>Fazenda</label><select id="oeFazenda"></select></div>
+      <div class="op-campo"><label>Status</label><select id="oeStatus">
+        <option value="">Todos</option><option value="nao_iniciada">Não iniciada</option>
+        <option value="andamento">Em andamento</option><option value="concluida">Concluída</option></select></div>
+      <div class="op-campo"><label>Pendências</label><select id="oePend">
+        <option value="">Todas</option><option value="com">Com pendência</option><option value="sem">Sem pendência</option></select></div>
+      <div class="op-campo busca"><label>Buscar</label><input type="text" id="oeBusca" placeholder="cliente, fazenda…"></div>
+      <div class="op-campo" style="min-width:auto"><label>&nbsp;</label>
+        <div style="display:flex;gap:8px"><button class="btn" style="background:#0A6A30" onclick="opEnAplicaFiltro()">Filtrar</button>
+        <button class="op-linkbtn" onclick="opEnLimpaFiltro()">Limpar</button></div></div>
+    </div>
+    <div class="op-tbl-wrap">
+      <div class="op-tbl-head"><h3>Matriz de entregas por cliente / fazenda</h3><span class="op-count" id="oeCount"></span></div>
+      <div class="op-scroll">
+        <table class="op-tbl">
+          <thead>
+            <tr>
+              <th class="op-colfixa" rowspan="2">Cliente</th><th rowspan="2">Fazenda</th><th class="num" rowspan="2">Área (ha)</th>
+              <th rowspan="2">Prop. químicas</th><th rowspan="2">Mapas</th>
+              <th class="grp" colspan="2">Calcário</th><th class="grp" colspan="2">Fósforo</th>
+              <th class="grp" colspan="2">Potássio (KCL)</th><th class="grp" colspan="2">MIB</th>
+              <th rowspan="2">Progresso</th><th rowspan="2"></th>
+            </tr>
+            <tr>
+              <th class="num">Média</th><th>Status</th><th class="num">Média</th><th>Status</th>
+              <th class="num">Média</th><th>Status</th><th class="num">Média</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="oeBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="legenda" style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);align-items:center">
+      <span><span class="op-mark ok">✓</span> Concluído / Entregue</span>
+      <span><span class="op-mark run">●</span> Em andamento</span>
+      <span><span class="op-mark wait">●</span> Pendente</span>
+      <span><span class="op-mark na">—</span> Não iniciado / não se aplica</span>
+    </div>
+  </section>
+
+  <!-- modal de entrega (matriz) -->
+  <div class="op-modal-bg" id="oeModal">
+    <div class="op-modal">
+      <div class="op-mhead"><h3 id="oeModalTit">Nova entrega</h3><button class="op-linkbtn" style="margin-left:auto" onclick="opEnFecha()">✕</button></div>
+      <div class="op-mbody">
+        <label>Cliente<select id="meCliente"></select></label>
+        <label>Fazenda<input type="text" id="meFazenda" placeholder="opcional"></label>
+        <label>Área (ha)<input type="number" id="meArea" min="0" placeholder="ex.: 1050"></label>
+        <label>Observações<input type="text" id="meObs" placeholder="opcional"></label>
+        <div class="full" style="border-top:1px solid var(--line);padding-top:12px;margin-top:4px">
+          <div class="op-item-row" style="margin-bottom:8px"><span class="lbl" style="font-weight:800;color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.4px">Entregável</span><span style="font-weight:800;color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.4px">Status</span><span style="font-weight:800;color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.4px">Média</span></div>
+          <div id="meItens"></div>
+        </div>
+      </div>
+      <div class="op-mfoot">
+        <button class="op-linkbtn" id="oeDel" style="margin-right:auto;color:#c0392b" onclick="opEnExcluir()">Excluir</button>
+        <button class="btn" onclick="opEnFecha()">Cancelar</button>
+        <button class="btn" style="background:#0A6A30" onclick="opEnSalvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- LANÇAMENTOS (editor) -->
   <section class="view" id="v-edit">
     <div class="lead"><h2>Lançamentos — sua central de dados</h2>
@@ -1344,6 +1420,13 @@ function hydrate(d){
   if(d.opAmostras.prazoDias===undefined) d.opAmostras.prazoDias=null;
   d.opAmostras.remessas.forEach(r=>{ ['fazendas','talhoes','etiquetagem'].forEach(k=>{ if(!Array.isArray(r[k])) r[k]=[]; });
     if(!r.id) r.id='opa'+Math.random().toString(36).slice(2,9); });
+  /* Controle Operacional — Tela 3: Controle de Entregas (aditivo, matriz/checklist).
+     Cada linha = cliente/fazenda com itens (status + média onde aplica). Não há
+     data de prazo aqui → não se infere "atrasado" (usa-se "pendente", derivável). */
+  if(!d.opEntregas || typeof d.opEntregas!=='object') d.opEntregas={linhas:[]};
+  if(!Array.isArray(d.opEntregas.linhas)) d.opEntregas.linhas=[];
+  d.opEntregas.linhas.forEach(l=>{ if(!l.itens||typeof l.itens!=='object') l.itens={};
+    if(!l.id) l.id='ope'+Math.random().toString(36).slice(2,9); });
   if(!Array.isArray(d.visitas)) d.visitas=[];
   if(!d.custoCategoria2026) d.custoCategoria2026={};
   if(!d.custoCategoria2025) d.custoCategoria2025={};
@@ -1999,6 +2082,109 @@ function opAmSalvar(){
   else { rec.id='opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opAmostras.remessas.push(rec); }
   opAmFecha(); if(typeof commit==='function') commit(); renderOpAmostras(); }
 function opAmExcluir(){ if(!_opAmEdit)return; if(!confirm('Excluir esta remessa?'))return; D.opAmostras.remessas=(D.opAmostras.remessas||[]).filter(x=>x.id!==_opAmEdit); opAmFecha(); if(typeof commit==='function') commit(); renderOpAmostras(); }
+// <op-entregas-calc>
+/* Controle Operacional · Tela 3 — CÁLCULO PURO (sem DOM/D): progresso por linha,
+   status da linha e agregados da matriz de entregas. Testável (bun). */
+const OpEntregasCalc=(function(){
+  const ITENS=[
+    {k:'propQuimicas',label:'Prop. químicas',media:false},
+    {k:'mapas',label:'Mapas',media:false},
+    {k:'calcario',label:'Calcário',media:true},
+    {k:'fosforo',label:'Fósforo',media:true},
+    {k:'potassio',label:'Potássio (KCL)',media:true},
+    {k:'mib',label:'MIB',media:true},
+  ];
+  const MARK={concluido:{s:'✓',cls:'ok'},andamento:{s:'●',cls:'run'},pendente:{s:'●',cls:'wait'},na:{s:'—',cls:'na'}};
+  function marker(st){ return MARK[st]||MARK.na; }
+  function statusItem(linha,k){ const it=(linha&&linha.itens&&linha.itens[k])||{}; return it.status||'na'; }
+  function progresso(linha){ let aplic=0, concl=0;
+    ITENS.forEach(def=>{ const st=statusItem(linha,def.k); if(st!=='na'){ aplic++; if(st==='concluido') concl++; } });
+    return {concluidos:concl,aplicaveis:aplic,pct:aplic? Math.round(concl/aplic*100):0}; }
+  function statusLinha(linha){ const p=progresso(linha); if(p.aplicaveis>0 && p.pct===100) return 'concluida'; if(p.aplicaveis>0 && p.concluidos<p.aplicaveis && p.pct>0) return 'andamento'; if(p.aplicaveis>0) return 'andamento'; return 'nao_iniciada'; }
+  function temPendente(linha){ return ITENS.some(def=>statusItem(linha,def.k)==='pendente'); }
+  function contaPendentes(linha){ return ITENS.reduce((a,def)=>a+(statusItem(linha,def.k)==='pendente'?1:0),0); }
+  function filtra(linhas,f){ f=f||{}; return (linhas||[]).filter(l=>{
+    if(f.cliente && (l.cliente||'')!==f.cliente) return false;
+    if(f.fazenda && (l.fazenda||'')!==f.fazenda) return false;
+    if(f.status && statusLinha(l)!==f.status) return false;
+    if(f.pendencias==='com' && !temPendente(l)) return false;
+    if(f.pendencias==='sem' && temPendente(l)) return false;
+    if(f.busca){ const q=String(f.busca).toLowerCase(); if(!((l.cliente||'')+' '+(l.fazenda||'')+' '+(l.obs||'')).toLowerCase().includes(q)) return false; }
+    return true; }); }
+  function agg(linhas){ linhas=linhas||[]; let emAndamento=0,concluidas=0,pendentes=0,itensPendentes=0;
+    linhas.forEach(l=>{ const s=statusLinha(l);
+      if(s==='concluida') concluidas++; else if(s==='andamento') emAndamento++;
+      if(s!=='concluida' && progresso(l).aplicaveis>0) pendentes++;
+      itensPendentes+=contaPendentes(l); });
+    return {total:linhas.length,emAndamento,concluidas,pendentes,itensPendentes}; }
+  return {ITENS,marker,statusItem,progresso,statusLinha,temPendente,contaPendentes,filtra,agg};
+})();
+// </op-entregas-calc>
+/* ===== Controle Operacional · Tela 3 — runtime ===== */
+let _opEnFiltro={}, _opEnEdit=null;
+const OP_EN_STATUS=[['na','—'],['pendente','Pendente'],['andamento','Em andamento'],['concluido','Concluído']];
+function opEnClientesLista(){ return [...new Set([].concat((D.clientes||[]).map(c=>c.nome),(D.opEntregas.linhas||[]).map(l=>l.cliente)).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
+function opEnFazendas(){ return [...new Set((D.opEntregas.linhas||[]).map(l=>l.fazenda).filter(Boolean))].sort(); }
+function renderOpEntregas(){
+  if(typeof document==='undefined')return;
+  opFillSelect('oeCliente',opEnClientesLista(),_opEnFiltro.cliente,'Todos');
+  opFillSelect('oeFazenda',opEnFazendas(),_opEnFiltro.fazenda,'Todas');
+  const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas||[],_opEnFiltro);
+  const a=OpEntregasCalc.agg(linhas);
+  const cards=[
+    {rot:'Clientes em andamento',val:a.emAndamento,obs:'com itens iniciados',accent:'accent'},
+    {rot:'Entregas concluídas',val:a.concluidas,obs:'100% dos itens'},
+    {rot:'Entregas pendentes',val:a.pendentes,obs:'ainda não concluídas'},
+    {rot:'Itens pendentes',val:a.itensPendentes,obs:'marcados como pendente',accent:'accent-gold'},
+  ];
+  document.getElementById('oeCards').innerHTML=cards.map(c=>'<div class="op-card '+(c.accent||'')+'"><div class="op-rot">'+esc(c.rot)+'</div><div class="op-val">'+c.val+'</div><div class="op-obs">'+esc(c.obs)+'</div></div>').join('');
+  const mk=st=>{ const m=OpEntregasCalc.marker(st); return '<span class="op-mark '+m.cls+'">'+m.s+'</span>'; };
+  const med=(l,k)=>{ const it=(l.itens&&l.itens[k])||{}; return (it.media!=null&&it.media!=='')?esc(String(it.media)):'<span style="color:var(--muted)">—</span>'; };
+  const st=(l,k)=>OpEntregasCalc.statusItem(l,k);
+  let html='';
+  if(!linhas.length) html='<tr><td colspan="15"><div class="op-empty">Nenhuma entrega cadastrada. Clique em <b>+ Nova entrega</b> para começar.</div></td></tr>';
+  linhas.forEach(l=>{ const p=OpEntregasCalc.progresso(l);
+    html+='<tr><td class="op-colfixa"><b>'+esc(l.cliente||'—')+'</b></td>'
+      +'<td>'+esc(l.fazenda||'—')+'</td>'
+      +'<td class="num">'+(l.areaHa!=null&&l.areaHa!==''?(+l.areaHa).toLocaleString('pt-BR'):'—')+'</td>'
+      +'<td style="text-align:center">'+mk(st(l,'propQuimicas'))+'</td>'
+      +'<td style="text-align:center">'+mk(st(l,'mapas'))+'</td>'
+      +'<td class="num">'+med(l,'calcario')+'</td><td style="text-align:center">'+mk(st(l,'calcario'))+'</td>'
+      +'<td class="num">'+med(l,'fosforo')+'</td><td style="text-align:center">'+mk(st(l,'fosforo'))+'</td>'
+      +'<td class="num">'+med(l,'potassio')+'</td><td style="text-align:center">'+mk(st(l,'potassio'))+'</td>'
+      +'<td class="num">'+med(l,'mib')+'</td><td style="text-align:center">'+mk(st(l,'mib'))+'</td>'
+      +'<td><div class="op-progress"><div class="bar"><i style="width:'+p.pct+'%"></i></div><span class="pct">'+p.pct+'%</span></div></td>'
+      +'<td><button class="op-linkbtn" onclick="opEnEditar(\''+l.id+'\')">editar</button></td></tr>';
+  });
+  document.getElementById('oeBody').innerHTML=html;
+  document.getElementById('oeCount').textContent=linhas.length+' cliente(s)/fazenda(s)';
+}
+function opEnAplicaFiltro(){ _opEnFiltro={cliente:opv('oeCliente'),fazenda:opv('oeFazenda'),status:opv('oeStatus'),pendencias:opv('oePend'),busca:opv('oeBusca')}; renderOpEntregas(); }
+function opEnLimpaFiltro(){ _opEnFiltro={}; ['oeCliente','oeFazenda','oeStatus','oePend','oeBusca'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';}); renderOpEntregas(); }
+function opEnClienteOptions(sel){ return '<option value="">—</option>'+opEnClientesLista().map(n=>'<option value="'+esc(n)+'"'+(n===sel?' selected':'')+'>'+esc(n)+'</option>').join(''); }
+function opEnItensForm(itens){ itens=itens||{}; return OpEntregasCalc.ITENS.map(def=>{ const it=itens[def.k]||{}; const cur=it.status||'na';
+  const sel='<select data-k="'+def.k+'" class="op-en-st">'+OP_EN_STATUS.map(o=>'<option value="'+o[0]+'"'+(o[0]===cur?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+  const media=def.media?('<input type="number" data-k="'+def.k+'" class="op-en-med" placeholder="média" value="'+(it.media!=null&&it.media!==''?(+it.media):'')+'">'):'<span></span>';
+  return '<div class="op-item-row"><span class="lbl">'+esc(def.label)+'</span>'+sel+media+'</div>'; }).join(''); }
+function opEnNovo(){ _opEnEdit=null; document.getElementById('oeModalTit').textContent='Nova entrega';
+  document.getElementById('meCliente').innerHTML=opEnClienteOptions(''); document.getElementById('meFazenda').value=''; document.getElementById('meArea').value=''; document.getElementById('meObs').value='';
+  document.getElementById('meItens').innerHTML=opEnItensForm({}); document.getElementById('oeDel').style.display='none'; document.getElementById('oeModal').classList.add('on'); }
+function opEnEditar(id){ const l=(D.opEntregas.linhas||[]).find(x=>x.id===id); if(!l)return; _opEnEdit=id;
+  document.getElementById('oeModalTit').textContent='Editar entrega';
+  document.getElementById('meCliente').innerHTML=opEnClienteOptions(l.cliente||''); document.getElementById('meFazenda').value=l.fazenda||''; document.getElementById('meArea').value=(l.areaHa!=null?l.areaHa:''); document.getElementById('meObs').value=l.obs||'';
+  document.getElementById('meItens').innerHTML=opEnItensForm(l.itens||{}); document.getElementById('oeDel').style.display=''; document.getElementById('oeModal').classList.add('on'); }
+function opEnFecha(){ document.getElementById('oeModal').classList.remove('on'); }
+function opEnColetaItens(){ const itens={}; const meds={};
+  document.querySelectorAll('#meItens .op-en-med').forEach(i=>{ meds[i.dataset.k]=i.value; });
+  document.querySelectorAll('#meItens .op-en-st').forEach(s=>{ const k=s.dataset.k; itens[k]={status:s.value}; if(meds[k]!==undefined && meds[k]!=='') itens[k].media=+meds[k]||0; });
+  return itens; }
+function opEnSalvar(){
+  const rec={cliente:opv('meCliente'),fazenda:opv('meFazenda').trim(),areaHa:(opv('meArea')===''?'':(+opv('meArea')||0)),obs:opv('meObs').trim(),itens:opEnColetaItens()};
+  if(!rec.cliente){ alert('Informe o cliente.'); return; }
+  if(_opEnEdit){ const l=(D.opEntregas.linhas||[]).find(x=>x.id===_opEnEdit); if(l) Object.assign(l,rec); }
+  else { rec.id='ope'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opEntregas.linhas.push(rec); }
+  opEnFecha(); if(typeof commit==='function') commit(); renderOpEntregas(); }
+function opEnExcluir(){ if(!_opEnEdit)return; if(!confirm('Excluir esta entrega?'))return; D.opEntregas.linhas=(D.opEntregas.linhas||[]).filter(x=>x.id!==_opEnEdit); opEnFecha(); if(typeof commit==='function') commit(); renderOpEntregas(); }
 /* REGRA DE NEGÓCIO (única): a comissão incide sobre a RECEITA BRUTA da venda —
    custos (laboratório, custo direto) NÃO são descontados da base. Usada em todos
    os pontos para que empresa, funil, carteira e segmentos conciliem. */
@@ -2839,6 +3025,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='custos')renderCustos();
   if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
   if(b.dataset.v==='opamostras'){ try{renderOpAmostras();}catch(e){console.warn('opAmostras',e);} }
+  if(b.dataset.v==='opentregas'){ try{renderOpEntregas();}catch(e){console.warn('opEntregas',e);} }
   if(b.dataset.v==='ia'){ try{renderIAConhecimento();}catch(e){} }
   if(b.dataset.v==='iamem'){ try{renderIAMemoria();}catch(e){} }
   if(b.dataset.v==='iahub'){ try{renderIAHub();}catch(e){} }
@@ -5881,6 +6068,18 @@ tr.op-total td{background:var(--soft2)!important;color:var(--head);font-weight:8
 .op-colab-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .op-colab-row input.nome{flex:1}
 .op-colab-row input.pts{width:84px}
+.op-mark{font-weight:800;font-size:15px}
+.op-mark.ok{color:var(--leaf)}
+.op-mark.run{color:#3f92d1}
+.op-mark.wait{color:var(--orange)}
+.op-mark.na{color:var(--muted)}
+.op-progress{display:flex;align-items:center;gap:8px}
+.op-progress .bar{width:82px;height:8px;background:var(--soft2);border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:0 0 auto}
+.op-progress .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--green2),var(--leaf))}
+.op-progress .pct{font-variant-numeric:tabular-nums;font-weight:700;min-width:34px;font-size:12px;color:var(--head)}
+.op-item-row{display:grid;grid-template-columns:1.2fr 1fr 90px;gap:8px;align-items:center;margin-bottom:6px}
+.op-item-row .lbl{font-size:12px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
+table.op-tbl thead th.grp{text-align:center;border-bottom:1px solid var(--line)}
 .op-linkbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:4px 6px;border-radius:6px}
 .op-linkbtn:hover{color:var(--head);background:var(--soft)}
 @media(max-width:640px){.op-modal .op-mbody{grid-template-columns:1fr}}
