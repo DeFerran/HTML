@@ -1036,7 +1036,9 @@ header .htxt h1{display:none}
       <div class="lead" style="margin:0"><h2>Coleta de Pontos Diários</h2>
         <p>Lançamentos por dia, agrupados por mês. A tabela é o centro da tela. Substitui a planilha "Controle de Pontos Diários".</p></div>
       <div class="op-actions">
-        <button class="btn" style="background:#0A6A30" onclick="opColetaNovo()">+ Novo lançamento</button>
+        <div class="op-campo" style="min-width:auto"><label>Hectares por ponto (fator)</label>
+          <input type="number" id="opFator" min="0" step="0.1" style="width:150px" placeholder="a validar (PDF: 3)" onchange="opColetaSetFator()" title="Configurável — Hectares estimados = total de pontos × este fator. Deixe vazio para manter desligado."></div>
+        <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
       </div>
     </div>
     <div class="op-cards" id="opColCards"></div>
@@ -1135,7 +1137,7 @@ header .htxt h1{display:none}
         <table class="op-tbl">
           <thead><tr>
             <th class="op-colfixa">Data envio</th><th>Fazenda(s)</th><th>Talhões</th><th>Etiquetagem</th>
-            <th>Resp. envio</th><th class="num">Volume</th><th>Data resultado</th><th class="num">Dias</th><th>Situação</th><th></th>
+            <th>Resp. envio</th><th class="num">Volume</th><th title="Etapa a validar">Arq. máquina</th><th>Data resultado</th><th class="num">Dias</th><th>Situação</th><th></th>
           </tr></thead>
           <tbody id="oaBody"></tbody>
         </table>
@@ -1158,6 +1160,7 @@ header .htxt h1{display:none}
         <label>Responsável do envio<input type="text" id="maResp" placeholder="ex.: Álvaro"></label>
         <label>Volume (nº de amostras)<input type="number" id="maVolume" min="0" placeholder="ex.: 120"></label>
         <label>Data do resultado<input type="date" id="maResultado"></label>
+        <label>Arquivo na máquina <span style="text-transform:none;font-weight:600;color:var(--muted)">(a validar)</span><input type="date" id="maArquivo" title="Etapa intermediária do fluxo (a confirmar com a empresa). Opcional."></label>
         <label class="full">Fazenda(s)<input type="text" id="maFaz" placeholder="separe por vírgula: Santa Helena, Telles Pires" list="oaFazendasList"></label>
         <label class="full">Talhões<input type="text" id="maTalhoes" placeholder="separe por vírgula: TH 01, TH 02, TH 03"></label>
         <label class="full">Etiquetagem (quem etiquetou)<input type="text" id="maEtiq" placeholder="separe por vírgula: Álvaro, Wons, Bruno"></label>
@@ -1178,6 +1181,8 @@ header .htxt h1{display:none}
       <div class="lead" style="margin:0"><h2>Controle de Entregas</h2>
         <p>Matriz/checklist por cliente e fazenda. Progresso automático por linha. Substitui a planilha "Controle de Entregas".</p></div>
       <div class="op-actions">
+        <div class="op-campo" style="min-width:auto"><label>Média MIB padrão</label>
+          <input type="number" id="oeMibPadrao" min="0" style="width:120px" placeholder="20" onchange="opEnSetMibPadrao()" title="Valor padrão da Média MIB (a validar). Usado quando a linha não tem MIB preenchido; pode ser sobrescrito por linha."></div>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opEnNovo()">+ Nova entrega</button>
       </div>
     </div>
@@ -1432,8 +1437,9 @@ function hydrate(d){
   /* Controle Operacional — Tela 3: Controle de Entregas (aditivo, matriz/checklist).
      Cada linha = cliente/fazenda com itens (status + média onde aplica). Não há
      data de prazo aqui → não se infere "atrasado" (usa-se "pendente", derivável). */
-  if(!d.opEntregas || typeof d.opEntregas!=='object') d.opEntregas={linhas:[]};
+  if(!d.opEntregas || typeof d.opEntregas!=='object') d.opEntregas={linhas:[], mibPadrao:20};
   if(!Array.isArray(d.opEntregas.linhas)) d.opEntregas.linhas=[];
+  if(d.opEntregas.mibPadrao===undefined) d.opEntregas.mibPadrao=20; /* padrão citado no PDF; editável */
   d.opEntregas.linhas.forEach(l=>{ if(!l.itens||typeof l.itens!=='object') l.itens={};
     if(!l.id) l.id='ope'+Math.random().toString(36).slice(2,9); });
   if(!Array.isArray(d.visitas)) d.visitas=[];
@@ -1980,6 +1986,7 @@ function renderOpColeta(){
   opFillSelect('opfFazenda',opColFazendas(),_opColFiltro.fazenda,'Todas');
   opFillSelect('opfEquipe',opColEquipes(),_opColFiltro.equipe,'Todas');
   opFillSelect('opfColab',opColColabs(),_opColFiltro.colab,'Todos');
+  const fEl=document.getElementById('opFator'); if(fEl && document.activeElement!==fEl) fEl.value=(D.opColeta.hectaresFator!=null?D.opColeta.hectaresFator:'');
   const dlE=document.getElementById('opEquipesList'); if(dlE) dlE.innerHTML=opColEquipes().map(v=>'<option value="'+esc(v)+'">').join('');
   const dlF=document.getElementById('opFazendasList'); if(dlF) dlF.innerHTML=opColFazendas().map(v=>'<option value="'+esc(v)+'">').join('');
   const lancs=OpColetaCalc.filtra(D.opColeta.lancamentos||[],_opColFiltro);
@@ -2012,6 +2019,7 @@ function renderOpColeta(){
 }
 function opColetaAplicaFiltro(){ _opColFiltro={de:opv('opfDe'),ate:opv('opfAte'),cliente:opv('opfCliente'),fazenda:opv('opfFazenda'),equipe:opv('opfEquipe'),colab:opv('opfColab'),status:opv('opfStatus'),busca:opv('opfBusca')}; renderOpColeta(); }
 function opColetaLimpaFiltro(){ _opColFiltro={}; ['opfDe','opfAte','opfCliente','opfFazenda','opfEquipe','opfColab','opfStatus','opfBusca'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';}); renderOpColeta(); }
+function opColetaSetFator(){ const v=opv('opFator').trim(); D.opColeta.hectaresFator=(v===''?null:(+v||0)); if(typeof commit==='function') commit(); renderOpColeta(); }
 function opColClienteOptions(sel){ return '<option value="">—</option>'+opColNomesClientes().map(n=>'<option value="'+esc(n)+'"'+(n===sel?' selected':'')+'>'+esc(n)+'</option>').join(''); }
 function opColabRow(nome,pts){ return '<div class="op-colab-row"><input class="nome" type="text" placeholder="colaborador" value="'+esc(nome||'')+'" list="opColabList"><input class="pts" type="number" min="0" placeholder="pontos" value="'+(pts!=null&&pts!==''?(+pts||0):'')+'"><button class="op-linkbtn" type="button" onclick="this.parentNode.remove()">✕</button></div>'; }
 function opColabAdd(nome,pts){ const box=document.getElementById('mColabs'); if(box) box.insertAdjacentHTML('beforeend',opColabRow(nome,pts)); }
@@ -2104,7 +2112,7 @@ function renderOpAmostras(){
   const chips=(arr,max)=>{ arr=arr||[]; const vis=arr.slice(0,max||99).map(v=>'<span class="op-chip">'+esc(v)+'</span>').join(''); const rest=arr.length-(max||99); return vis+(rest>0?('<span class="op-chip" style="color:var(--muted)">…+'+rest+'</span>'):'')||'<span class="op-badge op-b-none">—</span>'; };
   const ordenadas=remessas.slice().sort((x,y)=>String(y.dataEnvio||'').localeCompare(String(x.dataEnvio||'')));
   let html='';
-  if(!ordenadas.length) html='<tr><td colspan="10"><div class="op-empty">Nenhuma remessa no período. Clique em <b>+ Novo envio</b> para começar.</div></td></tr>';
+  if(!ordenadas.length) html='<tr><td colspan="11"><div class="op-empty">Nenhuma remessa no período. Clique em <b>+ Novo envio</b> para começar.</div></td></tr>';
   ordenadas.forEach(r=>{ const s=OpAmostrasCalc.situacao(r,hoje,prazo); const si=OpAmostrasCalc.situacaoInfo(s); const dias=OpAmostrasCalc.diasRemessa(r,hoje);
     html+='<tr><td class="op-colfixa">'+esc(dataFmt(r.dataEnvio))+'</td>'
       +'<td>'+chips(r.fazendas)+'</td>'
@@ -2112,6 +2120,7 @@ function renderOpAmostras(){
       +'<td>'+chips(r.etiquetagem)+'</td>'
       +'<td>'+esc(r.respEnvio||'—')+'</td>'
       +'<td class="num">'+(r.volume!=null&&r.volume!==''?esc(String(r.volume)):'—')+'</td>'
+      +'<td>'+(r.arquivoMaquina?esc(dataFmt(r.arquivoMaquina)):'<span style="color:var(--muted)">—</span>')+'</td>'
       +'<td>'+(r.dataResultado?esc(dataFmt(r.dataResultado)):'<span style="color:var(--muted)">—</span>')+'</td>'
       +'<td class="num">'+(dias!=null?dias:'—')+'</td>'
       +'<td><span class="op-badge '+si.cls+'">'+esc(si.label)+'</span></td>'
@@ -2126,18 +2135,19 @@ function opAmSetPrazo(){ const v=opv('oaPrazo').trim(); D.opAmostras.prazoDias=(
 function opAmList(arr){ return (arr||[]).join(', '); }
 function opAmParse(s){ return String(s||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function opAmNovo(){ _opAmEdit=null; document.getElementById('oaModalTit').textContent='Novo envio';
-  ['maEnvio','maResp','maVolume','maResultado','maObs','maFaz','maTalhoes','maEtiq'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';});
+  ['maEnvio','maResp','maVolume','maResultado','maArquivo','maObs','maFaz','maTalhoes','maEtiq'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';});
   document.getElementById('oaDel').style.display='none'; document.getElementById('oaModal').classList.add('on'); }
 function opAmEditar(id){ const r=(D.opAmostras.remessas||[]).find(x=>x.id===id); if(!r)return; _opAmEdit=id;
   document.getElementById('oaModalTit').textContent='Editar envio';
   document.getElementById('maEnvio').value=r.dataEnvio||''; document.getElementById('maResp').value=r.respEnvio||'';
   document.getElementById('maVolume').value=(r.volume!=null?r.volume:''); document.getElementById('maResultado').value=r.dataResultado||'';
+  document.getElementById('maArquivo').value=r.arquivoMaquina||'';
   document.getElementById('maObs').value=r.obs||''; document.getElementById('maFaz').value=opAmList(r.fazendas);
   document.getElementById('maTalhoes').value=opAmList(r.talhoes); document.getElementById('maEtiq').value=opAmList(r.etiquetagem);
   document.getElementById('oaDel').style.display=''; document.getElementById('oaModal').classList.add('on'); }
 function opAmFecha(){ document.getElementById('oaModal').classList.remove('on'); }
 function opAmSalvar(){
-  const rec={dataEnvio:opv('maEnvio'),respEnvio:opv('maResp').trim(),volume:opv('maVolume').trim(),dataResultado:opv('maResultado'),obs:opv('maObs').trim(),
+  const rec={dataEnvio:opv('maEnvio'),respEnvio:opv('maResp').trim(),volume:opv('maVolume').trim(),dataResultado:opv('maResultado'),arquivoMaquina:opv('maArquivo'),obs:opv('maObs').trim(),
     fazendas:opAmParse(opv('maFaz')),talhoes:opAmParse(opv('maTalhoes')),etiquetagem:opAmParse(opv('maEtiq'))};
   if(!rec.dataEnvio){ alert('Informe a data de envio.'); return; }
   if(_opAmEdit){ const r=(D.opAmostras.remessas||[]).find(x=>x.id===_opAmEdit); if(r) Object.assign(r,rec); }
@@ -2191,6 +2201,8 @@ function renderOpEntregas(){
   if(typeof document==='undefined')return;
   opFillSelect('oeCliente',opEnClientesLista(),_opEnFiltro.cliente,'Todos');
   opFillSelect('oeFazenda',opEnFazendas(),_opEnFiltro.fazenda,'Todas');
+  const mpEl=document.getElementById('oeMibPadrao'); if(mpEl && document.activeElement!==mpEl) mpEl.value=(D.opEntregas.mibPadrao!=null?D.opEntregas.mibPadrao:'');
+  const mibPad=D.opEntregas.mibPadrao;
   const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas||[],_opEnFiltro);
   const a=OpEntregasCalc.agg(linhas);
   const cards=[
@@ -2201,7 +2213,8 @@ function renderOpEntregas(){
   ];
   document.getElementById('oeCards').innerHTML=cards.map(c=>'<div class="op-card '+(c.accent||'')+'"><div class="op-rot">'+esc(c.rot)+'</div><div class="op-val">'+c.val+'</div><div class="op-obs">'+esc(c.obs)+'</div></div>').join('');
   const mk=st=>{ const m=OpEntregasCalc.marker(st); return '<span class="op-mark '+m.cls+'">'+m.s+'</span>'; };
-  const med=(l,k)=>{ const it=(l.itens&&l.itens[k])||{}; return (it.media!=null&&it.media!=='')?esc(String(it.media)):'<span style="color:var(--muted)">—</span>'; };
+  const med=(l,k,fb)=>{ const it=(l.itens&&l.itens[k])||{}; if(it.media!=null&&it.media!=='') return esc(String(it.media));
+    if(fb!=null&&fb!=='') return '<span style="color:var(--muted);font-style:italic" title="padrão (a validar)">'+esc(String(fb))+'</span>'; return '<span style="color:var(--muted)">—</span>'; };
   const st=(l,k)=>OpEntregasCalc.statusItem(l,k);
   let html='';
   if(!linhas.length) html='<tr><td colspan="15"><div class="op-empty">Nenhuma entrega cadastrada. Clique em <b>+ Nova entrega</b> para começar.</div></td></tr>';
@@ -2214,7 +2227,7 @@ function renderOpEntregas(){
       +'<td class="num">'+med(l,'calcario')+'</td><td style="text-align:center">'+mk(st(l,'calcario'))+'</td>'
       +'<td class="num">'+med(l,'fosforo')+'</td><td style="text-align:center">'+mk(st(l,'fosforo'))+'</td>'
       +'<td class="num">'+med(l,'potassio')+'</td><td style="text-align:center">'+mk(st(l,'potassio'))+'</td>'
-      +'<td class="num">'+med(l,'mib')+'</td><td style="text-align:center">'+mk(st(l,'mib'))+'</td>'
+      +'<td class="num">'+med(l,'mib',mibPad)+'</td><td style="text-align:center">'+mk(st(l,'mib'))+'</td>'
       +'<td><div class="op-progress"><div class="bar"><i style="width:'+p.pct+'%"></i></div><span class="pct">'+p.pct+'%</span></div></td>'
       +'<td><button class="op-linkbtn" onclick="opEnEditar(\''+l.id+'\')">editar</button></td></tr>';
   });
@@ -2223,10 +2236,12 @@ function renderOpEntregas(){
 }
 function opEnAplicaFiltro(){ _opEnFiltro={cliente:opv('oeCliente'),fazenda:opv('oeFazenda'),status:opv('oeStatus'),pendencias:opv('oePend'),busca:opv('oeBusca')}; renderOpEntregas(); }
 function opEnLimpaFiltro(){ _opEnFiltro={}; ['oeCliente','oeFazenda','oeStatus','oePend','oeBusca'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';}); renderOpEntregas(); }
+function opEnSetMibPadrao(){ const v=opv('oeMibPadrao').trim(); D.opEntregas.mibPadrao=(v===''?null:(+v||0)); if(typeof commit==='function') commit(); renderOpEntregas(); }
 function opEnClienteOptions(sel){ return '<option value="">—</option>'+opEnClientesLista().map(n=>'<option value="'+esc(n)+'"'+(n===sel?' selected':'')+'>'+esc(n)+'</option>').join(''); }
 function opEnItensForm(itens){ itens=itens||{}; return OpEntregasCalc.ITENS.map(def=>{ const it=itens[def.k]||{}; const cur=it.status||'na';
   const sel='<select data-k="'+def.k+'" class="op-en-st">'+OP_EN_STATUS.map(o=>'<option value="'+o[0]+'"'+(o[0]===cur?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
-  const media=def.media?('<input type="number" data-k="'+def.k+'" class="op-en-med" placeholder="média" value="'+(it.media!=null&&it.media!==''?(+it.media):'')+'">'):'<span></span>';
+  const ph=(def.k==='mib'&&D.opEntregas.mibPadrao!=null)?('padrão '+D.opEntregas.mibPadrao):'média';
+  const media=def.media?('<input type="number" data-k="'+def.k+'" class="op-en-med" placeholder="'+esc(ph)+'" value="'+(it.media!=null&&it.media!==''?(+it.media):'')+'">'):'<span></span>';
   return '<div class="op-item-row"><span class="lbl">'+esc(def.label)+'</span>'+sel+media+'</div>'; }).join(''); }
 function opEnNovo(){ _opEnEdit=null; document.getElementById('oeModalTit').textContent='Nova entrega';
   document.getElementById('meCliente').innerHTML=opEnClienteOptions(''); document.getElementById('meFazenda').value=''; document.getElementById('meArea').value=''; document.getElementById('meObs').value='';
