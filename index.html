@@ -657,6 +657,7 @@ header .htxt h1{display:none}
     <button class="snav snav-sub" data-target="custos" data-scroll="estrCusto"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Estrutura de Custo</span></button>
     <button class="snav" data-target="op"><svg class="sb-ic"><use href="#ic-tractor"></use></svg><span class="sb-tx">Operação</span></button>
     <div class="sb-group">Controle Operacional</div>
+    <button class="snav" data-target="opresumo"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Ciclo Operacional</span></button>
     <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
     <button class="snav" data-target="opamostras"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Envio de Amostras</span></button>
     <button class="snav" data-target="opentregas"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Controle de Entregas</span></button>
@@ -710,6 +711,7 @@ header .htxt h1{display:none}
   <button data-v="equipe">Equipe &amp; Metas</button>
   <button data-v="custos">Custos &amp; Coleta</button>
   <button data-v="op">Operação</button>
+  <button data-v="opresumo">Ciclo Operacional</button>
   <button data-v="opcoleta">Coleta de Pontos</button>
   <button data-v="opamostras">Envio de Amostras</button>
   <button data-v="opentregas">Controle de Entregas</button>
@@ -1019,6 +1021,13 @@ header .htxt h1{display:none}
       <div class="panel"><h3>Situação das fazendas</h3><div class="cap">Distribuição do portfólio operacional.</div><div class="chartbox"><canvas id="cSit"></canvas></div></div>
       <div class="panel"><h3>Etapas de correção</h3><div class="cap">Andamento por insumo (calcário, fósforo, MIB, KCL).</div><div class="chartbox"><canvas id="cEtapa"></canvas></div></div>
     </div>
+  </section>
+
+  <!-- CONTROLE OPERACIONAL · Visão do ciclo -->
+  <section class="view" id="v-opresumo">
+    <div class="lead"><h2>Controle Operacional — Visão do Ciclo</h2>
+      <p>O ciclo operacional em um lugar: <b>coleta de pontos → envio de amostras → entregas</b>. Os números vêm das três telas; clique para abrir cada controle.</p></div>
+    <div class="op-ciclo" id="opCiclo"></div>
   </section>
 
   <!-- CONTROLE OPERACIONAL · Tela 1 — Coleta de Pontos Diários -->
@@ -1931,6 +1940,31 @@ const OpColetaCalc=(function(){
   return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,MESES};
 })();
 // </op-coleta-calc>
+/* ===== Controle Operacional · Visão do ciclo (reusa os cálculos puros das telas) ===== */
+function opAbrir(v){ const b=document.querySelector('#tabs button[data-v="'+v+'"]'); if(b) b.click(); }
+function renderOpResumo(){
+  if(typeof document==='undefined')return;
+  const col=OpColetaCalc.agg(D.opColeta&&D.opColeta.lancamentos||[]);
+  const nLanc=(D.opColeta&&D.opColeta.lancamentos||[]).length;
+  const hoje=opHoje(), prazo=(D.opAmostras&&D.opAmostras.prazoDias);
+  const am=OpAmostrasCalc.agg(D.opAmostras&&D.opAmostras.remessas||[],hoje,prazo);
+  const en=OpEntregasCalc.agg(D.opEntregas&&D.opEntregas.linhas||[]);
+  const m=(k,v)=>'<div class="m"><div class="k">'+esc(k)+'</div><div class="v">'+v+'</div></div>';
+  const stage=(num,titulo,big,bigSub,metrics,abrir)=>'<div class="op-stage"><div class="op-stage-h"><span class="op-stage-num">'+num+'</span><h3>'+esc(titulo)+'</h3></div>'
+    +'<div class="op-stage-big">'+big+(bigSub?' <small>'+esc(bigSub)+'</small>':'')+'</div>'
+    +'<div class="op-stage-metrics">'+metrics+'</div>'
+    +'<button class="btn abrir" onclick="opAbrir(\''+abrir+'\')">Abrir</button></div>';
+  const nHa=OpColetaCalc.hectares(col.totalPontos,D.opColeta&&D.opColeta.hectaresFator);
+  const html=[
+    stage('1','Coleta de Pontos',col.totalPontos.toLocaleString('pt-BR'),'pontos na safra',
+      m('Dias',col.diasTrabalhados)+m('Lançamentos',nLanc)+m('Média/dia',col.diasTrabalhados?col.mediaDiaria.toFixed(0):'0')+m('Hectares',(nHa!=null?Math.round(nHa).toLocaleString('pt-BR'):'—')),'opcoleta'),
+    stage('2','Envio de Amostras',am.total,'remessas',
+      m('Aguardando',am.aguardando)+m('Atrasados',am.atrasado)+m('Recebidos',am.recebido)+m('Tempo médio',(am.tempoMedio!=null?am.tempoMedio.toFixed(1)+'d':'—')),'opamostras'),
+    stage('3','Controle de Entregas',en.concluidas+' / '+en.total,'concluídas',
+      m('Em andamento',en.emAndamento)+m('Pendentes',en.pendentes)+m('Itens pendentes',en.itensPendentes)+m('Clientes',en.total),'opentregas'),
+  ].join('');
+  const box=document.getElementById('opCiclo'); if(box) box.innerHTML=html;
+}
 /* ===== Controle Operacional · Tela 1 — runtime (usa D + DOM; cálculo em OpColetaCalc) ===== */
 let _opColFiltro={}, _opColEdit=null;
 function opv(id){ const e=document.getElementById(id); return e?e.value:''; }
@@ -3051,6 +3085,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='margem')renderPrecoMargem();
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
+  if(b.dataset.v==='opresumo'){ try{renderOpResumo();}catch(e){console.warn('opResumo',e);} }
   if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
   if(b.dataset.v==='opamostras'){ try{renderOpAmostras();}catch(e){console.warn('opAmostras',e);} }
   if(b.dataset.v==='opentregas'){ try{renderOpEntregas();}catch(e){console.warn('opEntregas',e);} }
@@ -6122,6 +6157,22 @@ tr.op-total td{background:var(--soft2)!important;color:var(--head);font-weight:8
 .op-item-row{display:grid;grid-template-columns:1.2fr 1fr 90px;gap:8px;align-items:center;margin-bottom:6px}
 .op-item-row .lbl{font-size:12px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
 table.op-tbl thead th.grp{text-align:center;border-bottom:1px solid var(--line)}
+/* Visão do ciclo operacional (coleta → amostras → entregas) */
+.op-ciclo{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:14px 0}
+.op-stage{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;box-shadow:var(--shadow);position:relative;display:flex;flex-direction:column}
+.op-stage::after{content:"→";position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:800;font-size:18px;z-index:1}
+.op-stage:last-child::after{display:none}
+.op-stage-h{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.op-stage-num{width:24px;height:24px;border-radius:50%;background:var(--tintG);color:var(--leaf);font-weight:800;font-size:12px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.op-stage-h h3{margin:0;font-size:15px}
+.op-stage-big{font-size:30px;font-weight:800;color:var(--head);line-height:1.05;font-variant-numeric:tabular-nums}
+.op-stage-big small{font-size:12px;font-weight:600;color:var(--muted)}
+.op-stage-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px}
+.op-stage-metrics .m{background:var(--soft);border-radius:9px;padding:8px 10px}
+.op-stage-metrics .m .k{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700}
+.op-stage-metrics .m .v{font-size:16px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.op-stage .abrir{margin-top:auto;align-self:flex-start}
+@media(max-width:820px){.op-ciclo{grid-template-columns:1fr}.op-stage::after{content:"↓";right:50%;top:auto;bottom:-13px;transform:translateX(50%)}}
 .op-linkbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:4px 6px;border-radius:6px}
 .op-linkbtn:hover{color:var(--head);background:var(--soft)}
 @media(max-width:640px){.op-modal .op-mbody{grid-template-columns:1fr}}
