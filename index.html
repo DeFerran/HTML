@@ -1392,10 +1392,7 @@ header .htxt h1{display:none}
 
     <div class="ctpane" data-pane="veic"><div class="edcard" id="edVeiculos"></div></div>
 
-    <div class="ctpane" data-pane="equip">
-      <div class="panel"><h3>🔧 Equipamentos &amp; ferramentas <span class="ia-badge">Chega na Fase 5</span></h3>
-        <div class="cap">Cadastro de equipamentos e ferramentas, vinculados a colaborador e centro de custo. Ainda sem funcionalidade — nenhum dado fictício é exibido aqui.</div></div>
-    </div>
+    <div class="ctpane" data-pane="equip"><div class="edcard" id="cadEquip"></div></div>
 
     <div class="ctpane" data-pane="cli">
       <div class="panel"><h3>👤 Clientes</h3>
@@ -3589,11 +3586,12 @@ function renderConfig(){
       '<label>Prazo de amostras (dias)<input type="number" min="0" step="1" value="'+prazo+'" placeholder="sem prazo" onchange="cfgSetParam(\'prazo\',this.value)"></label>'+
       '</div>';
   }
-  // hub de cadastros: popula os hosts das abas internas (Fases 1–3)
+  // hub de cadastros: popula os hosts das abas internas (Fases 1–5)
   try{ renderColaboradoresEditor(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
   try{ renderMunicipiosEditor(); }catch(e){}
   try{ renderFazendasEditor(); }catch(e){}
+  try{ renderEquipamentosEditor(); }catch(e){}
 }
 function cfgAddSafra(){
   const el=document.getElementById('cfgNovaSafra'); let v=(el&&el.value||'').trim();
@@ -5175,10 +5173,11 @@ function renderVeiculos(){
       '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="veiSalvar">Salvar veículo</button><button class="edbtn ghost" id="veiCancelar">Cancelar</button></div></div>';
   }
   const custoVei=nome=>(D.lancamentos||[]).filter(l=>l&&l.veiculo===nome&&(l.status||'')!=='Cancelado').reduce((a,l)=>a+(+l.valor||0),0);
-  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Veículo</th><th>Placa</th><th>Modelo</th><th class="num">Km rodado</th><th class="num">Custo lançado</th><th></th></tr></thead><tbody>';
-  if(!veis.length)h+='<tr><td colspan="6" style="color:var(--muted);padding:14px 6px">Nenhum veículo cadastrado. Clique em <b>+ Novo veículo</b>.</td></tr>';
-  veis.forEach(v=>{ const km=Math.max(0,(+v.kmAtual||0)-(+v.kmInicial||0));
-    h+='<tr><td>'+esc(v.nome||'—')+'</td><td>'+esc(v.placa||'—')+'</td><td>'+esc(v.modelo||'—')+'</td><td class="num">'+fnum(km)+'</td><td class="num"><b>'+BRL(custoVei(v.nome))+'</b></td>'+
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Veículo</th><th>Placa</th><th>Modelo</th><th>Responsável</th><th class="num">Km rodado</th><th class="num">Custo lançado</th><th></th></tr></thead><tbody>';
+  if(!veis.length)h+='<tr><td colspan="7" style="color:var(--muted);padding:14px 6px">Nenhum veículo cadastrado. Clique em <b>+ Novo veículo</b>.</td></tr>';
+  const _colabsV=nomesColaboradores();
+  veis.forEach(v=>{ const km=Math.max(0,(+v.kmAtual||0)-(+v.kmInicial||0)); const respOk=!v.responsavel||_colabsV.indexOf(v.responsavel)>=0;
+    h+='<tr><td>'+esc(v.nome||'—')+'</td><td>'+esc(v.placa||'—')+'</td><td>'+esc(v.modelo||'—')+'</td><td>'+(v.responsavel?(esc(v.responsavel)+(respOk?'':' <span class="tag lo" title="colaborador fora do cadastro">?</span>')):'<span style="color:var(--muted)">—</span>')+'</td><td class="num">'+fnum(km)+'</td><td class="num"><b>'+BRL(custoVei(v.nome))+'</b></td>'+
       '<td style="white-space:nowrap;text-align:right"><button class="edbtn vedit" data-id="'+esc(v.id)+'">editar</button> <button class="edbtn ghost vrem" data-id="'+esc(v.id)+'">✕</button></td></tr>'; });
   h+='</tbody></table></div>';
   host.innerHTML=h;
@@ -5198,6 +5197,7 @@ function cadTab(t){ const sec=document.getElementById('v-config'); if(!sec)retur
   if(t==='veic'){ try{renderVeiculos();}catch(e){} }
   if(t==='muni'){ try{renderMunicipiosEditor();}catch(e){} }
   if(t==='faz'){ try{renderFazendasEditor();}catch(e){} }
+  if(t==='equip'){ try{renderEquipamentosEditor();}catch(e){} }
 }
 /* ===== cadastro de colaboradores (Fase 1) — nomes que alimentam os seletores da plataforma ===== */
 let _colabForm=null;
@@ -5339,6 +5339,52 @@ function renderFazendasEditor(){
   host.querySelectorAll('input.fcf,select.fcf').forEach(inp=>{ inp.onchange=()=>{ if(!_fazForm)return; const k=inp.dataset.k; _fazForm[k]=(k==='areaHa')?pnum(inp.value):((k==='ativo')?(inp.value==='true'):inp.value); }; });
   host.querySelectorAll('button.fedit').forEach(b=>b.onclick=()=>editarFaz(b.dataset.id));
   host.querySelectorAll('button.frem').forEach(b=>b.onclick=()=>removerFaz(b.dataset.id));
+}
+/* ===== cadastro de equipamentos & ferramentas (Fase 5) — responsável (colaborador) + centro de custo ===== */
+const EQ_TIPOS=['Equipamento','Ferramenta','Coletor','Máquina / Implemento','Outro'];
+const EQ_SITUACOES=['Em uso','Em manutenção','Parado','Emprestado','Baixado'];
+let _equipForm=null;
+function novoEquipForm(){ _equipForm={id:'',nome:'',tipo:'Equipamento',responsavel:'',centroCusto:'',situacao:'Em uso',ativo:true}; renderEquipamentosEditor(); }
+function editarEquip(id){ const e=(D.equipamentos||[]).find(x=>x.id===id); if(e){ _equipForm=JSON.parse(JSON.stringify(e)); renderEquipamentosEditor(); } }
+function salvarEquipForm(){ const F=_equipForm; if(!F)return; if(!(F.nome||'').trim()){ uiToast('Dê um nome ao equipamento.','err'); return; }
+  if(!Array.isArray(D.equipamentos)) D.equipamentos=[];
+  F.nome=(F.nome||'').trim();
+  if(F.id){ const i=D.equipamentos.findIndex(e=>e.id===F.id); if(i>=0)D.equipamentos[i]=F; }
+  else { F.id='eq'+uidLanc(); D.equipamentos.push(F); }
+  _equipForm=null; commit(); renderEquipamentosEditor(); uiToast('✓ Equipamento salvo'); }
+function removerEquip(id){ const e=(D.equipamentos||[]).find(x=>x.id===id); if(!e)return;
+  if(!confirm('Remover "'+(e.nome||'')+'" do cadastro de equipamentos?'))return;
+  D.equipamentos=(D.equipamentos||[]).filter(x=>x.id!==id); commit(); renderEquipamentosEditor(); }
+function renderEquipamentosEditor(){
+  const host=document.getElementById('cadEquip'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+(ph||'—')+'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const eqs=(D.equipamentos||[]).slice().sort((a,b)=>(a.tipo||'').localeCompare(b.tipo||'','pt-BR')||(a.nome||'').localeCompare(b.nome||'','pt-BR'));
+  let h='<div class="edhead"><h3>🔧 Equipamentos &amp; ferramentas</h3><p class="edhelp">Cadastre equipamentos e ferramentas com o <b>responsável</b> (colaborador) e o <b>centro de custo</b>. Responsável e centro vêm por lista dos cadastros — sem digitar, sem quebrar ligação.</p></div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="equipNovo">+ Novo equipamento</button></div>';
+  if(_equipForm){ const F=_equipForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar equipamento':'Novo equipamento')+'</h3></div><div class="labprec" style="gap:10px 14px">'+
+      field('Nome',"<input class='edinp qcf' data-k='nome' value='"+esc(F.nome||'')+"' placeholder='ex.: Trado holandês 01'>")+
+      field('Tipo',"<select class='edinp qcf' data-k='tipo'>"+sel(F.tipo,EQ_TIPOS,'—')+"</select>")+
+      field('Responsável',"<select class='edinp qcf' data-k='responsavel'>"+sel(F.responsavel,nomesColaboradores(),'—')+"</select>")+
+      field('Centro de custo',"<select class='edinp qcf' data-k='centroCusto'>"+sel(F.centroCusto,nomesCentros(),'—')+"</select>")+
+      field('Situação',"<select class='edinp qcf' data-k='situacao'>"+sel(F.situacao,EQ_SITUACOES,'—')+"</select>")+
+      field('Ativo',"<select class='edinp qcf' data-k='ativo'><option value='true'"+(F.ativo!==false?' selected':'')+">Sim</option><option value='false'"+(F.ativo===false?' selected':'')+">Não</option></select>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="equipSalvar">Salvar equipamento</button><button class="edbtn ghost" id="equipCancelar">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Equipamento</th><th>Tipo</th><th>Responsável</th><th>Centro de custo</th><th>Situação</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  if(!eqs.length)h+='<tr><td colspan="7" style="color:var(--muted);padding:14px 6px">Nenhum equipamento cadastrado. Clique em <b>+ Novo equipamento</b>.</td></tr>';
+  const colabs=nomesColaboradores();
+  eqs.forEach(e=>{ const respOk=!e.responsavel||colabs.indexOf(e.responsavel)>=0;
+    h+='<tr><td><b>'+esc(e.nome||'—')+'</b></td><td>'+esc(e.tipo||'—')+'</td><td>'+(e.responsavel?(esc(e.responsavel)+(respOk?'':' <span class="tag lo" title="colaborador fora do cadastro">?</span>')):'<span style="color:var(--muted)">—</span>')+'</td><td>'+esc(e.centroCusto||'—')+'</td><td>'+esc(e.situacao||'—')+'</td><td>'+(e.ativo!==false?'Sim':'<span style="color:var(--muted)">Não</span>')+'</td>'+
+      '<td style="white-space:nowrap;text-align:right"><button class="edbtn qedit" data-id="'+esc(e.id)+'">editar</button> <button class="edbtn ghost qrem" data-id="'+esc(e.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('equipNovo'); if(nv)nv.onclick=novoEquipForm;
+  const sv=document.getElementById('equipSalvar'); if(sv)sv.onclick=salvarEquipForm;
+  const cc=document.getElementById('equipCancelar'); if(cc)cc.onclick=()=>{ _equipForm=null; renderEquipamentosEditor(); };
+  host.querySelectorAll('input.qcf,select.qcf').forEach(inp=>{ inp.onchange=()=>{ if(!_equipForm)return; const k=inp.dataset.k; _equipForm[k]=(k==='ativo')?(inp.value==='true'):inp.value; }; });
+  host.querySelectorAll('button.qedit').forEach(b=>b.onclick=()=>editarEquip(b.dataset.id));
+  host.querySelectorAll('button.qrem').forEach(b=>b.onclick=()=>removerEquip(b.dataset.id));
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
