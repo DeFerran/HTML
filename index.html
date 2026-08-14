@@ -1402,10 +1402,7 @@ header .htxt h1{display:none}
         <div class="cap">Cada fazenda pertence a um cliente e fica em um município. A tela listará automaticamente os clientes já cadastrados.</div></div>
     </div>
 
-    <div class="ctpane" data-pane="muni">
-      <div class="panel"><h3>📍 Municípios <span class="ia-badge">Chega na Fase 2</span></h3>
-        <div class="cap">Base de municípios para a gestão por município (rollups de área e receita).</div></div>
-    </div>
+    <div class="ctpane" data-pane="muni"><div class="edcard" id="cadMuni"></div></div>
 
     <div class="ctpane" data-pane="safras">
       <div class="panel"><h3>Safras</h3>
@@ -1676,6 +1673,7 @@ function hydrate(d){
     d.centrosCusto=['Diretoria','Administrativo','Financeiro','Consultoria Técnica','Agricultura de Precisão','Coleta','Pesquisa & Inovação','Tecnologia / TI','Comercial','Operações'].map((n,i)=>({id:'cc'+(i+1),nome:n,ativo:true}));
   if(!Array.isArray(d.veiculos)) d.veiculos=[];
   if(!Array.isArray(d.equipamentos)) d.equipamentos=[];
+  if(!Array.isArray(d.municipios)) d.municipios=[];
   if(!Array.isArray(d.recorrencias)) d.recorrencias=[];
   if(!Array.isArray(d.orcamentos)) d.orcamentos=[];
   // colaboradores: deriva da Equipe quando ainda vazio (sem nomes fixos no código)
@@ -3547,9 +3545,10 @@ function renderConfig(){
       '<label>Prazo de amostras (dias)<input type="number" min="0" step="1" value="'+prazo+'" placeholder="sem prazo" onchange="cfgSetParam(\'prazo\',this.value)"></label>'+
       '</div>';
   }
-  // hub de cadastros: popula os hosts das abas internas (Fase 1)
+  // hub de cadastros: popula os hosts das abas internas (Fases 1–2)
   try{ renderColaboradoresEditor(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
+  try{ renderMunicipiosEditor(); }catch(e){}
 }
 function cfgAddSafra(){
   const el=document.getElementById('cfgNovaSafra'); let v=(el&&el.value||'').trim();
@@ -3734,7 +3733,7 @@ function mergeImport(prev, fresh){
   // importação — senão hydrate() os recria vazios e apaga o trabalho manual.
   // Controle Operacional (opColeta/opAmostras/opEntregas) e as tabelas por safra
   // (metasSafra/precosSafra) só existem aqui; sem preservar, a importação zera tudo.
-  ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','orcamentos','funil',
+  ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','municipios','orcamentos','funil',
    'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa',
    'opColeta','opAmostras','opEntregas','metasSafra','precosSafra']
    .forEach(function(k){ if(_temDados(prev[k])) fresh[k]=prev[k]; });
@@ -5147,6 +5146,7 @@ function cadTab(t){ const sec=document.getElementById('v-config'); if(!sec)retur
   sec.querySelectorAll('.ctpane').forEach(p=>p.classList.toggle('on',p.dataset.pane===t));
   if(t==='colab'){ try{renderColaboradoresEditor();}catch(e){} }
   if(t==='veic'){ try{renderVeiculos();}catch(e){} }
+  if(t==='muni'){ try{renderMunicipiosEditor();}catch(e){} }
 }
 /* ===== cadastro de colaboradores (Fase 1) — nomes que alimentam os seletores da plataforma ===== */
 let _colabForm=null;
@@ -5186,6 +5186,48 @@ function renderColaboradoresEditor(){
   host.querySelectorAll('input.ccf,select.ccf').forEach(inp=>{ inp.onchange=()=>{ if(!_colabForm)return; const k=inp.dataset.k; _colabForm[k]=(k==='ativo')?(inp.value==='true'):inp.value; }; });
   host.querySelectorAll('button.cedit').forEach(b=>b.onclick=()=>editarColab(b.dataset.id));
   host.querySelectorAll('button.crem').forEach(b=>b.onclick=()=>removerColab(b.dataset.id));
+}
+/* ===== cadastro de municípios (Fase 2) — base para gestão por município ===== */
+const UFS=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+function nomesMunicipios(){ return (D.municipios||[]).filter(m=>m&&m.ativo!==false).map(m=>m.nome).filter(Boolean); }
+let _muniForm=null;
+function novoMuniForm(){ _muniForm={id:'',nome:'',uf:'',ativo:true}; renderMunicipiosEditor(); }
+function editarMuni(id){ const m=(D.municipios||[]).find(x=>x.id===id); if(m){ _muniForm=JSON.parse(JSON.stringify(m)); renderMunicipiosEditor(); } }
+function salvarMuniForm(){ const F=_muniForm; if(!F)return; if(!(F.nome||'').trim()){ uiToast('Informe o nome do município.','err'); return; }
+  if(!Array.isArray(D.municipios)) D.municipios=[];
+  const dup=D.municipios.find(m=>m.id!==F.id && (m.nome||'').trim().toLowerCase()===(F.nome||'').trim().toLowerCase() && (m.uf||'')===(F.uf||''));
+  if(dup){ uiToast('Já existe um município com esse nome/UF.','err'); return; }
+  F.nome=(F.nome||'').trim();
+  if(F.id){ const i=D.municipios.findIndex(m=>m.id===F.id); if(i>=0)D.municipios[i]=F; }
+  else { F.id='mun'+uidLanc(); D.municipios.push(F); }
+  _muniForm=null; commit(); renderMunicipiosEditor(); uiToast('✓ Município salvo'); }
+function removerMuni(id){ const m=(D.municipios||[]).find(x=>x.id===id); if(!m)return;
+  if(!confirm('Remover o município "'+(m.nome||'')+'" do cadastro?'))return;
+  D.municipios=(D.municipios||[]).filter(x=>x.id!==id); commit(); renderMunicipiosEditor(); }
+function renderMunicipiosEditor(){
+  const host=document.getElementById('cadMuni'); if(!host)return;
+  const munis=(D.municipios||[]).slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR'));
+  let h='<div class="edhead"><h3>📍 Municípios</h3><p class="edhelp">Base de municípios onde ficam as fazendas dos clientes. Alimenta a <b>gestão por município</b> (rollups de área e receita) e o seletor de município no cadastro de <b>Fazendas</b>.</p></div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="muniNovo">+ Novo município</button></div>';
+  if(_muniForm){ const F=_muniForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar município':'Novo município')+'</h3></div><div class="labprec" style="gap:10px 14px">'+
+      field('Nome',"<input class='edinp mcf' data-k='nome' value='"+esc(F.nome||'')+"' placeholder='ex.: Rio Verde'>")+
+      field('UF',"<select class='edinp mcf' data-k='uf'><option value=''>—</option>"+UFS.map(u=>'<option'+(u===F.uf?' selected':'')+'>'+u+'</option>').join('')+"</select>")+
+      field('Ativo',"<select class='edinp mcf' data-k='ativo'><option value='true'"+(F.ativo!==false?' selected':'')+">Sim</option><option value='false'"+(F.ativo===false?' selected':'')+">Não</option></select>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="muniSalvar">Salvar município</button><button class="edbtn ghost" id="muniCancelar">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Município</th><th>UF</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  if(!munis.length)h+='<tr><td colspan="4" style="color:var(--muted);padding:14px 6px">Nenhum município cadastrado. Clique em <b>+ Novo município</b>.</td></tr>';
+  munis.forEach(m=>{ h+='<tr><td><b>'+esc(m.nome||'—')+'</b></td><td>'+esc(m.uf||'—')+'</td><td>'+(m.ativo!==false?'Sim':'<span style="color:var(--muted)">Não</span>')+'</td>'+
+    '<td style="white-space:nowrap;text-align:right"><button class="edbtn medit" data-id="'+esc(m.id)+'">editar</button> <button class="edbtn ghost mrem" data-id="'+esc(m.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('muniNovo'); if(nv)nv.onclick=novoMuniForm;
+  const sv=document.getElementById('muniSalvar'); if(sv)sv.onclick=salvarMuniForm;
+  const cc=document.getElementById('muniCancelar'); if(cc)cc.onclick=()=>{ _muniForm=null; renderMunicipiosEditor(); };
+  host.querySelectorAll('input.mcf,select.mcf').forEach(inp=>{ inp.onchange=()=>{ if(!_muniForm)return; const k=inp.dataset.k; _muniForm[k]=(k==='ativo')?(inp.value==='true'):inp.value; }; });
+  host.querySelectorAll('button.medit').forEach(b=>b.onclick=()=>editarMuni(b.dataset.id));
+  host.querySelectorAll('button.mrem').forEach(b=>b.onclick=()=>removerMuni(b.dataset.id));
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
