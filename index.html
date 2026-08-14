@@ -656,6 +656,8 @@ header .htxt h1{display:none}
     <button class="snav" data-target="custos"><svg class="sb-ic"><use href="#ic-receipt"></use></svg><span class="sb-tx">Custos &amp; Coleta</span></button>
     <button class="snav snav-sub" data-target="custos" data-scroll="estrCusto"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Estrutura de Custo</span></button>
     <button class="snav" data-target="op"><svg class="sb-ic"><use href="#ic-tractor"></use></svg><span class="sb-tx">Operação</span></button>
+    <div class="sb-group">Controle Operacional</div>
+    <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
@@ -706,6 +708,7 @@ header .htxt h1{display:none}
   <button data-v="equipe">Equipe &amp; Metas</button>
   <button data-v="custos">Custos &amp; Coleta</button>
   <button data-v="op">Operação</button>
+  <button data-v="opcoleta">Coleta de Pontos</button>
   <button data-v="edit">✎ Lançamentos</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
@@ -1014,6 +1017,80 @@ header .htxt h1{display:none}
     </div>
   </section>
 
+  <!-- CONTROLE OPERACIONAL · Tela 1 — Coleta de Pontos Diários -->
+  <section class="view" id="v-opcoleta">
+    <div class="op-head">
+      <div class="lead" style="margin:0"><h2>Coleta de Pontos Diários</h2>
+        <p>Lançamentos por dia, agrupados por mês. A tabela é o centro da tela. Substitui a planilha "Controle de Pontos Diários".</p></div>
+      <div class="op-actions">
+        <button class="btn" style="background:#0A6A30" onclick="opColetaNovo()">+ Novo lançamento</button>
+      </div>
+    </div>
+    <div class="op-cards" id="opColCards"></div>
+    <div class="op-filtros" id="opColFiltros">
+      <div class="op-campo"><label>Data inicial</label><input type="date" id="opfDe"></div>
+      <div class="op-campo"><label>Data final</label><input type="date" id="opfAte"></div>
+      <div class="op-campo"><label>Cliente</label><select id="opfCliente"></select></div>
+      <div class="op-campo"><label>Fazenda</label><select id="opfFazenda"></select></div>
+      <div class="op-campo"><label>Equipe</label><select id="opfEquipe"></select></div>
+      <div class="op-campo"><label>Colaborador</label><select id="opfColab"></select></div>
+      <div class="op-campo"><label>Status</label><select id="opfStatus">
+        <option value="">Todos</option><option value="planejada">Planejada</option>
+        <option value="andamento">Em andamento</option><option value="finalizada">Finalizada</option>
+        <option value="nao_trabalhado">Não trabalhado</option></select></div>
+      <div class="op-campo busca"><label>Buscar observação</label><input type="text" id="opfBusca" placeholder="ex.: entrou, ajudou, finalizada…"></div>
+      <div class="op-campo" style="min-width:auto"><label>&nbsp;</label>
+        <div style="display:flex;gap:8px"><button class="btn" style="background:#0A6A30" onclick="opColetaAplicaFiltro()">Filtrar</button>
+        <button class="op-linkbtn" onclick="opColetaLimpaFiltro()">Limpar</button></div></div>
+    </div>
+    <div class="op-tbl-wrap">
+      <div class="op-tbl-head"><h3>Lançamentos por data</h3><span class="op-count" id="opColCount"></span></div>
+      <div class="op-scroll">
+        <table class="op-tbl" id="opColTabela">
+          <thead><tr>
+            <th class="op-colfixa">Data</th><th>Equipe</th><th>Cliente</th><th>Fazenda</th><th>Talhão</th>
+            <th>Colaboradores / Pontos</th><th class="num">Total</th><th>Status</th><th>Observações</th><th></th>
+          </tr></thead>
+          <tbody id="opColBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="op-prod op-tbl-wrap">
+      <div class="op-tbl-head"><h3>Produtividade no período</h3><span class="op-count">dias · pontos · média por colaborador</span></div>
+      <div class="op-scroll">
+        <table class="op-tbl"><thead><tr><th class="op-colfixa">Colaborador</th><th class="num">Dias</th><th class="num">Pontos</th><th class="num">Média</th></tr></thead>
+          <tbody id="opColProd"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- modal de lançamento (Coleta) -->
+  <div class="op-modal-bg" id="opColModal">
+    <div class="op-modal">
+      <div class="op-mhead"><h3 id="opColModalTit">Novo lançamento</h3><button class="op-linkbtn" style="margin-left:auto" onclick="opColetaFecha()">✕</button></div>
+      <div class="op-mbody">
+        <label>Data<input type="date" id="mData"></label>
+        <label>Equipe<input type="text" id="mEquipe" placeholder="ex.: Equipe 01" list="opEquipesList"></label>
+        <label>Cliente<select id="mCliente"></select></label>
+        <label>Fazenda<input type="text" id="mFazenda" placeholder="ex.: Casari" list="opFazendasList"></label>
+        <label>Talhão<input type="text" id="mTalhao" placeholder="ex.: TH 01"></label>
+        <label>Status<select id="mStatus">
+          <option value="planejada">Planejada</option><option value="andamento" selected>Em andamento</option>
+          <option value="finalizada">Finalizada</option><option value="nao_trabalhado">Não trabalhado</option></select></label>
+        <div class="full"><label style="margin-bottom:6px">Colaboradores / Pontos</label><div id="mColabs"></div>
+          <button class="op-linkbtn" onclick="opColabAdd()">+ colaborador</button></div>
+        <label class="full">Observações<textarea id="mObs" rows="2" placeholder="ex.: Iago entrou na equipe…"></textarea></label>
+      </div>
+      <div class="op-mfoot">
+        <button class="op-linkbtn" id="opColDel" style="margin-right:auto;color:#c0392b" onclick="opColetaExcluir()">Excluir</button>
+        <button class="btn" onclick="opColetaFecha()">Cancelar</button>
+        <button class="btn" style="background:#0A6A30" onclick="opColetaSalvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+  <datalist id="opEquipesList"></datalist>
+  <datalist id="opFazendasList"></datalist>
+
   <!-- LANÇAMENTOS (editor) -->
   <section class="view" id="v-edit">
     <div class="lead"><h2>Lançamentos — sua central de dados</h2>
@@ -1181,6 +1258,14 @@ function hydrate(d){
     d.estrutura={meses:_em, grupos:[gr('Gestor'),gr('Agrônomo de campo'),gr('Escritório / Administrativo'),gr('Imposto'),gr('Plataformas / Software')]};
   }
   if(!d.operacao) d.operacao={situacao:{},etapas:[]};
+  /* Controle Operacional — Tela 1: Coleta de Pontos Diários (aditivo).
+     hectaresFator fica NULL ("a validar"): Hectares estimados só liga quando o
+     dono confirmar o fator (o PDF cita pontos×3, mas a regra não está na planilha). */
+  if(!d.opColeta || typeof d.opColeta!=='object') d.opColeta={lancamentos:[], hectaresFator:null};
+  if(!Array.isArray(d.opColeta.lancamentos)) d.opColeta.lancamentos=[];
+  if(d.opColeta.hectaresFator===undefined) d.opColeta.hectaresFator=null;
+  d.opColeta.lancamentos.forEach(l=>{ if(!Array.isArray(l.colaboradores)) l.colaboradores=[];
+    if(!l.status) l.status='andamento'; if(!l.id) l.id='opc'+Math.random().toString(36).slice(2,9); });
   if(!Array.isArray(d.visitas)) d.visitas=[];
   if(!d.custoCategoria2026) d.custoCategoria2026={};
   if(!d.custoCategoria2025) d.custoCategoria2025={};
@@ -1622,6 +1707,112 @@ const AIDetectors=(function(){
     detectCustoHa,detectDadoFaltante,runAll};
 })();
 // </ai-detectors>
+// <op-coleta-calc>
+/* Controle Operacional · Tela 1 — CÁLCULO PURO (sem DOM/D): totais, dias, média,
+   produtividade, agrupamento por mês. Testável por bun (extraído deste bloco). */
+const OpColetaCalc=(function(){
+  const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const STATUS={planejada:{label:'Planejada',cls:'op-b-wait'},andamento:{label:'Em andamento',cls:'op-b-run'},finalizada:{label:'Finalizada',cls:'op-b-ok'},nao_trabalhado:{label:'Não trabalhado',cls:'op-b-none'}};
+  function statusInfo(s){ return STATUS[s]||{label:s||'—',cls:'op-b-none'}; }
+  function totalDia(l){ return (((l&&l.colaboradores))||[]).reduce((a,c)=>a+(+((c&&c.pontos))||0),0); }
+  function ym(data){ return String(data||'').slice(0,7); }
+  function mesLabel(y){ const m=String(y||'').split('-'); const i=(+m[1]||0)-1; return (MESES[i]||'—')+(m[0]?(' / '+m[0]):''); }
+  function filtra(lancs,f){ f=f||{}; return (lancs||[]).filter(l=>{
+    if(f.de && String(l.data||'')<f.de) return false;
+    if(f.ate && String(l.data||'')>f.ate) return false;
+    if(f.cliente && (l.cliente||'')!==f.cliente) return false;
+    if(f.fazenda && (l.fazenda||'')!==f.fazenda) return false;
+    if(f.equipe && (l.equipe||'')!==f.equipe) return false;
+    if(f.status && (l.status||'')!==f.status) return false;
+    if(f.colab && !((l.colaboradores||[]).some(c=>(c.nome||'')===f.colab))) return false;
+    if(f.busca && !String(l.obs||'').toLowerCase().includes(String(f.busca).toLowerCase())) return false;
+    return true; }); }
+  function agg(lancs){ lancs=lancs||[]; let totalPontos=0; const dias=new Set();
+    lancs.forEach(l=>{ const t=totalDia(l); totalPontos+=t; if(t>0) dias.add(l.data); });
+    const diasTrabalhados=dias.size; const mediaDiaria=diasTrabalhados? totalPontos/diasTrabalhados:0;
+    const by=new Map();
+    lancs.forEach(l=>(l.colaboradores||[]).forEach(c=>{ if(!c.nome) return; const p=+c.pontos||0;
+      const e=by.get(c.nome)||{nome:c.nome,dias:new Set(),pontos:0}; e.pontos+=p; if(p>0) e.dias.add(l.data); by.set(c.nome,e); }));
+    const produtividade=[...by.values()].map(e=>({nome:e.nome,dias:e.dias.size,pontos:e.pontos,media:e.dias.size? e.pontos/e.dias.size:0})).sort((a,b)=>b.pontos-a.pontos);
+    return {totalPontos,diasTrabalhados,mediaDiaria,produtividade}; }
+  function gruposPorMes(lancs){ const g=new Map();
+    (lancs||[]).slice().sort((a,b)=>String(a.data||'').localeCompare(String(b.data||''))).forEach(l=>{ const y=ym(l.data); if(!g.has(y)) g.set(y,[]); g.get(y).push(l); });
+    return [...g.entries()].map(([y,items])=>({ym:y,label:mesLabel(y),lancs:items,total:items.reduce((a,l)=>a+totalDia(l),0)})); }
+  function hectares(totalPontos,fator){ if(fator==null||!(+fator>0)) return null; return totalPontos*(+fator); }
+  return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,MESES};
+})();
+// </op-coleta-calc>
+/* ===== Controle Operacional · Tela 1 — runtime (usa D + DOM; cálculo em OpColetaCalc) ===== */
+let _opColFiltro={}, _opColEdit=null;
+function opv(id){ const e=document.getElementById(id); return e?e.value:''; }
+function opColNomesClientes(){ return [...new Set((D.clientes||[]).map(c=>c.nome).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
+function opColFazendas(){ return [...new Set((D.opColeta.lancamentos||[]).map(l=>l.fazenda).filter(Boolean))].sort(); }
+function opColEquipes(){ return [...new Set((D.opColeta.lancamentos||[]).map(l=>l.equipe).filter(Boolean))].sort(); }
+function opColColabs(){ const s=new Set(); (D.opColeta.lancamentos||[]).forEach(l=>(l.colaboradores||[]).forEach(c=>c.nome&&s.add(c.nome))); return [...s].sort(); }
+function opFillSelect(id,arr,atual,todosLabel){ const el=document.getElementById(id); if(!el)return; const cur=atual!=null?atual:el.value;
+  el.innerHTML='<option value="">'+(todosLabel||'Todos')+'</option>'+arr.map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join(''); el.value=cur||''; }
+function renderOpColeta(){
+  if(typeof document==='undefined')return;
+  opFillSelect('opfCliente',opColNomesClientes(),_opColFiltro.cliente,'Todos');
+  opFillSelect('opfFazenda',opColFazendas(),_opColFiltro.fazenda,'Todas');
+  opFillSelect('opfEquipe',opColEquipes(),_opColFiltro.equipe,'Todas');
+  opFillSelect('opfColab',opColColabs(),_opColFiltro.colab,'Todos');
+  const dlE=document.getElementById('opEquipesList'); if(dlE) dlE.innerHTML=opColEquipes().map(v=>'<option value="'+esc(v)+'">').join('');
+  const dlF=document.getElementById('opFazendasList'); if(dlF) dlF.innerHTML=opColFazendas().map(v=>'<option value="'+esc(v)+'">').join('');
+  const lancs=OpColetaCalc.filtra(D.opColeta.lancamentos||[],_opColFiltro);
+  const a=OpColetaCalc.agg(lancs);
+  const nHa=OpColetaCalc.hectares(a.totalPontos,D.opColeta.hectaresFator);
+  const cards=[
+    {rot:'Total de pontos',val:a.totalPontos.toLocaleString('pt-BR'),obs:'no período filtrado',accent:'accent'},
+    {rot:'Dias trabalhados',val:a.diasTrabalhados,obs:'dias com pontos > 0'},
+    {rot:'Média diária',val:(a.diasTrabalhados?a.mediaDiaria.toFixed(0):'0'),obs:'pontos/dia'},
+    {rot:'Lançamentos',val:lancs.length,obs:'linhas no período'},
+    {rot:'Hectares estimados',val:(nHa!=null?Math.round(nHa).toLocaleString('pt-BR'):'—'),obs:(nHa!=null?('fator '+D.opColeta.hectaresFator+'×'):'fator a validar'),accent:'accent-gold'},
+  ];
+  document.getElementById('opColCards').innerHTML=cards.map(c=>'<div class="op-card '+(c.accent||'')+'"><div class="op-rot">'+esc(c.rot)+'</div><div class="op-val">'+c.val+'</div><div class="op-obs">'+esc(c.obs)+'</div></div>').join('');
+  const grupos=OpColetaCalc.gruposPorMes(lancs);
+  const dataFmt=s=>{ const m=String(s||'').split('-'); return m.length===3?(m[2]+'/'+m[1]+'/'+m[0]):(s||''); };
+  const chips=l=>(l.colaboradores||[]).map(c=>'<span class="op-chip">'+esc(c.nome||'—')+' <b>'+(+c.pontos||0)+'</b></span>').join('')||'<span class="op-badge op-b-none">—</span>';
+  let html='';
+  if(!lancs.length) html='<tr><td colspan="10"><div class="op-empty">Nenhum lançamento no período. Clique em <b>+ Novo lançamento</b> para começar.</div></td></tr>';
+  grupos.forEach(g=>{
+    html+='<tr class="op-periodo"><td class="op-colfixa">'+esc(g.label)+'</td><td colspan="9">Período</td></tr>';
+    g.lancs.forEach(l=>{ const st=OpColetaCalc.statusInfo(l.status); const t=OpColetaCalc.totalDia(l);
+      html+='<tr><td class="op-colfixa">'+esc(dataFmt(l.data))+'</td><td>'+esc(l.equipe||'—')+'</td><td>'+esc(l.cliente||'—')+'</td><td>'+esc(l.fazenda||'—')+'</td><td>'+esc(l.talhao||'—')+'</td><td>'+chips(l)+'</td><td class="num"><b>'+t+'</b></td><td><span class="op-badge '+st.cls+'">'+esc(st.label)+'</span></td><td><span style="color:var(--muted)">'+esc(l.obs||'')+'</span></td><td><button class="op-linkbtn" onclick="opColetaEditar(\''+l.id+'\')">editar</button></td></tr>';
+    });
+    html+='<tr class="op-total"><td class="op-colfixa">Total '+esc(g.label.split(' / ')[0])+'</td><td colspan="5"></td><td class="num">'+g.total+'</td><td colspan="3"></td></tr>';
+  });
+  document.getElementById('opColBody').innerHTML=html;
+  document.getElementById('opColCount').textContent=lancs.length+' lançamento(s)';
+  const prod=document.getElementById('opColProd');
+  prod.innerHTML=a.produtividade.length? a.produtividade.map(p=>'<tr><td class="op-colfixa">'+esc(p.nome)+'</td><td class="num">'+p.dias+'</td><td class="num">'+p.pontos+'</td><td class="num">'+p.media.toFixed(1)+'</td></tr>').join('') : '<tr><td colspan="4"><div class="op-empty">Sem produtividade no período.</div></td></tr>';
+}
+function opColetaAplicaFiltro(){ _opColFiltro={de:opv('opfDe'),ate:opv('opfAte'),cliente:opv('opfCliente'),fazenda:opv('opfFazenda'),equipe:opv('opfEquipe'),colab:opv('opfColab'),status:opv('opfStatus'),busca:opv('opfBusca')}; renderOpColeta(); }
+function opColetaLimpaFiltro(){ _opColFiltro={}; ['opfDe','opfAte','opfCliente','opfFazenda','opfEquipe','opfColab','opfStatus','opfBusca'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';}); renderOpColeta(); }
+function opColClienteOptions(sel){ return '<option value="">—</option>'+opColNomesClientes().map(n=>'<option value="'+esc(n)+'"'+(n===sel?' selected':'')+'>'+esc(n)+'</option>').join(''); }
+function opColabRow(nome,pts){ return '<div class="op-colab-row"><input class="nome" type="text" placeholder="colaborador" value="'+esc(nome||'')+'" list="opColabList"><input class="pts" type="number" min="0" placeholder="pontos" value="'+(pts!=null&&pts!==''?(+pts||0):'')+'"><button class="op-linkbtn" type="button" onclick="this.parentNode.remove()">✕</button></div>'; }
+function opColabAdd(nome,pts){ const box=document.getElementById('mColabs'); if(box) box.insertAdjacentHTML('beforeend',opColabRow(nome,pts)); }
+function opColModalDatalist(){ let dl=document.getElementById('opColabList'); if(!dl){ dl=document.createElement('datalist'); dl.id='opColabList'; document.body.appendChild(dl); } dl.innerHTML=opColColabs().map(v=>'<option value="'+esc(v)+'">').join(''); }
+function opColetaNovo(){ _opColEdit=null; document.getElementById('opColModalTit').textContent='Novo lançamento';
+  ['mData','mEquipe','mFazenda','mTalhao','mObs'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';});
+  document.getElementById('mStatus').value='andamento'; document.getElementById('mCliente').innerHTML=opColClienteOptions('');
+  document.getElementById('mColabs').innerHTML=''; opColabAdd('',''); document.getElementById('opColDel').style.display='none';
+  opColModalDatalist(); document.getElementById('opColModal').classList.add('on'); }
+function opColetaEditar(id){ const l=(D.opColeta.lancamentos||[]).find(x=>x.id===id); if(!l)return; _opColEdit=id;
+  document.getElementById('opColModalTit').textContent='Editar lançamento';
+  document.getElementById('mData').value=l.data||''; document.getElementById('mEquipe').value=l.equipe||''; document.getElementById('mFazenda').value=l.fazenda||''; document.getElementById('mTalhao').value=l.talhao||''; document.getElementById('mObs').value=l.obs||''; document.getElementById('mStatus').value=l.status||'andamento';
+  document.getElementById('mCliente').innerHTML=opColClienteOptions(l.cliente||'');
+  document.getElementById('mColabs').innerHTML=''; (l.colaboradores||[]).forEach(c=>opColabAdd(c.nome,c.pontos)); if(!(l.colaboradores||[]).length) opColabAdd('','');
+  document.getElementById('opColDel').style.display=''; opColModalDatalist(); document.getElementById('opColModal').classList.add('on'); }
+function opColetaFecha(){ document.getElementById('opColModal').classList.remove('on'); }
+function opColetaSalvar(){
+  const colabs=[...document.querySelectorAll('#mColabs .op-colab-row')].map(r=>({nome:r.querySelector('.nome').value.trim(),pontos:+r.querySelector('.pts').value||0})).filter(c=>c.nome);
+  const rec={data:opv('mData'),equipe:opv('mEquipe').trim(),cliente:opv('mCliente'),fazenda:opv('mFazenda').trim(),talhao:opv('mTalhao').trim(),status:opv('mStatus'),obs:opv('mObs').trim(),colaboradores:colabs};
+  if(!rec.data){ alert('Informe a data do lançamento.'); return; }
+  if(_opColEdit){ const l=(D.opColeta.lancamentos||[]).find(x=>x.id===_opColEdit); if(l) Object.assign(l,rec); }
+  else { rec.id='opc'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opColeta.lancamentos.push(rec); }
+  opColetaFecha(); if(typeof commit==='function') commit(); renderOpColeta(); }
+function opColetaExcluir(){ if(!_opColEdit)return; if(!confirm('Excluir este lançamento?'))return; D.opColeta.lancamentos=(D.opColeta.lancamentos||[]).filter(x=>x.id!==_opColEdit); opColetaFecha(); if(typeof commit==='function') commit(); renderOpColeta(); }
 /* REGRA DE NEGÓCIO (única): a comissão incide sobre a RECEITA BRUTA da venda —
    custos (laboratório, custo direto) NÃO são descontados da base. Usada em todos
    os pontos para que empresa, funil, carteira e segmentos conciliem. */
@@ -2460,6 +2651,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='margem')renderPrecoMargem();
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
+  if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
   if(b.dataset.v==='ia'){ try{renderIAConhecimento();}catch(e){} }
   if(b.dataset.v==='iamem'){ try{renderIAMemoria();}catch(e){} }
   if(b.dataset.v==='iahub'){ try{renderIAHub();}catch(e){} }
@@ -5446,6 +5638,65 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 /* tabelas dentro da Central: respiro e cabeçalho discreto */
 #v-iahub table.resp-cards th,#v-ia table.resp-cards th,#v-iamem table.resp-cards th{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
 #v-iahub table.resp-cards td,#v-ia table.resp-cards td,#v-iamem table.resp-cards td{font-size:13px}
+/* ===== Controle Operacional (Coleta / Amostras / Entregas) — escopado, tema-aware ===== */
+.op-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.op-head .op-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.op-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin:14px 0}
+.op-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 15px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.op-card.accent::before,.op-card.accent-gold::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
+.op-card.accent::before{background:var(--leaf)}
+.op-card.accent-gold::before{background:var(--orange)}
+.op-card .op-rot{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.op-card .op-val{font-size:24px;font-weight:800;margin-top:5px;color:var(--head);font-variant-numeric:tabular-nums;line-height:1.1}
+.op-card .op-obs{font-size:11px;color:var(--muted);margin-top:3px}
+.op-filtros{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;box-shadow:var(--shadow)}
+.op-campo{display:flex;flex-direction:column;gap:5px;min-width:140px}
+.op-campo.busca{flex:1;min-width:200px}
+.op-campo label{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.op-campo input,.op-campo select{width:100%;box-sizing:border-box;border:1px solid var(--line);background:var(--fieldbg);border-radius:9px;padding:9px 11px;color:var(--ink);font:400 13px/1.4 var(--sans)}
+.op-campo input:focus,.op-campo select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px rgba(30,125,60,.16)}
+.op-tbl-wrap{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.op-tbl-head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.op-tbl-head h3{margin:0;font-size:15px}
+.op-tbl-head .op-count{margin-left:auto;color:var(--muted);font-size:12px}
+.op-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.op-tbl{width:100%;min-width:max-content;border-collapse:separate;border-spacing:0;font-size:12.8px}
+table.op-tbl thead th{position:sticky;top:0;z-index:2;background:var(--soft);text-align:left;padding:10px 13px;font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap}
+table.op-tbl tbody td{padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.op-tbl tbody tr:hover{background:var(--soft)}
+table.op-tbl td.num,table.op-tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+table.op-tbl td.tot{text-align:right;font-weight:800;color:var(--head)}
+.op-colfixa{position:sticky;left:0;z-index:3;background:var(--card);box-shadow:1px 0 0 var(--line)}
+table.op-tbl thead th.op-colfixa{z-index:4;background:var(--soft)}
+table.op-tbl tbody tr:hover .op-colfixa{background:var(--soft)}
+tr.op-periodo td{background:var(--tintG)!important;color:var(--head);font-weight:800;font-family:var(--serif);letter-spacing:.02em}
+tr.op-total td{background:var(--soft2)!important;color:var(--head);font-weight:800;border-top:2px solid var(--leaf)}
+.op-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.op-b-ok{background:var(--tintG);color:var(--leaf)}
+.op-b-run{background:rgba(60,140,210,.16);color:#3f92d1}
+.op-b-wait{background:var(--tintGold);color:var(--orange)}
+.op-b-late{background:var(--tintR);color:#c0392b}
+.op-b-none{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.op-chip{display:inline-flex;align-items:center;gap:5px;background:var(--soft);border:1px solid var(--line);border-radius:7px;padding:2px 8px;font-size:11.5px;margin:2px 4px 2px 0;white-space:nowrap}
+.op-chip b{color:var(--head);font-variant-numeric:tabular-nums}
+.op-prod{margin-top:14px}
+.op-empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px}
+.op-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:120;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+.op-modal-bg.on{display:flex}
+.op-modal{background:var(--card);border:1px solid var(--line);border-radius:14px;width:100%;max-width:640px;box-shadow:var(--shadow)}
+.op-modal .op-mhead{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.op-modal .op-mhead h3{margin:0}
+.op-modal .op-mbody{padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.op-modal .op-mbody .full{grid-column:1/-1}
+.op-modal .op-mfoot{padding:13px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.op-modal label{display:flex;flex-direction:column;gap:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.op-modal input,.op-modal select,.op-modal textarea{border:1px solid var(--line);background:var(--fieldbg);border-radius:9px;padding:9px 11px;color:var(--ink);font:400 13px/1.4 var(--sans);text-transform:none;letter-spacing:0}
+.op-colab-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.op-colab-row input.nome{flex:1}
+.op-colab-row input.pts{width:84px}
+.op-linkbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:4px 6px;border-radius:6px}
+.op-linkbtn:hover{color:var(--head);background:var(--soft)}
+@media(max-width:640px){.op-modal .op-mbody{grid-template-columns:1fr}}
 </style>
 <button id="copFab" title="Copiloto IA" aria-label="Abrir Copiloto" onclick="copToggle()">🤖</button>
 <div id="copDrawer" aria-hidden="true" aria-label="Copiloto DF AGRO">

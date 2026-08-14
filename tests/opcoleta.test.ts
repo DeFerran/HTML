@@ -1,0 +1,81 @@
+// Testes do cálculo puro do Controle Operacional · Tela 1 (Coleta de Pontos).
+// Extrai o bloco `// <op-coleta-calc> ... // </op-coleta-calc>` do index.html.
+// Rodar: bun test tests/opcoleta.test.ts
+import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const A = html.indexOf("// <op-coleta-calc>");
+const B = html.indexOf("// </op-coleta-calc>");
+if (A < 0 || B < 0) throw new Error("marcadores <op-coleta-calc> não encontrados");
+// deno-lint-ignore no-explicit-any
+const OP: any = (0, eval)(html.slice(A, B) + "\nOpColetaCalc");
+
+const LANCS = [
+  { id: "1", data: "2026-08-11", equipe: "Equipe 01", cliente: "Casari", fazenda: "Casari", talhao: "C413", status: "planejada", obs: "Programada", colaboradores: [{ nome: "Welinton", pontos: 0 }] },
+  { id: "2", data: "2026-08-11", equipe: "Equipe 02", cliente: "Progresso", fazenda: "Progresso", talhao: "TH 01", status: "finalizada", obs: "", colaboradores: [{ nome: "Deivison", pontos: 27 }, { nome: "Emanuel", pontos: 20 }] },
+  { id: "3", data: "2026-08-12", equipe: "Equipe 01", cliente: "Aliança", fazenda: "Aliança", talhao: "TH 02A", status: "andamento", obs: "Iago entrou", colaboradores: [{ nome: "Agnaldo", pontos: 29 }, { nome: "Iago", pontos: 31 }] },
+  { id: "4", data: "2026-09-01", equipe: "Equipe 01", cliente: "Iracema", fazenda: "Iracema", talhao: "TH 01", status: "finalizada", obs: "", colaboradores: [{ nome: "Agnaldo", pontos: 41 }] },
+];
+
+test("totalDia soma pontos dos colaboradores", () => {
+  expect(OP.totalDia(LANCS[1])).toBe(47);
+  expect(OP.totalDia(LANCS[0])).toBe(0);
+  expect(OP.totalDia({})).toBe(0);
+});
+
+test("agg: total, dias trabalhados (pontos>0) e média", () => {
+  const a = OP.agg(LANCS);
+  expect(a.totalPontos).toBe(0 + 47 + 60 + 41); // 148
+  expect(a.diasTrabalhados).toBe(3); // 11/08 (47), 12/08 (60), 01/09 (41) — dia do lanç 0 não conta sozinho, mas 11/08 tem o 47
+  expect(a.mediaDiaria).toBeCloseTo(148 / 3, 5);
+});
+
+test("agg: produtividade por colaborador (dias com pontos>0, soma, média)", () => {
+  const a = OP.agg(LANCS);
+  const agnaldo = a.produtividade.find((p: { nome: string }) => p.nome === "Agnaldo");
+  expect(agnaldo.pontos).toBe(29 + 41);
+  expect(agnaldo.dias).toBe(2);
+  expect(agnaldo.media).toBeCloseTo(70 / 2, 5);
+  const welinton = a.produtividade.find((p: { nome: string }) => p.nome === "Welinton");
+  expect(welinton.pontos).toBe(0);
+  expect(welinton.dias).toBe(0); // pontos 0 → não conta dia
+  // ordenado por pontos desc
+  expect(a.produtividade[0].pontos).toBeGreaterThanOrEqual(a.produtividade[1].pontos);
+});
+
+test("filtra: por data, cliente, equipe, status, colaborador e busca", () => {
+  expect(OP.filtra(LANCS, { de: "2026-08-12" }).length).toBe(2);
+  expect(OP.filtra(LANCS, { ate: "2026-08-11" }).length).toBe(2);
+  expect(OP.filtra(LANCS, { equipe: "Equipe 01" }).length).toBe(3);
+  expect(OP.filtra(LANCS, { status: "finalizada" }).length).toBe(2);
+  expect(OP.filtra(LANCS, { colab: "Iago" }).length).toBe(1);
+  expect(OP.filtra(LANCS, { busca: "iago" }).length).toBe(1);
+  expect(OP.filtra(LANCS, { cliente: "Casari" }).length).toBe(1);
+});
+
+test("gruposPorMes: agrupa e soma por mês, ordenado", () => {
+  const g = OP.gruposPorMes(LANCS);
+  expect(g.length).toBe(2);
+  expect(g[0].ym).toBe("2026-08");
+  expect(g[0].total).toBe(107); // 0 + 47 + 60
+  expect(g[1].ym).toBe("2026-09");
+  expect(g[1].total).toBe(41);
+});
+
+test("mesLabel em pt-BR", () => {
+  expect(OP.mesLabel("2026-08")).toBe("Agosto / 2026");
+  expect(OP.mesLabel("2026-01")).toBe("Janeiro / 2026");
+});
+
+test("statusInfo mapeia rótulo + classe", () => {
+  expect(OP.statusInfo("finalizada")).toEqual({ label: "Finalizada", cls: "op-b-ok" });
+  expect(OP.statusInfo("andamento").cls).toBe("op-b-run");
+  expect(OP.statusInfo("xyz").cls).toBe("op-b-none");
+});
+
+test("hectares: null quando fator ausente; calcula quando fator>0", () => {
+  expect(OP.hectares(100, null)).toBeNull();
+  expect(OP.hectares(100, 0)).toBeNull();
+  expect(OP.hectares(100, 3)).toBe(300);
+});
