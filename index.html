@@ -6286,7 +6286,7 @@ function renderProdColab(host,nome){ const lancs=prodFiltrados(); const hist=OpC
     {lab:'Hectares',val:ha==null?'—':prodNum(ha),c:'gold',sub:'estimados'},
     {lab:'Coletas',val:String(hist.length),c:'gold'} ]); }
 /* ===== Pipeline de projetos — views (Fase 3: timeline + visão do cliente) ===== */
-let _projSel=null, _projVista='lista', _projFiltro={status:'',cliente:'',etapa:'',busca:''};
+let _projSel=null, _projVista='lista', _projFiltro={status:'',cliente:'',etapa:'',busca:''}, _dragProj=null;
 function projCodigos(p){ return pipeEtapasCodigos(p&&p.tipoWorkflowId); }
 function projProgresso(p){ const cs=projCodigos(p); const i=cs.indexOf(p&&p.etapaAtual); if(cs.length<2||i<0)return 0; if((p&&p.status)==='concluido')return 100; return Math.round(i/(cs.length-1)*100); }
 function projProxEtapa(p){ const cs=projCodigos(p); const i=cs.indexOf(p&&p.etapaAtual); return (i>=0&&i<cs.length-1)?cs[i+1]:''; }
@@ -6315,10 +6315,10 @@ function projFiltrados(){ const f=_projFiltro; return (D.projetos||[]).filter(p=
 
 function renderProjLista(host){ const todos=(D.projetos||[]); const ag=PipelineCalc.agg(todos,{slaPorEtapa:pipeSlaMap(pipeTipoPadraoId()),nowISO:nowISO()});
   let h='<div class="lead"><h2>Projetos — pipeline de AP</h2><p>Cada serviço vira um projeto que percorre as etapas do processo. Abra um projeto para ver a <b>linha do tempo</b> com datas, responsáveis, tempos e atrasos. Projetos nascem ao <b>converter um orçamento aceito</b>.</p></div>';
-  h+='<div class="pl-toolbar"><div class="pl-seg"><button class="'+(_projVista==='lista'?'on':'')+'" onclick="projSetVista(\'lista\')">Projetos</button><button class="'+(_projVista==='cliente'?'on':'')+'" onclick="projSetVista(\'cliente\')">Por cliente</button></div></div>';
+  h+='<div class="pl-toolbar"><div class="pl-seg"><button class="'+(_projVista==='lista'?'on':'')+'" onclick="projSetVista(\'lista\')">Projetos</button><button class="'+(_projVista==='kanban'?'on':'')+'" onclick="projSetVista(\'kanban\')">Kanban</button><button class="'+(_projVista==='cliente'?'on':'')+'" onclick="projSetVista(\'cliente\')">Por cliente</button></div></div>';
   h+='<div class="kpis" id="projKpi"></div>';
   if(!todos.length){ host.innerHTML=h+'<div class="op-empty" style="margin-top:14px">Nenhum projeto ainda. Converta um orçamento aceito (Orçamentos › converter) para criar o primeiro projeto do pipeline.</div>'; kpi('projKpi',[{lab:'Projetos',val:'0',c:'gold'}]); return; }
-  h+=(_projVista==='cliente')?projClienteHTML():projListaHTML(); host.innerHTML=h;
+  h+=(_projVista==='cliente')?projClienteHTML():(_projVista==='kanban')?projKanbanHTML():projListaHTML(); host.innerHTML=h;
   kpi('projKpi',[
     {lab:'Projetos ativos',val:String(ag.wip),c:'g',sub:ag.concluidos+' concluídos'},
     {lab:'Atrasados (SLA)',val:String(ag.atrasados),c:ag.atrasados?'r':'g',sub:'etapa acima do prazo'},
@@ -6365,6 +6365,33 @@ function projClienteHTML(){ const list=projFiltrados(); const by=new Map();
        +'<td data-label=""><button class="edbtn" onclick="projAbrir(\''+p.id+'\')">abrir</button></td></tr>'; });
     h+='</tbody></table></div></div>'; });
   return h; }
+
+/* Kanban do pipeline — arrastar move de etapa (confirmado + auditado) */
+function projKanbanHTML(){ const tp=pipeTipoPadraoId(); const etapas=pipeEtapas(tp);
+  const ativos=(D.projetos||[]).filter(p=>p&&(p.status||'ativo')!=='cancelado');
+  const byEtapa={}; etapas.forEach(e=>byEtapa[e.codigo]=[]);
+  ativos.forEach(p=>{ const c=p.etapaAtual; if(!byEtapa[c])byEtapa[c]=[]; byEtapa[c].push(p); });
+  let h='<div class="cap" style="margin-bottom:8px">Arraste um cartão para mover de etapa — a mudança é <b>confirmada</b> e registrada no histórico. No celular, use <b>abrir</b> e mova pela ficha do projeto.</div>';
+  h+='<div class="kan-board">';
+  etapas.forEach(e=>{ const list=byEtapa[e.codigo]||[];
+    h+='<div class="kan-col" ondragover="projDragOver(event)" ondragleave="projDragLeave(event)" ondrop="projDrop(event,\''+e.codigo+'\')"><div class="kan-head">'+esc(e.nome)+' <span class="kan-n">'+list.length+'</span></div><div class="kan-cards">';
+    list.forEach(p=>{ const s=projSla(p); h+=projKanCard(p,s,tp); });
+    if(!list.length)h+='<div class="kan-empty">—</div>';
+    h+='</div></div>'; });
+  return h+'</div>'; }
+function projKanCard(p,s,tp){ return '<div class="kan-card" draggable="true" ondragstart="projDragStart(event,\''+p.id+'\')" ondragend="projDragLeave(event)">'
+  +'<div class="kc-cli"><b>'+esc(p.clienteNome||'—')+'</b></div>'
+  +'<div class="kc-faz">'+esc(p.fazenda||'')+(+p.areaHa>0?(' · '+fnum(p.areaHa)+' ha'):'')+'</div>'
+  +((p.servicos||[]).length?('<div class="kc-serv">'+esc((p.servicos||[]).join(', '))+'</div>'):'')
+  +'<div class="kc-foot"><span class="kc-resp">👤 '+esc(projRespEtapa(p,p.etapaAtual)||'sem resp.')+'</span><span class="pl-sla"><span class="pl-dot '+s.status+'"></span>'+(s.dias!=null?s.dias+'d':'')+'</span></div>'
+  +'<div class="kc-foot" style="margin-top:6px"><span class="kc-num">'+esc(p.numero||'')+'</span><button class="kc-open" onclick="projAbrir(\''+p.id+'\')">abrir</button></div></div>'; }
+function projDragStart(ev,id){ _dragProj=id; try{ev.dataTransfer.setData('text/plain',id); ev.dataTransfer.effectAllowed='move';}catch(e){} }
+function projDragOver(ev){ ev.preventDefault(); try{ev.dataTransfer.dropEffect='move';}catch(e){} const col=ev.currentTarget; if(col&&col.classList)col.classList.add('drop'); }
+function projDragLeave(ev){ const col=ev.currentTarget&&ev.currentTarget.closest?ev.currentTarget.closest('.kan-col'):ev.currentTarget; if(col&&col.classList)col.classList.remove('drop'); document.querySelectorAll('.kan-col.drop').forEach(c=>c.classList.remove('drop')); }
+function projDrop(ev,cod){ ev.preventDefault(); document.querySelectorAll('.kan-col.drop').forEach(c=>c.classList.remove('drop')); let id=''; try{id=ev.dataTransfer.getData('text/plain');}catch(e){} id=id||_dragProj; _dragProj=null; if(!id)return; projMoverKanban(id,cod); }
+function projMoverKanban(id,cod){ const p=projPorId(id); if(!p)return; if(p.etapaAtual===cod)return; const tp=p.tipoWorkflowId;
+  if(!confirm('Mover '+p.numero+' de "'+pipeEtapaNome(tp,p.etapaAtual)+'" para "'+pipeEtapaNome(tp,cod)+'"?\n\nA mudança é registrada no histórico do projeto.'))return;
+  projMover(p,cod,{origem:'kanban'}); commit(); renderProjetosView(); uiToast('→ '+pipeEtapaNome(tp,cod)); }
 
 function renderProjetoDetalhe(host,p){ const tp=p.tipoWorkflowId; const codigos=pipeEtapasCodigos(tp); const marcos=PipelineCalc.marcos(p); const idx=codigos.indexOf(p.etapaAtual); const s=projSla(p); const lead=projLead(p);
   let h='<div class="ed-back" onclick="projFechar()" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-weight:800;color:var(--orange)"><svg class="ed-ic"><use href="#ic-chevron"></use></svg> Voltar aos projetos</div>';
@@ -8239,6 +8266,23 @@ tr.op-total td{background:var(--soft2)!important;color:var(--head);font-weight:8
 .pop-stage .pop-l{display:block;font-size:11px;color:var(--muted);margin-top:3px;font-weight:700;line-height:1.2}
 .pop-stage .pop-atr{display:block;font-size:10px;font-weight:800;color:var(--red);margin-top:4px}
 .pop-stage.hot{border-color:var(--red)}.pop-stage.hot .pop-n{color:var(--red)}
+/* Kanban do pipeline */
+.kan-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+.kan-col{flex:0 0 224px;min-width:224px;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px;transition:background .1s,border-color .1s}
+.kan-col.drop{border-color:var(--leaf);background:var(--tintG)}
+.kan-head{font-weight:800;font-size:12px;color:var(--head);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;text-transform:uppercase;letter-spacing:.3px}
+.kan-n{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:1px 8px;font-size:11px;color:var(--muted)}
+.kan-cards{display:flex;flex-direction:column;gap:8px;min-height:44px}
+.kan-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 11px;cursor:grab;box-shadow:var(--shadow)}
+.kan-card:active{cursor:grabbing}
+.kc-cli{font-size:13.5px;color:var(--head)}
+.kc-faz{font-size:12px;color:var(--muted);margin-top:2px}
+.kc-serv{font-size:11.5px;color:var(--muted);margin-top:3px}
+.kc-foot{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px}
+.kc-resp{font-size:11px;color:var(--muted)}
+.kc-num{font-size:11px;color:var(--muted);font-weight:700}
+.kc-open{background:none;border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:11px;color:var(--leaf);cursor:pointer;font-weight:700}
+.kan-empty{color:var(--muted);font-size:12px;text-align:center;padding:8px}
 /* Modo Campo (operador) — mobile-first, alvos grandes */
 .campo-wrap{max-width:560px;margin:0 auto}
 .campo-op{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-weight:800;box-shadow:var(--shadow)}
