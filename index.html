@@ -641,7 +641,7 @@ header .htxt h1{display:none}
     </div>
     <label for="authPass" id="authPassLbl">Senha</label>
     <input id="authPass" type="password" autocomplete="current-password" placeholder="mínimo 8 caracteres, com letras e números">
-    <div class="authmsg" id="authMsg"></div>
+    <div class="authmsg" id="authMsg" role="alert" aria-live="assertive"></div>
     <button class="btn authbtn" id="authGo" onclick="doAuth()">Entrar</button>
     <div class="authalt" id="authForgotRow"><a id="authForgot" onclick="doForgot()">Esqueci minha senha</a></div>
     <div class="authalt" id="authCancelRow" style="display:none"><a onclick="authCancel()">Cancelar</a></div>
@@ -828,7 +828,6 @@ header .htxt h1{display:none}
       <div class="panel"><h3>Desembolso 2026 — Real vs. a incorrer</h3><div class="cap">Jan–jul já realizado; ago–dez é projeção. O maior custo é serviço de campo.</div><div class="chartbox tall"><canvas id="cCaixa"></canvas></div></div>
       <div class="panel"><h3>Custo por categoria — 2026</h3><div class="cap">Onde o dinheiro sai. Barras maiores = maior alavanca de gestão.</div><div class="chartbox tall"><canvas id="cCat"></canvas></div></div>
     </div>
-    <div class="panel"><h3>Composição do custo 2026</h3><div class="cap">Os 6 maiores concentram a maior parte do desembolso. "Outros R$&nbsp;200k" é um lançamento único de maio, sem categoria — precisa ser rastreado.</div><div class="chartbox tall"><canvas id="cCatPie"></canvas></div></div>
   </section>
 
   <!-- CLIENTES -->
@@ -1323,7 +1322,7 @@ header .htxt h1{display:none}
     <div class="lead"><h2>Lançamentos — sua central de dados</h2>
       <p>Aqui você lança tudo direto no painel, sem Excel. <b>Salva sozinho</b> enquanto você digita (fica guardado neste navegador). Para backup, ou para levar a outro computador, clique em <b>Baixar painel atualizado</b> — gera um arquivo HTML com todos os seus dados dentro. Cada gráfico do painel se atualiza ao vivo conforme você edita.</p></div>
     <div class="edbar">
-      <div class="edstatus ok" id="edStatus">● Tudo salvo</div>
+      <div class="edstatus ok" id="edStatus" role="status" aria-live="polite">● Tudo salvo</div>
       <div class="edbtns">
         <button class="edbtn primary" id="btnSalvar" onclick="salvarTudo()">💾 Salvar tudo</button>
         <button class="edbtn" onclick="baixarPainel()">⬇ Baixar painel atualizado</button>
@@ -2770,12 +2769,8 @@ function renderFin(){
     options:{indexAxis:'y',maintainAspectRatio:false,layout:{padding:{right:46}},plugins:{legend:{display:false},
       datalabels:{display:true,anchor:'end',align:'end',clamp:true,clip:false,offset:3,color:'#1b2a1f',font:{weight:'800',size:10},formatter:v=>BRLk(v)},
       tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{ticks:{callback:v=>BRLk(v)}}}}});
-  const p6=cats.slice(0,6),outros=sum(cats.slice(6).map(x=>x[1]));
-  mk('cCatPie',{type:'doughnut',data:{labels:[...p6.map(x=>x[0]),'Demais'],
-    datasets:[{data:[...p6.map(x=>x[1]),outros],backgroundColor:[...p6.map((_,i)=>C.set[i]),'#cfcabb']}]},
-    options:{maintainAspectRatio:false,cutout:'58%',plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:10.5}}},
-      datalabels:{display:true,color:'#fff',font:{weight:'800',size:10.5},formatter:(v,c)=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);const p=v/t*100;return p>=6?Math.round(p)+'%':'';}},
-      tooltip:{callbacks:{label:c=>c.label+': '+BRL(c.raw)}}}}});
+  /* (Fase 3c) removido o gráfico gêmeo cCatPie (doughnut "Composição do custo") —
+     redundante com o ranking cCat acima; o ranking em barras é mais acionável. */
 }
 function renderSazonalidade(){
   const MES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -3362,9 +3357,9 @@ document.querySelectorAll('#taxseg button').forEach(b=>b.onclick=()=>setTax(pars
 
 /* ---------- tabs ---------- */
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('#tabs button').forEach(x=>{x.classList.remove('active');x.removeAttribute('aria-current');});
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');document.getElementById('v-'+b.dataset.v).classList.add('active');
+  b.classList.add('active');b.setAttribute('aria-current','page');document.getElementById('v-'+b.dataset.v).classList.add('active');
   syncSidebar(b.dataset.v);
   if(b.dataset.v==='edit'){ renderEditors(); var _ve=document.getElementById('v-edit'); if(_ve)_ve.classList.remove('sec-open'); }
   if(b.dataset.v==='config'){ try{renderConfig();}catch(e){console.warn('config',e);} }
@@ -3390,7 +3385,8 @@ function syncSidebar(v){
   /* apenas os itens principais recebem estado ativo; sub-itens (deep-link) não */
   document.querySelectorAll('#sbNav .snav:not(.snav-sub)').forEach(b=>{
     const on=b.dataset.target===v; b.classList.toggle('active',on);
-    if(on){ const tx=b.querySelector('.sb-tx'); if(tx) lbl=tx.textContent; }
+    if(on){ b.setAttribute('aria-current','page'); const tx=b.querySelector('.sb-tx'); if(tx) lbl=tx.textContent; }
+    else b.removeAttribute('aria-current');
   });
   const t=document.getElementById('topCurName'); if(t&&lbl) t.textContent=lbl;
 }
@@ -3413,9 +3409,10 @@ function toggleSidebarCollapse(){
   try{ localStorage.setItem('sidebarCollapsed', c?'1':'0'); }catch(e){}
 }
 /* drawer mobile (mesma sidebar, aberta por ☰) */
-function openDrawer(){ document.body.classList.add('drawer-open'); }
-function closeDrawer(){ document.body.classList.remove('drawer-open'); }
-function toggleDrawer(){ document.body.classList.toggle('drawer-open'); }
+function _drawerAria(){ const bt=document.getElementById('hdrBurger'); if(bt)bt.setAttribute('aria-expanded', document.body.classList.contains('drawer-open')?'true':'false'); }
+function openDrawer(){ document.body.classList.add('drawer-open'); _drawerAria(); }
+function closeDrawer(){ document.body.classList.remove('drawer-open'); _drawerAria(); }
+function toggleDrawer(){ document.body.classList.toggle('drawer-open'); _drawerAria(); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
 (function initSidebar(){
   if(typeof document==='undefined')return;
@@ -3739,7 +3736,7 @@ function commit(){ schedulePersist(); scheduleDash(); }
    auto-save global; complementa com confirmação por registro. */
 function uiToast(msg,cls){ if(typeof document==='undefined')return;
   try{ let t=document.getElementById('uiToast');
-    if(!t){ t=document.createElement('div'); t.id='uiToast'; document.body.appendChild(t); }
+    if(!t){ t=document.createElement('div'); t.id='uiToast'; t.setAttribute('role','status'); t.setAttribute('aria-live','polite'); document.body.appendChild(t); }
     t.textContent=msg; t.className='uitoast show'+(cls?(' '+cls):'');
     clearTimeout(t._h); t._h=setTimeout(()=>{ t.className='uitoast'; }, cls==='err'?2600:1800);
   }catch(e){} }
