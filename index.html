@@ -658,6 +658,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="op"><svg class="sb-ic"><use href="#ic-tractor"></use></svg><span class="sb-tx">Operação</span></button>
     <div class="sb-group">Controle Operacional</div>
     <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
+    <button class="snav" data-target="opamostras"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Envio de Amostras</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
@@ -709,6 +710,7 @@ header .htxt h1{display:none}
   <button data-v="custos">Custos &amp; Coleta</button>
   <button data-v="op">Operação</button>
   <button data-v="opcoleta">Coleta de Pontos</button>
+  <button data-v="opamostras">Envio de Amostras</button>
   <button data-v="edit">✎ Lançamentos</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
@@ -1091,6 +1093,74 @@ header .htxt h1{display:none}
   <datalist id="opEquipesList"></datalist>
   <datalist id="opFazendasList"></datalist>
 
+  <!-- CONTROLE OPERACIONAL · Tela 2 — Envio de Amostras -->
+  <section class="view" id="v-opamostras">
+    <div class="op-head">
+      <div class="lead" style="margin:0"><h2>Controle de Envio de Amostras</h2>
+        <p>Uma linha por remessa enviada. Dias de análise = data do resultado − data de envio. Substitui a planilha "Controle de Envio das Amostras".</p></div>
+      <div class="op-actions">
+        <div class="op-campo" style="min-width:auto"><label>Prazo esperado (dias)</label>
+          <input type="number" id="oaPrazo" min="0" style="width:120px" placeholder="a validar" onchange="opAmSetPrazo()" title="Configurável — acima deste prazo sem resultado, a remessa fica 'atrasada'"></div>
+        <button class="btn" style="background:#0A6A30;align-self:end" onclick="opAmNovo()">+ Novo envio</button>
+      </div>
+    </div>
+    <div class="op-cards" id="oaCards"></div>
+    <div class="op-filtros">
+      <div class="op-campo"><label>Data inicial</label><input type="date" id="oaDe"></div>
+      <div class="op-campo"><label>Data final</label><input type="date" id="oaAte"></div>
+      <div class="op-campo"><label>Fazenda</label><select id="oaFazenda"></select></div>
+      <div class="op-campo"><label>Responsável</label><select id="oaResp"></select></div>
+      <div class="op-campo"><label>Situação</label><select id="oaSituacao">
+        <option value="">Todas</option><option value="aguardando">Aguardando</option>
+        <option value="atrasado">Atrasado</option><option value="recebido">Resultado recebido</option></select></div>
+      <div class="op-campo busca"><label>Buscar</label><input type="text" id="oaBusca" placeholder="fazenda, talhão, observação…"></div>
+      <div class="op-campo" style="min-width:auto"><label>&nbsp;</label>
+        <div style="display:flex;gap:8px"><button class="btn" style="background:#0A6A30" onclick="opAmAplicaFiltro()">Filtrar</button>
+        <button class="op-linkbtn" onclick="opAmLimpaFiltro()">Limpar</button></div></div>
+    </div>
+    <div class="op-tbl-wrap">
+      <div class="op-tbl-head"><h3>Remessas de amostras</h3><span class="op-count" id="oaCount"></span></div>
+      <div class="op-scroll">
+        <table class="op-tbl">
+          <thead><tr>
+            <th class="op-colfixa">Data envio</th><th>Fazenda(s)</th><th>Talhões</th><th>Etiquetagem</th>
+            <th>Resp. envio</th><th class="num">Volume</th><th>Data resultado</th><th class="num">Dias</th><th>Situação</th><th></th>
+          </tr></thead>
+          <tbody id="oaBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="legenda" style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);align-items:center">
+      <span><span class="op-badge op-b-wait">Aguardando</span></span>
+      <span><span class="op-badge op-b-late">Atrasado</span></span>
+      <span><span class="op-badge op-b-ok">Resultado recebido</span></span>
+      <span>Coluna <b>Dias</b> = data resultado − data envio (calculado).</span>
+    </div>
+  </section>
+
+  <!-- modal de remessa (Amostras) -->
+  <div class="op-modal-bg" id="oaModal">
+    <div class="op-modal">
+      <div class="op-mhead"><h3 id="oaModalTit">Novo envio</h3><button class="op-linkbtn" style="margin-left:auto" onclick="opAmFecha()">✕</button></div>
+      <div class="op-mbody">
+        <label>Data de envio<input type="date" id="maEnvio"></label>
+        <label>Responsável do envio<input type="text" id="maResp" placeholder="ex.: Álvaro"></label>
+        <label>Volume (nº de amostras)<input type="number" id="maVolume" min="0" placeholder="ex.: 120"></label>
+        <label>Data do resultado<input type="date" id="maResultado"></label>
+        <label class="full">Fazenda(s)<input type="text" id="maFaz" placeholder="separe por vírgula: Santa Helena, Telles Pires" list="oaFazendasList"></label>
+        <label class="full">Talhões<input type="text" id="maTalhoes" placeholder="separe por vírgula: TH 01, TH 02, TH 03"></label>
+        <label class="full">Etiquetagem (quem etiquetou)<input type="text" id="maEtiq" placeholder="separe por vírgula: Álvaro, Wons, Bruno"></label>
+        <label class="full">Observações<textarea id="maObs" rows="2" placeholder="observações da remessa…"></textarea></label>
+      </div>
+      <div class="op-mfoot">
+        <button class="op-linkbtn" id="oaDel" style="margin-right:auto;color:#c0392b" onclick="opAmExcluir()">Excluir</button>
+        <button class="btn" onclick="opAmFecha()">Cancelar</button>
+        <button class="btn" style="background:#0A6A30" onclick="opAmSalvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+  <datalist id="oaFazendasList"></datalist>
+
   <!-- LANÇAMENTOS (editor) -->
   <section class="view" id="v-edit">
     <div class="lead"><h2>Lançamentos — sua central de dados</h2>
@@ -1266,6 +1336,14 @@ function hydrate(d){
   if(d.opColeta.hectaresFator===undefined) d.opColeta.hectaresFator=null;
   d.opColeta.lancamentos.forEach(l=>{ if(!Array.isArray(l.colaboradores)) l.colaboradores=[];
     if(!l.status) l.status='andamento'; if(!l.id) l.id='opc'+Math.random().toString(36).slice(2,9); });
+  /* Controle Operacional — Tela 2: Envio de Amostras (aditivo).
+     prazoDias fica NULL ("a validar"): sem prazo definido, nada é marcado como
+     "atrasado" automaticamente (situação = recebido / aguardando). */
+  if(!d.opAmostras || typeof d.opAmostras!=='object') d.opAmostras={remessas:[], prazoDias:null};
+  if(!Array.isArray(d.opAmostras.remessas)) d.opAmostras.remessas=[];
+  if(d.opAmostras.prazoDias===undefined) d.opAmostras.prazoDias=null;
+  d.opAmostras.remessas.forEach(r=>{ ['fazendas','talhoes','etiquetagem'].forEach(k=>{ if(!Array.isArray(r[k])) r[k]=[]; });
+    if(!r.id) r.id='opa'+Math.random().toString(36).slice(2,9); });
   if(!Array.isArray(d.visitas)) d.visitas=[];
   if(!d.custoCategoria2026) d.custoCategoria2026={};
   if(!d.custoCategoria2025) d.custoCategoria2025={};
@@ -1813,6 +1891,114 @@ function opColetaSalvar(){
   else { rec.id='opc'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opColeta.lancamentos.push(rec); }
   opColetaFecha(); if(typeof commit==='function') commit(); renderOpColeta(); }
 function opColetaExcluir(){ if(!_opColEdit)return; if(!confirm('Excluir este lançamento?'))return; D.opColeta.lancamentos=(D.opColeta.lancamentos||[]).filter(x=>x.id!==_opColEdit); opColetaFecha(); if(typeof commit==='function') commit(); renderOpColeta(); }
+// <op-amostras-calc>
+/* Controle Operacional · Tela 2 — CÁLCULO PURO (sem DOM/D): dias de análise,
+   situação (recebido/aguardando/atrasado), tempo médio e agregados.
+   `hoje` e `prazoDias` são injetados → determinístico e testável (bun). */
+const OpAmostrasCalc=(function(){
+  const SIT={recebido:{label:'Resultado recebido',cls:'op-b-ok'},aguardando:{label:'Aguardando',cls:'op-b-wait'},atrasado:{label:'Atrasado',cls:'op-b-late'}};
+  function situacaoInfo(s){ return SIT[s]||{label:s||'—',cls:'op-b-none'}; }
+  // dias civis desde a "epoch" (algoritmo de Howard Hinnant) — sem Date/TZ.
+  function toDays(s){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||'')); if(!m) return null;
+    let y=+m[1]; const mo=+m[2], d=+m[3]; if(mo<=2) y-=1;
+    const era=Math.floor((y>=0?y:y-399)/400); const yoe=y-era*400;
+    const doy=Math.floor((153*(mo>2?mo-3:mo+9)+2)/5)+d-1;
+    const doe=yoe*365+Math.floor(yoe/4)-Math.floor(yoe/100)+doy;
+    return era*146097+doe-719468; }
+  function diffDias(a,b){ const da=toDays(a), db=toDays(b); return (da==null||db==null)?null:(db-da); }
+  function situacao(r,hoje,prazoDias){ if(r&&r.dataResultado) return 'recebido';
+    const dias=diffDias(r&&r.dataEnvio,hoje);
+    if(prazoDias!=null && (+prazoDias>0) && dias!=null && dias>+prazoDias) return 'atrasado';
+    return 'aguardando'; }
+  // dias exibidos: recebido → resultado−envio; senão → dias em aberto (hoje−envio).
+  function diasRemessa(r,hoje){ if(r&&r.dataResultado) return diffDias(r.dataEnvio,r.dataResultado); return diffDias(r&&r.dataEnvio,hoje); }
+  function filtra(remessas,f){ f=f||{}; return (remessas||[]).filter(r=>{
+    if(f.de && String(r.dataEnvio||'')<f.de) return false;
+    if(f.ate && String(r.dataEnvio||'')>f.ate) return false;
+    if(f.fazenda && !((r.fazendas||[]).includes(f.fazenda))) return false;
+    if(f.resp && (r.respEnvio||'')!==f.resp) return false;
+    if(f.situacao){ /* aplicado fora (depende de hoje/prazo) */ }
+    if(f.busca){ const q=String(f.busca).toLowerCase();
+      const blob=[(r.fazendas||[]).join(' '),(r.talhoes||[]).join(' '),(r.etiquetagem||[]).join(' '),r.obs||'',r.respEnvio||''].join(' ').toLowerCase();
+      if(!blob.includes(q)) return false; }
+    return true; }); }
+  function agg(remessas,hoje,prazoDias){ remessas=remessas||[];
+    let aguardando=0,atrasado=0,recebido=0; const recDias=[];
+    remessas.forEach(r=>{ const s=situacao(r,hoje,prazoDias);
+      if(s==='recebido'){ recebido++; const d=diffDias(r.dataEnvio,r.dataResultado); if(d!=null) recDias.push(d); }
+      else if(s==='atrasado') atrasado++; else aguardando++; });
+    const tempoMedio=recDias.length? recDias.reduce((a,b)=>a+b,0)/recDias.length : null;
+    return {total:remessas.length,aguardando,atrasado,recebido,tempoMedio}; }
+  return {situacao,situacaoInfo,diffDias,toDays,diasRemessa,filtra,agg};
+})();
+// </op-amostras-calc>
+/* ===== Controle Operacional · Tela 2 — runtime ===== */
+let _opAmFiltro={}, _opAmEdit=null;
+function opHoje(){ try{ return new Date().toISOString().slice(0,10); }catch(e){ return ''; } }
+function opAmFazendas(){ const s=new Set(); (D.opAmostras.remessas||[]).forEach(r=>(r.fazendas||[]).forEach(f=>f&&s.add(f))); return [...s].sort(); }
+function opAmResp(){ return [...new Set((D.opAmostras.remessas||[]).map(r=>r.respEnvio).filter(Boolean))].sort(); }
+function renderOpAmostras(){
+  if(typeof document==='undefined')return;
+  const hoje=opHoje(), prazo=D.opAmostras.prazoDias;
+  opFillSelect('oaFazenda',opAmFazendas(),_opAmFiltro.fazenda,'Todas');
+  opFillSelect('oaResp',opAmResp(),_opAmFiltro.resp,'Todos');
+  const pz=document.getElementById('oaPrazo'); if(pz && document.activeElement!==pz) pz.value=(prazo!=null?prazo:'');
+  const dlF=document.getElementById('oaFazendasList'); if(dlF) dlF.innerHTML=opAmFazendas().map(v=>'<option value="'+esc(v)+'">').join('');
+  let remessas=OpAmostrasCalc.filtra(D.opAmostras.remessas||[],_opAmFiltro);
+  if(_opAmFiltro.situacao) remessas=remessas.filter(r=>OpAmostrasCalc.situacao(r,hoje,prazo)===_opAmFiltro.situacao);
+  const a=OpAmostrasCalc.agg(remessas,hoje,prazo);
+  const cards=[
+    {rot:'Envios no período',val:a.total,obs:'remessas',accent:'accent'},
+    {rot:'Aguardando resultado',val:a.aguardando,obs:'sem resultado'},
+    {rot:'Atrasados',val:a.atrasado,obs:(prazo!=null?('> '+prazo+' dias'):'defina o prazo'),accent:'accent-gold'},
+    {rot:'Resultados recebidos',val:a.recebido,obs:'concluídos'},
+    {rot:'Tempo médio de análise',val:(a.tempoMedio!=null?a.tempoMedio.toFixed(1):'—'),obs:'dias (recebidos)'},
+  ];
+  document.getElementById('oaCards').innerHTML=cards.map(c=>'<div class="op-card '+(c.accent||'')+'"><div class="op-rot">'+esc(c.rot)+'</div><div class="op-val">'+c.val+'</div><div class="op-obs">'+esc(c.obs)+'</div></div>').join('');
+  const dataFmt=s=>{ const m=String(s||'').split('-'); return m.length===3?(m[2]+'/'+m[1]+'/'+m[0]):(s||''); };
+  const chips=(arr,max)=>{ arr=arr||[]; const vis=arr.slice(0,max||99).map(v=>'<span class="op-chip">'+esc(v)+'</span>').join(''); const rest=arr.length-(max||99); return vis+(rest>0?('<span class="op-chip" style="color:var(--muted)">…+'+rest+'</span>'):'')||'<span class="op-badge op-b-none">—</span>'; };
+  const ordenadas=remessas.slice().sort((x,y)=>String(y.dataEnvio||'').localeCompare(String(x.dataEnvio||'')));
+  let html='';
+  if(!ordenadas.length) html='<tr><td colspan="10"><div class="op-empty">Nenhuma remessa no período. Clique em <b>+ Novo envio</b> para começar.</div></td></tr>';
+  ordenadas.forEach(r=>{ const s=OpAmostrasCalc.situacao(r,hoje,prazo); const si=OpAmostrasCalc.situacaoInfo(s); const dias=OpAmostrasCalc.diasRemessa(r,hoje);
+    html+='<tr><td class="op-colfixa">'+esc(dataFmt(r.dataEnvio))+'</td>'
+      +'<td>'+chips(r.fazendas)+'</td>'
+      +'<td>'+chips(r.talhoes,3)+'</td>'
+      +'<td>'+chips(r.etiquetagem)+'</td>'
+      +'<td>'+esc(r.respEnvio||'—')+'</td>'
+      +'<td class="num">'+(r.volume!=null&&r.volume!==''?esc(String(r.volume)):'—')+'</td>'
+      +'<td>'+(r.dataResultado?esc(dataFmt(r.dataResultado)):'<span style="color:var(--muted)">—</span>')+'</td>'
+      +'<td class="num">'+(dias!=null?dias:'—')+'</td>'
+      +'<td><span class="op-badge '+si.cls+'">'+esc(si.label)+'</span></td>'
+      +'<td><button class="op-linkbtn" onclick="opAmEditar(\''+r.id+'\')">editar</button></td></tr>';
+  });
+  document.getElementById('oaBody').innerHTML=html;
+  document.getElementById('oaCount').textContent=ordenadas.length+' envio(s)';
+}
+function opAmAplicaFiltro(){ _opAmFiltro={de:opv('oaDe'),ate:opv('oaAte'),fazenda:opv('oaFazenda'),resp:opv('oaResp'),situacao:opv('oaSituacao'),busca:opv('oaBusca')}; renderOpAmostras(); }
+function opAmLimpaFiltro(){ _opAmFiltro={}; ['oaDe','oaAte','oaFazenda','oaResp','oaSituacao','oaBusca'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';}); renderOpAmostras(); }
+function opAmSetPrazo(){ const v=opv('oaPrazo').trim(); D.opAmostras.prazoDias=(v===''?null:(+v||0)); if(typeof commit==='function') commit(); renderOpAmostras(); }
+function opAmList(arr){ return (arr||[]).join(', '); }
+function opAmParse(s){ return String(s||'').split(',').map(x=>x.trim()).filter(Boolean); }
+function opAmNovo(){ _opAmEdit=null; document.getElementById('oaModalTit').textContent='Novo envio';
+  ['maEnvio','maResp','maVolume','maResultado','maObs','maFaz','maTalhoes','maEtiq'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';});
+  document.getElementById('oaDel').style.display='none'; document.getElementById('oaModal').classList.add('on'); }
+function opAmEditar(id){ const r=(D.opAmostras.remessas||[]).find(x=>x.id===id); if(!r)return; _opAmEdit=id;
+  document.getElementById('oaModalTit').textContent='Editar envio';
+  document.getElementById('maEnvio').value=r.dataEnvio||''; document.getElementById('maResp').value=r.respEnvio||'';
+  document.getElementById('maVolume').value=(r.volume!=null?r.volume:''); document.getElementById('maResultado').value=r.dataResultado||'';
+  document.getElementById('maObs').value=r.obs||''; document.getElementById('maFaz').value=opAmList(r.fazendas);
+  document.getElementById('maTalhoes').value=opAmList(r.talhoes); document.getElementById('maEtiq').value=opAmList(r.etiquetagem);
+  document.getElementById('oaDel').style.display=''; document.getElementById('oaModal').classList.add('on'); }
+function opAmFecha(){ document.getElementById('oaModal').classList.remove('on'); }
+function opAmSalvar(){
+  const rec={dataEnvio:opv('maEnvio'),respEnvio:opv('maResp').trim(),volume:opv('maVolume').trim(),dataResultado:opv('maResultado'),obs:opv('maObs').trim(),
+    fazendas:opAmParse(opv('maFaz')),talhoes:opAmParse(opv('maTalhoes')),etiquetagem:opAmParse(opv('maEtiq'))};
+  if(!rec.dataEnvio){ alert('Informe a data de envio.'); return; }
+  if(_opAmEdit){ const r=(D.opAmostras.remessas||[]).find(x=>x.id===_opAmEdit); if(r) Object.assign(r,rec); }
+  else { rec.id='opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opAmostras.remessas.push(rec); }
+  opAmFecha(); if(typeof commit==='function') commit(); renderOpAmostras(); }
+function opAmExcluir(){ if(!_opAmEdit)return; if(!confirm('Excluir esta remessa?'))return; D.opAmostras.remessas=(D.opAmostras.remessas||[]).filter(x=>x.id!==_opAmEdit); opAmFecha(); if(typeof commit==='function') commit(); renderOpAmostras(); }
 /* REGRA DE NEGÓCIO (única): a comissão incide sobre a RECEITA BRUTA da venda —
    custos (laboratório, custo direto) NÃO são descontados da base. Usada em todos
    os pontos para que empresa, funil, carteira e segmentos conciliem. */
@@ -2652,6 +2838,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
   if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
+  if(b.dataset.v==='opamostras'){ try{renderOpAmostras();}catch(e){console.warn('opAmostras',e);} }
   if(b.dataset.v==='ia'){ try{renderIAConhecimento();}catch(e){} }
   if(b.dataset.v==='iamem'){ try{renderIAMemoria();}catch(e){} }
   if(b.dataset.v==='iahub'){ try{renderIAHub();}catch(e){} }
