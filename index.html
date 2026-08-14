@@ -331,6 +331,9 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 #v-metas[data-mt=venda] .mt-comissao,#v-metas[data-mt=venda] .mt-margem,
 #v-metas[data-mt=comissao] .mt-venda,#v-metas[data-mt=comissao] .mt-margem,
 #v-metas[data-mt=margem] .mt-venda,#v-metas[data-mt=margem] .mt-comissao{display:none}
+/* Hub de Cadastros (abas internas em Safras & Parâmetros) */
+.ctpane{display:none}
+.ctpane.on{display:block}
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -719,7 +722,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="opentregas"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Controle de Entregas</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
-    <button class="snav" data-target="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Safras &amp; Parâmetros</span></button>
+    <button class="snav" data-target="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Cadastros &amp; Parâmetros</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
     <!-- Sidebar de IA enxuta (Fase 4): a Central de IA reúne todas as sub-telas em
          pílulas (Prioridades, Agentes, Automações, Alertas, WhatsApp, Aprovações,
@@ -767,7 +770,7 @@ header .htxt h1{display:none}
   <button data-v="opamostras">Envio de Amostras</button>
   <button data-v="opentregas">Controle de Entregas</button>
   <button data-v="edit">✎ Lançamentos</button>
-  <button data-v="config">⚙ Safras &amp; Parâmetros</button>
+  <button data-v="config">⚙ Cadastros &amp; Parâmetros</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
   <button data-v="iahub" id="tabIAHub" style="display:none">🧠 IA · Central</button>
@@ -1351,7 +1354,7 @@ header .htxt h1{display:none}
     </div>
     <div class="ed-back" id="edBack" onclick="edCloseSec()"><svg class="ed-ic"><use href="#ic-chevron"></use></svg><span id="edBackTx">Voltar às seções</span></div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
-    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edVeiculos"></div><div class="edcard" id="edOrcamentos"></div><div class="edcard" id="edMatrizCusto"></div></div>
+    <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edOrcamentos"></div><div class="edcard" id="edMatrizCusto"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
     <div class="edsec" data-sec="funil" style="display:none"><div class="edcard" id="edMetasSafra"></div><div class="edcard" id="edFunil"></div></div>
     <div class="edsec" data-sec="precos" style="display:none"><div class="edcard" id="edPrecos"></div></div>
@@ -1365,22 +1368,63 @@ header .htxt h1{display:none}
   </section>
 
   <!-- CONFIGURAÇÕES · Safras & Parâmetros -->
-  <section class="view" id="v-config">
-    <div class="lead"><h2>Safras &amp; Parâmetros</h2>
-      <p>Aqui você <b>cria e organiza as safras</b> e ajusta os <b>parâmetros globais</b> da plataforma. Uma safra nova entra no seletor do topo e <b>nasce vazia</b> — nada de outra safra vaza para ela; comece pelo Funil, Metas e Preços dela.</p></div>
-    <div class="panel"><h3>Safras</h3>
-      <div class="cap">A safra <b>base</b> é a que tem a base financeira/operacional lançada (é a que o topo reflete). As demais servem para <b>projetar</b> (funil, metas, preços por safra).</div>
-      <div id="cfgSafras"></div>
-      <div class="edform" style="margin-top:12px;align-items:flex-end">
-        <label>Nova safra (AA/AA)<input id="cfgNovaSafra" placeholder="ex.: 28/29" maxlength="5" style="width:140px"></label>
-        <button class="edbtn primary" onclick="cfgAddSafra()">+ Adicionar safra</button>
-        <button class="edbtn" onclick="cfgSugereSafra()" title="Sugere a próxima safra">↦ Próxima</button>
-        <span class="cap" id="cfgSafraMsg" style="align-self:center"></span>
+  <section class="view" id="v-config" data-ct="colab">
+    <div class="lead"><h2>Cadastros, Safras &amp; Parâmetros</h2>
+      <p>Base única de <b>cadastros</b> da plataforma — colaboradores, veículos, equipamentos, clientes, fazendas e municípios — junto das <b>safras</b> e dos <b>parâmetros globais</b>. Os nomes escolhidos nas outras telas (Colaborador, Veículo, Vendedor, Serviço…) nascem aqui. Tudo salva automaticamente.</p></div>
+    <div class="mtabs" id="cadTabs">
+      <button class="mtab on" data-ct="colab" onclick="cadTab('colab')">Colaboradores</button>
+      <button class="mtab" data-ct="veic" onclick="cadTab('veic')">Veículos</button>
+      <button class="mtab" data-ct="equip" onclick="cadTab('equip')">Equipamentos</button>
+      <button class="mtab" data-ct="cli" onclick="cadTab('cli')">Clientes</button>
+      <button class="mtab" data-ct="faz" onclick="cadTab('faz')">Fazendas</button>
+      <button class="mtab" data-ct="muni" onclick="cadTab('muni')">Municípios</button>
+      <button class="mtab" data-ct="safras" onclick="cadTab('safras')">Safras</button>
+      <button class="mtab" data-ct="params" onclick="cadTab('params')">Parâmetros</button>
+    </div>
+
+    <div class="ctpane on" data-pane="colab"><div class="edcard" id="cadColab"></div></div>
+
+    <div class="ctpane" data-pane="veic"><div class="edcard" id="edVeiculos"></div></div>
+
+    <div class="ctpane" data-pane="equip">
+      <div class="panel"><h3>🔧 Equipamentos &amp; ferramentas <span class="ia-badge">Chega na Fase 5</span></h3>
+        <div class="cap">Cadastro de equipamentos e ferramentas, vinculados a colaborador e centro de custo. Ainda sem funcionalidade — nenhum dado fictício é exibido aqui.</div></div>
+    </div>
+
+    <div class="ctpane" data-pane="cli">
+      <div class="panel"><h3>👤 Clientes</h3>
+        <div class="cap">O cadastro e a edição de clientes/vendas estão hoje em <b>Lançamentos › Clientes e vendas</b>. Nas próximas fases este cartão ganha os vínculos de <b>fazenda</b> e <b>município</b> por aqui.</div>
+        <div style="margin-top:10px"><button class="edbtn primary" onclick="irPara('edit')">Abrir Lançamentos › Clientes</button></div></div>
+    </div>
+
+    <div class="ctpane" data-pane="faz">
+      <div class="panel"><h3>🌱 Fazendas <span class="ia-badge">Chega na Fase 3</span></h3>
+        <div class="cap">Cada fazenda pertence a um cliente e fica em um município. A tela listará automaticamente os clientes já cadastrados.</div></div>
+    </div>
+
+    <div class="ctpane" data-pane="muni">
+      <div class="panel"><h3>📍 Municípios <span class="ia-badge">Chega na Fase 2</span></h3>
+        <div class="cap">Base de municípios para a gestão por município (rollups de área e receita).</div></div>
+    </div>
+
+    <div class="ctpane" data-pane="safras">
+      <div class="panel"><h3>Safras</h3>
+        <div class="cap">A safra <b>base</b> é a que tem a base financeira/operacional lançada (é a que o topo reflete). As demais servem para <b>projetar</b> (funil, metas, preços por safra).</div>
+        <div id="cfgSafras"></div>
+        <div class="edform" style="margin-top:12px;align-items:flex-end">
+          <label>Nova safra (AA/AA)<input id="cfgNovaSafra" placeholder="ex.: 28/29" maxlength="5" style="width:140px"></label>
+          <button class="edbtn primary" onclick="cfgAddSafra()">+ Adicionar safra</button>
+          <button class="edbtn" onclick="cfgSugereSafra()" title="Sugere a próxima safra">↦ Próxima</button>
+          <span class="cap" id="cfgSafraMsg" style="align-self:center"></span>
+        </div>
       </div>
     </div>
-    <div class="panel"><h3>Parâmetros globais</h3>
-      <div class="cap">Valores padrão usados nos cálculos e nas telas operacionais. Salvam automaticamente.</div>
-      <div id="cfgParams"></div>
+
+    <div class="ctpane" data-pane="params">
+      <div class="panel"><h3>Parâmetros globais</h3>
+        <div class="cap">Valores padrão usados nos cálculos e nas telas operacionais. Salvam automaticamente.</div>
+        <div id="cfgParams"></div>
+      </div>
     </div>
   </section>
 
@@ -3503,6 +3547,9 @@ function renderConfig(){
       '<label>Prazo de amostras (dias)<input type="number" min="0" step="1" value="'+prazo+'" placeholder="sem prazo" onchange="cfgSetParam(\'prazo\',this.value)"></label>'+
       '</div>';
   }
+  // hub de cadastros: popula os hosts das abas internas (Fase 1)
+  try{ renderColaboradoresEditor(); }catch(e){}
+  try{ renderVeiculos(); }catch(e){}
 }
 function cfgAddSafra(){
   const el=document.getElementById('cfgNovaSafra'); let v=(el&&el.value||'').trim();
@@ -3687,7 +3734,7 @@ function mergeImport(prev, fresh){
   // importação — senão hydrate() os recria vazios e apaga o trabalho manual.
   // Controle Operacional (opColeta/opAmostras/opEntregas) e as tabelas por safra
   // (metasSafra/precosSafra) só existem aqui; sem preservar, a importação zera tudo.
-  ['lancamentos','recorrencias','centrosCusto','veiculos','orcamentos','funil',
+  ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','orcamentos','funil',
    'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa',
    'opColeta','opAmostras','opEntregas','metasSafra','precosSafra']
    .forEach(function(k){ if(_temDados(prev[k])) fresh[k]=prev[k]; });
@@ -5092,6 +5139,53 @@ function renderVeiculos(){
   host.querySelectorAll('input.vcf,select.vcf').forEach(inp=>{ inp.onchange=()=>{ if(!_veiForm)return; const k=inp.dataset.k; _veiForm[k]=(k==='kmInicial'||k==='kmAtual')?pnum(inp.value):inp.value; }; });
   host.querySelectorAll('button.vedit').forEach(b=>b.onclick=()=>editarVei(b.dataset.id));
   host.querySelectorAll('button.vrem').forEach(b=>b.onclick=()=>removerVei(b.dataset.id));
+}
+/* ===== Hub de Cadastros: abas internas (Fase 1) ===== */
+function cadTab(t){ const sec=document.getElementById('v-config'); if(!sec)return;
+  sec.dataset.ct=t;
+  sec.querySelectorAll('#cadTabs .mtab').forEach(b=>b.classList.toggle('on',b.dataset.ct===t));
+  sec.querySelectorAll('.ctpane').forEach(p=>p.classList.toggle('on',p.dataset.pane===t));
+  if(t==='colab'){ try{renderColaboradoresEditor();}catch(e){} }
+  if(t==='veic'){ try{renderVeiculos();}catch(e){} }
+}
+/* ===== cadastro de colaboradores (Fase 1) — nomes que alimentam os seletores da plataforma ===== */
+let _colabForm=null;
+function novoColabForm(){ _colabForm={id:'',nome:'',cargo:'',centroCusto:'',ativo:true}; renderColaboradoresEditor(); }
+function editarColab(id){ const c=(D.colaboradores||[]).find(x=>x.id===id); if(c){ _colabForm=JSON.parse(JSON.stringify(c)); renderColaboradoresEditor(); } }
+function salvarColabForm(){ const F=_colabForm; if(!F)return; if(!(F.nome||'').trim()){ uiToast('Informe o nome do colaborador.','err'); return; }
+  if(!Array.isArray(D.colaboradores)) D.colaboradores=[];
+  if(F.id){ const i=D.colaboradores.findIndex(c=>c.id===F.id); if(i>=0)D.colaboradores[i]=F; }
+  else { F.id='col'+uidLanc(); D.colaboradores.push(F); }
+  _colabForm=null; commit(); renderColaboradoresEditor(); uiToast('✓ Colaborador salvo'); }
+function removerColab(id){ const c=(D.colaboradores||[]).find(x=>x.id===id); if(!c)return;
+  if(!confirm('Remover o colaborador "'+(c.nome||'')+'" do cadastro? As referências por nome (lançamentos, vendas, veículos) continuam como estão.'))return;
+  D.colaboradores=(D.colaboradores||[]).filter(x=>x.id!==id); commit(); renderColaboradoresEditor(); }
+function renderColaboradoresEditor(){
+  const host=document.getElementById('cadColab'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+(ph||'—')+'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const cols=D.colaboradores||[];
+  let h='<div class="edhead"><h3>👥 Colaboradores</h3><p class="edhelp">Base de pessoas da equipe. Os nomes daqui alimentam os seletores de <b>Colaborador / Responsável / Vendedor</b> em toda a plataforma (despesas, veículos, coleta). O acompanhamento de <b>metas por colaborador</b> continua na aba <b>Equipe</b>.</p></div>';
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="colabNovo">+ Novo colaborador</button></div>';
+  if(_colabForm){ const F=_colabForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar colaborador':'Novo colaborador')+'</h3></div><div class="labprec" style="gap:10px 14px">'+
+      field('Nome',"<input class='edinp ccf' data-k='nome' value='"+esc(F.nome||'')+"' placeholder='ex.: De Ferran'>")+
+      field('Cargo / papel',"<input class='edinp ccf' data-k='cargo' value='"+esc(F.cargo||'')+"' placeholder='ex.: Consultoria e Vendas'>")+
+      field('Centro de custo',"<select class='edinp ccf' data-k='centroCusto'>"+sel(F.centroCusto,nomesCentros(),'—')+"</select>")+
+      field('Ativo',"<select class='edinp ccf' data-k='ativo'><option value='true'"+(F.ativo!==false?' selected':'')+">Sim</option><option value='false'"+(F.ativo===false?' selected':'')+">Não</option></select>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="colabSalvar">Salvar colaborador</button><button class="edbtn ghost" id="colabCancelar">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Nome</th><th>Cargo / papel</th><th>Centro de custo</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  if(!cols.length)h+='<tr><td colspan="5" style="color:var(--muted);padding:14px 6px">Nenhum colaborador cadastrado. Clique em <b>+ Novo colaborador</b>.</td></tr>';
+  cols.forEach(c=>{ h+='<tr><td><b>'+esc(c.nome||'—')+'</b></td><td>'+esc(c.cargo||'—')+'</td><td>'+esc(c.centroCusto||'—')+'</td><td>'+(c.ativo!==false?'Sim':'<span style="color:var(--muted)">Não</span>')+'</td>'+
+    '<td style="white-space:nowrap;text-align:right"><button class="edbtn cedit" data-id="'+esc(c.id)+'">editar</button> <button class="edbtn ghost crem" data-id="'+esc(c.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('colabNovo'); if(nv)nv.onclick=novoColabForm;
+  const sv=document.getElementById('colabSalvar'); if(sv)sv.onclick=salvarColabForm;
+  const cc=document.getElementById('colabCancelar'); if(cc)cc.onclick=()=>{ _colabForm=null; renderColaboradoresEditor(); };
+  host.querySelectorAll('input.ccf,select.ccf').forEach(inp=>{ inp.onchange=()=>{ if(!_colabForm)return; const k=inp.dataset.k; _colabForm[k]=(k==='ativo')?(inp.value==='true'):inp.value; }; });
+  host.querySelectorAll('button.cedit').forEach(b=>b.onclick=()=>editarColab(b.dataset.id));
+  host.querySelectorAll('button.crem').forEach(b=>b.onclick=()=>removerColab(b.dataset.id));
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
