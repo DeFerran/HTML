@@ -1312,7 +1312,7 @@ header .htxt h1{display:none}
       <div class="op-mhead"><h3 id="oeModalTit">Nova entrega</h3><button class="op-linkbtn" style="margin-left:auto" onclick="opEnFecha()">✕</button></div>
       <div class="op-mbody">
         <label>Cliente<select id="meCliente"></select></label>
-        <label>Fazenda<input type="text" id="meFazenda" placeholder="opcional"></label>
+        <label>Fazenda<input type="text" id="meFazenda" placeholder="opcional" list="opEnFazendasList"></label>
         <label>Área (ha)<input type="number" id="meArea" min="0" placeholder="ex.: 1050"></label>
         <label>Observações<input type="text" id="meObs" placeholder="opcional"></label>
         <div class="full" style="border-top:1px solid var(--line);padding-top:12px;margin-top:4px">
@@ -1327,6 +1327,7 @@ header .htxt h1{display:none}
       </div>
     </div>
   </div>
+  <datalist id="opEnFazendasList"></datalist>
 
   <!-- LANÇAMENTOS (editor) -->
   <section class="view" id="v-edit">
@@ -2201,7 +2202,7 @@ function renderOpColeta(){
   opFillSelect('opfColab',opColColabs(),_opColFiltro.colab,'Todos');
   const fEl=document.getElementById('opFator'); if(fEl && document.activeElement!==fEl) fEl.value=(D.opColeta.hectaresFator!=null?D.opColeta.hectaresFator:'');
   const dlE=document.getElementById('opEquipesList'); if(dlE) dlE.innerHTML=opColEquipes().map(v=>'<option value="'+esc(v)+'">').join('');
-  const dlF=document.getElementById('opFazendasList'); if(dlF) dlF.innerHTML=opColFazendas().map(v=>'<option value="'+esc(v)+'">').join('');
+  const dlF=document.getElementById('opFazendasList'); if(dlF) dlF.innerHTML=opFazSugestoes(opColFazendas()).map(v=>'<option value="'+esc(v)+'">').join('');
   const lancs=OpColetaCalc.filtra(D.opColeta.lancamentos||[],_opColFiltro);
   const a=OpColetaCalc.agg(lancs);
   const nHa=OpColetaCalc.hectares(lancs);
@@ -2362,7 +2363,7 @@ function renderOpAmostras(){
   opFillSelect('oaFazenda',opAmFazendas(),_opAmFiltro.fazenda,'Todas');
   opFillSelect('oaResp',opAmResp(),_opAmFiltro.resp,'Todos');
   const pz=document.getElementById('oaPrazo'); if(pz && document.activeElement!==pz) pz.value=(prazo!=null?prazo:'');
-  const dlF=document.getElementById('oaFazendasList'); if(dlF) dlF.innerHTML=opAmFazendas().map(v=>'<option value="'+esc(v)+'">').join('');
+  const dlF=document.getElementById('oaFazendasList'); if(dlF) dlF.innerHTML=opFazSugestoes(opAmFazendas()).map(v=>'<option value="'+esc(v)+'">').join('');
   let remessas=OpAmostrasCalc.filtra(D.opAmostras.remessas||[],_opAmFiltro);
   if(_opAmFiltro.situacao) remessas=remessas.filter(r=>OpAmostrasCalc.situacao(r,hoje,prazo)===_opAmFiltro.situacao);
   const a=OpAmostrasCalc.agg(remessas,hoje,prazo);
@@ -2485,6 +2486,7 @@ function renderOpEntregas(){
   if(typeof document==='undefined')return;
   opFillSelect('oeCliente',opEnClientesLista(),_opEnFiltro.cliente,'Todos');
   opFillSelect('oeFazenda',opEnFazendas(),_opEnFiltro.fazenda,'Todas');
+  const _dlEnF=document.getElementById('opEnFazendasList'); if(_dlEnF) _dlEnF.innerHTML=opFazSugestoes(opEnFazendas()).map(v=>'<option value="'+esc(v)+'">').join('');
   const mpEl=document.getElementById('oeMibPadrao'); if(mpEl && document.activeElement!==mpEl) mpEl.value=(D.opEntregas.mibPadrao!=null?D.opEntregas.mibPadrao:'');
   const mibPad=D.opEntregas.mibPadrao;
   const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas||[],_opEnFiltro);
@@ -5406,6 +5408,9 @@ function renderEquipamentosEditor(){
 }
 /* ===== Fase 6: assertividade — cascata de renome + painel de integridade ===== */
 function nomesServicos(){ return (D.servicos||[]).map(s=>s&&s.nome).filter(Boolean); }
+/* Fase 6b: fazendas cadastradas + sugestões (cadastro ∪ já usadas nos módulos operacionais) */
+function nomesFazendas(){ return [...new Set((D.fazendas||[]).map(f=>f&&f.nome).filter(Boolean))]; }
+function opFazSugestoes(usadas){ return [...new Set([].concat(usadas||[],nomesFazendas()))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')); }
 /* cascata: ao renomear um item de cadastro, atualiza todas as referências por nome */
 function _cascadeColaborador(oldN,newN){ let n=0; if(!oldN||oldN===newN)return 0;
   (D.lancamentos||[]).forEach(l=>{ if(l&&l.colaborador===oldN){l.colaborador=newN;n++;} });
