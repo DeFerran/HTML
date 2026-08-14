@@ -1277,19 +1277,20 @@ header .htxt h1{display:none}
       </div>
     </div>
     <div class="edpills" id="edPills">
-      <button class="on" data-sec="cli">Clientes e vendas</button>
-      <button data-sec="desp">💸 Despesas (base única)</button>
-      <button data-sec="serv">Serviços</button>
-      <button data-sec="funil">Funil de vendas</button>
-      <button data-sec="precos">Preços por safra</button>
-      <button data-sec="custo">Custos</button>
-      <button data-sec="meta">Metas &amp; Parâmetros</button>
-      <button data-sec="equipe">Equipe</button>
-      <button data-sec="lab">Laboratório</button>
-      <button data-sec="coleta">Coleta</button>
-      <button data-sec="estr">Estrutura de custo</button>
-      <button data-sec="op">Operação</button>
+      <button class="on" data-sec="cli"><svg class="ed-ic"><use href="#ic-users"></use></svg><span class="ed-tx">Clientes e vendas</span></button>
+      <button data-sec="desp"><svg class="ed-ic"><use href="#ic-wallet"></use></svg><span class="ed-tx">Despesas</span></button>
+      <button data-sec="serv"><svg class="ed-ic"><use href="#ic-flask"></use></svg><span class="ed-tx">Serviços</span></button>
+      <button data-sec="funil"><svg class="ed-ic"><use href="#ic-funnel"></use></svg><span class="ed-tx">Funil de vendas</span></button>
+      <button data-sec="precos"><svg class="ed-ic"><use href="#ic-tag"></use></svg><span class="ed-tx">Preços por safra</span></button>
+      <button data-sec="custo"><svg class="ed-ic"><use href="#ic-receipt"></use></svg><span class="ed-tx">Custos</span></button>
+      <button data-sec="meta"><svg class="ed-ic"><use href="#ic-target"></use></svg><span class="ed-tx">Metas &amp; Parâmetros</span></button>
+      <button data-sec="equipe"><svg class="ed-ic"><use href="#ic-team"></use></svg><span class="ed-tx">Equipe</span></button>
+      <button data-sec="lab"><svg class="ed-ic"><use href="#ic-cpu"></use></svg><span class="ed-tx">Laboratório</span></button>
+      <button data-sec="coleta"><svg class="ed-ic"><use href="#ic-bars"></use></svg><span class="ed-tx">Coleta</span></button>
+      <button data-sec="estr"><svg class="ed-ic"><use href="#ic-overview"></use></svg><span class="ed-tx">Estrutura de custo</span></button>
+      <button data-sec="op"><svg class="ed-ic"><use href="#ic-tractor"></use></svg><span class="ed-tx">Operação</span></button>
     </div>
+    <div class="ed-back" id="edBack" onclick="edCloseSec()"><svg class="ed-ic"><use href="#ic-chevron"></use></svg><span id="edBackTx">Voltar às seções</span></div>
     <div class="edsec" data-sec="cli"><div class="edcard" id="edCli"></div></div>
     <div class="edsec" data-sec="desp" style="display:none"><div class="edcard" id="edDespesas"></div><div class="edcard" id="edRecorrencias"></div><div class="edcard" id="edVeiculos"></div><div class="edcard" id="edOrcamentos"></div><div class="edcard" id="edMatrizCusto"></div></div>
     <div class="edsec" data-sec="serv" style="display:none"><div class="edcard" id="edServ"></div><div class="edcard" id="edGrupos"></div></div>
@@ -3178,7 +3179,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');document.getElementById('v-'+b.dataset.v).classList.add('active');
   syncSidebar(b.dataset.v);
-  if(b.dataset.v==='edit')renderEditors();
+  if(b.dataset.v==='edit'){ renderEditors(); var _ve=document.getElementById('v-edit'); if(_ve)_ve.classList.remove('sec-open'); }
   if(b.dataset.v==='admin'){ try{renderAdmin();carregarHistorico();}catch(e){} }
   if(b.dataset.v==='funil')renderFunil();
   if(b.dataset.v==='margem')renderPrecoMargem();
@@ -3284,7 +3285,13 @@ document.querySelectorAll('#edPills button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#edPills button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   document.querySelectorAll('#v-edit .edsec').forEach(s=>s.style.display=(s.dataset.sec===b.dataset.sec)?'block':'none');
+  /* celular: entra no modo "seção aberta" (drill-in) e mostra o Voltar com o nome */
+  const ve=document.getElementById('v-edit'); if(ve) ve.classList.add('sec-open');
+  const tx=b.querySelector('.ed-tx'), bt=document.getElementById('edBackTx');
+  if(bt&&tx) bt.textContent='Voltar · '+tx.textContent;
+  try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(e){}
 });
+function edCloseSec(){ const ve=document.getElementById('v-edit'); if(ve) ve.classList.remove('sec-open'); try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(e){} }
 
 /* ---------- xlsx parser (mirrors the snapshot extraction) ---------- */
 function aoa(wb,name){const ws=wb.Sheets[name];return ws?XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true}):null;}
@@ -6188,6 +6195,34 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 /* tabelas dentro da Central: respiro e cabeçalho discreto */
 #v-iahub table.resp-cards th,#v-ia table.resp-cards th,#v-iamem table.resp-cards th{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
 #v-iahub table.resp-cards td,#v-ia table.resp-cards td,#v-iamem table.resp-cards td{font-size:13px}
+/* ===== Lançamentos — launcher de seções (cards + drill-in no celular) ===== */
+.edpills button{display:inline-flex;align-items:center;gap:7px}
+.edpills button .ed-ic{width:15px;height:15px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.ed-back{display:none}
+.ed-back .ed-ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:760px){
+  #v-edit{display:flex;flex-direction:column}
+  #v-edit>.lead{display:none}                 /* texto longo não ajuda no celular */
+  #v-edit .edpills{order:-2}                    /* grade de cards primeiro */
+  #v-edit .ed-back{order:-1}
+  #v-edit.sec-open .edbar{display:none}         /* no drill-in, foco total na seção */
+  #v-edit .edpills{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+  #v-edit .edpills button{flex-direction:column;gap:9px;min-height:96px;justify-content:center;text-align:center;
+    padding:14px 8px;border-radius:16px;background:var(--card);border:1px solid var(--line);color:var(--ink);
+    font-weight:700;box-shadow:var(--shadow);white-space:normal;line-height:1.15}
+  #v-edit .edpills button.on{background:var(--tintG);border-color:var(--leaf);color:var(--head)}
+  #v-edit .edpills button .ed-ic{width:28px;height:28px;color:var(--leaf)}
+  #v-edit .edpills button .ed-tx{font-size:12.5px}
+  /* drill-in: no modo grade, esconde as seções; ao abrir, esconde a grade */
+  #v-edit:not(.sec-open) .edsec{display:none!important}
+  #v-edit.sec-open .edpills{display:none}
+  #v-edit.sec-open .ed-back{display:flex;align-items:center;gap:9px;position:sticky;top:70px;z-index:6;
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-bottom:12px;
+    font-weight:800;color:var(--head);cursor:pointer;box-shadow:var(--shadow);font-size:14px}
+  /* botões da barra de topo maiores e roláveis no celular */
+  #v-edit .edbtns{gap:8px}
+  #v-edit .edbtn{padding:11px 14px;font-size:13px}
+}
 /* ===== Controle Operacional (Coleta / Amostras / Entregas) — escopado, tema-aware ===== */
 .op-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .op-head .op-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
