@@ -1128,6 +1128,7 @@ header .htxt h1{display:none}
           <tbody id="opColBody"></tbody>
         </table>
       </div>
+      <div class="op-cardlist" id="opColCardlist"></div>
     </div>
     <div class="op-prod op-tbl-wrap">
       <div class="op-tbl-head"><h3>Produtividade no período</h3><span class="op-count">dias · pontos · média por colaborador</span></div>
@@ -1205,6 +1206,7 @@ header .htxt h1{display:none}
           <tbody id="oaBody"></tbody>
         </table>
       </div>
+      <div class="op-cardlist" id="oaCardlist"></div>
     </div>
     <div class="legenda" style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);align-items:center">
       <span><span class="op-badge op-b-wait">Aguardando</span></span>
@@ -1286,6 +1288,7 @@ header .htxt h1{display:none}
           <tbody id="oeBody"></tbody>
         </table>
       </div>
+      <div class="op-cardlist" id="oeCardlist"></div>
     </div>
     <div class="legenda" style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);align-items:center">
       <span><span class="op-mark ok">✓</span> Concluído / Entregue</span>
@@ -2167,6 +2170,15 @@ function renderOpColeta(){
     html+='<tr class="op-total"><td class="op-colfixa">Total '+esc(g.label.split(' / ')[0])+'</td><td colspan="5"></td><td class="num">'+g.total+'</td><td colspan="3"></td></tr>';
   });
   document.getElementById('opColBody').innerHTML=html;
+  /* lista de cards no celular (resumo + toque abre o modal de edição = detalhes) */
+  const _clc=document.getElementById('opColCardlist');
+  if(_clc){ const ord=lancs.slice().sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
+    _clc.innerHTML = ord.length? ord.map(l=>{ const st=OpColetaCalc.statusInfo(l.status), t=OpColetaCalc.totalDia(l);
+      return '<button class="op-lcard" onclick="opColetaEditar(\''+l.id+'\')"><div class="lc-top"><span class="lc-title">'+esc(dataFmt(l.data))+'</span><span class="op-badge '+st.cls+'">'+esc(st.label)+'</span></div>'+
+        '<div class="lc-sub">'+esc(l.cliente||'—')+(l.fazenda?' · '+esc(l.fazenda):'')+(l.talhao?' · '+esc(l.talhao):'')+'</div>'+
+        '<div class="lc-row"><span>'+esc(l.equipe||'—')+'</span><span><b>'+t+'</b> pontos</span></div>'+
+        '<div class="lc-ver">Ver / editar ›</div></button>';
+    }).join('') : '<div class="op-empty">Nenhum lançamento no período. Toque em <b>+ Novo lançamento</b>.</div>'; }
   document.getElementById('opColCount').textContent=lancs.length+' lançamento(s)';
   const prod=document.getElementById('opColProd');
   prod.innerHTML=a.produtividade.length? a.produtividade.map(p=>'<tr><td class="op-colfixa">'+esc(p.nome)+'</td><td class="num">'+p.dias+'</td><td class="num">'+p.pontos+'</td><td class="num">'+p.media.toFixed(1)+'</td></tr>').join('') : '<tr><td colspan="4"><div class="op-empty">Sem produtividade no período.</div></td></tr>';
@@ -2325,6 +2337,13 @@ function renderOpAmostras(){
       +'<td><button class="op-linkbtn" onclick="opAmEditar(\''+r.id+'\')">editar</button></td></tr>';
   });
   document.getElementById('oaBody').innerHTML=html;
+  const _oac=document.getElementById('oaCardlist');
+  if(_oac){ _oac.innerHTML = ordenadas.length? ordenadas.map(r=>{ const s=OpAmostrasCalc.situacao(r,hoje,prazo), si=OpAmostrasCalc.situacaoInfo(s), dias=OpAmostrasCalc.diasRemessa(r,hoje);
+      return '<button class="op-lcard" onclick="opAmEditar(\''+r.id+'\')"><div class="lc-top"><span class="lc-title">'+esc(dataFmt(r.dataEnvio))+'</span><span class="op-badge '+si.cls+'">'+esc(si.label)+'</span></div>'+
+        '<div class="lc-sub">'+((r.fazendas||[]).join(' · ')||'—')+'</div>'+
+        '<div class="lc-row"><span>'+esc(r.respEnvio||'—')+'</span><span>'+(dias!=null?dias+' dia(s)':'—')+'</span></div>'+
+        '<div class="lc-ver">Ver / editar ›</div></button>';
+    }).join('') : '<div class="op-empty">Nenhuma remessa no período. Toque em <b>+ Novo envio</b>.</div>'; }
   document.getElementById('oaCount').textContent=ordenadas.length+' envio(s)';
 }
 function opAmAplicaFiltro(){ _opAmFiltro={de:opv('oaDe'),ate:opv('oaAte'),fazenda:opv('oaFazenda'),resp:opv('oaResp'),situacao:opv('oaSituacao'),busca:opv('oaBusca')}; renderOpAmostras(); }
@@ -2441,6 +2460,14 @@ function renderOpEntregas(){
       +'<td><button class="op-linkbtn" onclick="opEnEditar(\''+l.id+'\')">editar</button></td></tr>';
   });
   document.getElementById('oeBody').innerHTML=html;
+  const _oec=document.getElementById('oeCardlist');
+  if(_oec){ const slLab={concluida:{t:'Concluída',c:'op-b-ok'},andamento:{t:'Em andamento',c:'op-b-run'},nao_iniciada:{t:'Pendente',c:'op-b-wait'}};
+    _oec.innerHTML = linhas.length? linhas.map(l=>{ const p=OpEntregasCalc.progresso(l), sl=slLab[OpEntregasCalc.statusLinha(l)]||slLab.nao_iniciada;
+      return '<button class="op-lcard" onclick="opEnEditar(\''+l.id+'\')"><div class="lc-top"><span class="lc-title">'+esc(l.cliente||'—')+'</span><span class="op-badge '+sl.c+'">'+sl.t+'</span></div>'+
+        '<div class="lc-sub">'+esc(l.fazenda||'—')+(l.areaHa?' · '+(+l.areaHa).toLocaleString('pt-BR')+' ha':'')+'</div>'+
+        '<div class="lc-row"><span>Progresso</span><span><b>'+p.pct+'%</b> ('+p.concluidos+'/'+p.aplicaveis+')</span></div>'+
+        '<div class="lc-ver">Ver / editar ›</div></button>';
+    }).join('') : '<div class="op-empty">Nenhuma entrega cadastrada. Toque em <b>+ Nova entrega</b>.</div>'; }
   document.getElementById('oeCount').textContent=linhas.length+' cliente(s)/fazenda(s)';
 }
 function opEnAplicaFiltro(){ _opEnFiltro={cliente:opv('oeCliente'),fazenda:opv('oeFazenda'),status:opv('oeStatus'),pendencias:opv('oePend'),busca:opv('oeBusca')}; renderOpEntregas(); }
@@ -6559,6 +6586,21 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 .op-tbl-head h3{margin:0;font-size:15px}
 .op-tbl-head .op-count{margin-left:auto;color:var(--muted);font-size:12px}
 .op-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* lista de cards das tabelas operacionais no celular (resumo + toque = detalhes).
+   Desktop: escondida (usa a tabela). Celular: some a tabela e mostra os cards —
+   só nas 3 tabelas que têm cardlist (via :has), preservando a de produtividade. */
+.op-cardlist{display:none;flex-direction:column;gap:10px;margin-top:4px}
+.op-lcard{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
+.op-lcard:hover{border-color:var(--leaf)}
+.op-lcard .lc-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.op-lcard .lc-title{font-weight:800;font-size:14.5px;color:var(--head)}
+.op-lcard .lc-sub{font-size:12.5px;color:var(--muted)}
+.op-lcard .lc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;color:var(--ink)}
+.op-lcard .lc-ver{font-size:11px;color:var(--leaf);font-weight:800;margin-top:1px}
+@media(max-width:767px){
+  .op-tbl-wrap:has(.op-cardlist) .op-scroll{display:none}
+  .op-cardlist{display:flex}
+}
 table.op-tbl{width:100%;min-width:max-content;border-collapse:separate;border-spacing:0;font-size:12.8px}
 table.op-tbl thead th{position:sticky;top:0;z-index:2;background:var(--soft);text-align:left;padding:10px 13px;font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap}
 table.op-tbl tbody td{padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:middle}
