@@ -663,6 +663,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="opentregas"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Controle de Entregas</span></button>
     <div class="sb-group">Gestão</div>
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
+    <button class="snav" data-target="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Safras &amp; Parâmetros</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
     <button class="snav snav-sub" data-target="iahub" data-ia="visao"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Visão Geral</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="prioridades"><svg class="sb-ic"><use href="#ic-flag"></use></svg><span class="sb-tx">Prioridades da IA</span></button>
@@ -716,6 +717,7 @@ header .htxt h1{display:none}
   <button data-v="opamostras">Envio de Amostras</button>
   <button data-v="opentregas">Controle de Entregas</button>
   <button data-v="edit">✎ Lançamentos</button>
+  <button data-v="config">⚙ Safras &amp; Parâmetros</button>
   <button data-v="ia" id="tabIA" style="display:none">🧠 IA · Conhecimento</button>
   <button data-v="iamem" id="tabIAMem" style="display:none">🧠 IA · Memória</button>
   <button data-v="iahub" id="tabIAHub" style="display:none">🧠 IA · Central</button>
@@ -1305,6 +1307,26 @@ header .htxt h1{display:none}
     <div class="edsec" data-sec="op" style="display:none"><div class="edcard" id="edOp"></div><div class="edcard" id="edEtapas"></div><div class="edcard" id="edVisitas"></div></div>
   </section>
 
+  <!-- CONFIGURAÇÕES · Safras & Parâmetros -->
+  <section class="view" id="v-config">
+    <div class="lead"><h2>Safras &amp; Parâmetros</h2>
+      <p>Aqui você <b>cria e organiza as safras</b> e ajusta os <b>parâmetros globais</b> da plataforma. Uma safra nova entra no seletor do topo e <b>nasce vazia</b> — nada de outra safra vaza para ela; comece pelo Funil, Metas e Preços dela.</p></div>
+    <div class="panel"><h3>Safras</h3>
+      <div class="cap">A safra <b>base</b> é a que tem a base financeira/operacional lançada (é a que o topo reflete). As demais servem para <b>projetar</b> (funil, metas, preços por safra).</div>
+      <div id="cfgSafras"></div>
+      <div class="edform" style="margin-top:12px;align-items:flex-end">
+        <label>Nova safra (AA/AA)<input id="cfgNovaSafra" placeholder="ex.: 28/29" maxlength="5" style="width:140px"></label>
+        <button class="edbtn primary" onclick="cfgAddSafra()">+ Adicionar safra</button>
+        <button class="edbtn" onclick="cfgSugereSafra()" title="Sugere a próxima safra">↦ Próxima</button>
+        <span class="cap" id="cfgSafraMsg" style="align-self:center"></span>
+      </div>
+    </div>
+    <div class="panel"><h3>Parâmetros globais</h3>
+      <div class="cap">Valores padrão usados nos cálculos e nas telas operacionais. Salvam automaticamente.</div>
+      <div id="cfgParams"></div>
+    </div>
+  </section>
+
   <!-- ADMINISTRAÇÃO -->
   <section class="view" id="v-admin">
     <div class="lead"><h2>Administração — usuários e acessos</h2>
@@ -1349,6 +1371,12 @@ header .htxt h1{display:none}
 const SKEY = 'dfagro_painel_v1';
 function b64d(s){return decodeURIComponent(escape(atob(s)));}
 function b64e(s){return btoa(unescape(encodeURIComponent(s)));}
+/* Safras de trabalho (seletor/funil/metas/preços) e safra base — DINÂMICAS.
+   Declaradas aqui (antes de hydrate) para o hydrate poder sincronizá-las a
+   partir de D.safrasList / D.safraBaseKey (editáveis em Configurações). O valor
+   inicial é só o padrão; hydrate sobrescreve com o que estiver salvo. */
+let FUNIL_SAFRAS=['26/27','27/28'];
+let SAFRA_BASE='26/27';
 function hydrate(d){
   d = d || {};
   if(!d.impostoNF) d.impostoNF={rate:0.17,cenarios:[0.12,0.15,0.17]};
@@ -1474,6 +1502,18 @@ function hydrate(d){
     if(o.mes==null) o.mes='';
     if(o.area==null||isNaN(+o.area)) o.area=0;
     if(o.valor==null||isNaN(+o.valor)) o.valor=0; });
+  // ---- lista de safras de trabalho (DINÂMICA) — fonte do seletor/funil/metas/preços.
+  // Editável em Configurações. Preserva o que já existe; deriva das metas quando
+  // houver; senão o padrão histórico. Sincroniza os globais FUNIL_SAFRAS/SAFRA_BASE.
+  if(!Array.isArray(d.safrasList) || !d.safrasList.length){
+    const _fromMetas=(d.metasSafra&&typeof d.metasSafra==='object')?Object.keys(d.metasSafra):[];
+    d.safrasList=(_fromMetas.length?_fromMetas:['26/27','27/28']).slice();
+  }
+  d.safrasList=[...new Set(d.safrasList.map(s=>String(s||'').trim()).filter(s=>/^\d{2}\/\d{2}$/.test(s)))];
+  if(!d.safrasList.length) d.safrasList=['26/27','27/28'];
+  if(!d.safraBaseKey || d.safrasList.indexOf(d.safraBaseKey)<0)
+    d.safraBaseKey=(d.safrasList.indexOf('26/27')>=0?'26/27':d.safrasList[0]);
+  try{ FUNIL_SAFRAS=d.safrasList.slice(); SAFRA_BASE=d.safraBaseKey; }catch(_){}
   if(!d.metasSafra || typeof d.metasSafra!=='object'){
     const m=d.metas||{};
     d.metasSafra={
@@ -1481,14 +1521,14 @@ function hydrate(d){
       '27/28':{receita:0,area:0,receitaReal:0,areaReal:0}
     };
   }
-  ['26/27','27/28'].forEach(s=>{ if(!d.metasSafra[s]) d.metasSafra[s]={receita:0,area:0,receitaReal:0,areaReal:0};
+  d.safrasList.forEach(s=>{ if(!d.metasSafra[s]) d.metasSafra[s]={receita:0,area:0,receitaReal:0,areaReal:0};
     if(d.metasSafra[s].receita==null) d.metasSafra[s].receita=0;
     if(d.metasSafra[s].area==null) d.metasSafra[s].area=0;
-    if(d.metasSafra[s].receitaReal==null) d.metasSafra[s].receitaReal=(s==='26/27'&&d.metas&&d.metas.receitaReal!=null?+d.metas.receitaReal:0)||0;
-    if(d.metasSafra[s].areaReal==null) d.metasSafra[s].areaReal=(s==='26/27'&&d.metas&&d.metas.hectaresReal!=null?+d.metas.hectaresReal:0)||0; });
+    if(d.metasSafra[s].receitaReal==null) d.metasSafra[s].receitaReal=(s===d.safraBaseKey&&d.metas&&d.metas.receitaReal!=null?+d.metas.receitaReal:0)||0;
+    if(d.metasSafra[s].areaReal==null) d.metasSafra[s].areaReal=(s===d.safraBaseKey&&d.metas&&d.metas.hectaresReal!=null?+d.metas.hectaresReal:0)||0; });
   // tabela de preços por serviço, por safra: precosSafra[safra][servico]={preco,custo,un}
   if(!d.precosSafra || typeof d.precosSafra!=='object') d.precosSafra={};
-  ['26/27','27/28'].forEach(s=>{ if(!d.precosSafra[s]||typeof d.precosSafra[s]!=='object') d.precosSafra[s]={};
+  d.safrasList.forEach(s=>{ if(!d.precosSafra[s]||typeof d.precosSafra[s]!=='object') d.precosSafra[s]={};
     Object.keys(d.precosSafra[s]).forEach(k=>{ const r=d.precosSafra[s][k]||{};
       d.precosSafra[s][k]={preco:+r.preco||0,custo:+r.custo||0,un:r.un||'ha'}; }); });
   // metas por segmento de serviço (4 segmentos) + meta de margem geral
@@ -1608,7 +1648,7 @@ const C_DARK={navy:'#34D399',moss:'#4ADE80',gold:'#FBBF24',red:'#FB7185',mut:'#9
 /* ---- funil de vendas / projeção ---- */
 const FUNIL_ESTAGIOS=['Fechado','Provável','Possível','Prospecção'];
 const FUNIL_PROB={'Fechado':1,'Provável':0.7,'Possível':0.4,'Prospecção':0.15};
-const FUNIL_SAFRAS=['26/27','27/28'];
+/* FUNIL_SAFRAS agora é dinâmico (let declarado antes de hydrate; sincronizado de D.safrasList). */
 const MESORD=['Jul/26','Ago/26','Set/26','Out/26','Nov/26','Dez/26','Jan/27','Fev/27','Mar/27','Abr/27','Mai/27','Jun/27','Jul/27','Ago/27','Set/27','Out/27','Nov/27','Dez/27','Jan/28','Fev/28','Mar/28','Abr/28','Mai/28','Jun/28'];
 let _funilSafra='26/27';
 function funilCor(e){ return ({'Fechado':C.navy,'Provável':C.moss,'Possível':C.gold,'Prospecção':C.mut})[e]||C.mut; }
@@ -1634,8 +1674,8 @@ function funilAgg(ops){ let cheio=0,pond=0,fech=0,area=0,areaFech=0;
 /* ---------- safra ativa (seletor global) ---------- */
 let _safraAtiva='26/27';
 let _margFiltro='fechadas';   // 'fechadas' = só vendas fechadas · 'todas' = inclui pipeline
-const SAFRA_BASE='26/27';     // safra com base operacional/financeira lançada (Geral, Financeiro, Custos...)
-function safraAtual(){ if(FUNIL_SAFRAS.indexOf(_safraAtiva)<0)_safraAtiva='26/27'; return _safraAtiva; }
+/* SAFRA_BASE agora é dinâmico (let declarado antes de hydrate; sincronizado de D.safraBaseKey). */
+function safraAtual(){ if(FUNIL_SAFRAS.indexOf(_safraAtiva)<0)_safraAtiva=SAFRA_BASE||FUNIL_SAFRAS[0]||'26/27'; return _safraAtiva; }
 /* metas/realizado da safra em foco (fonte por-safra; nunca a global legada D.metas) */
 function metasFoco(S){ S=S||safraAtual(); if(!D.metasSafra||typeof D.metasSafra!=='object') D.metasSafra={};
   const m=D.metasSafra[S]||(D.metasSafra[S]={receita:0,area:0,receitaReal:0,areaReal:0});
@@ -3211,6 +3251,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   b.classList.add('active');document.getElementById('v-'+b.dataset.v).classList.add('active');
   syncSidebar(b.dataset.v);
   if(b.dataset.v==='edit'){ renderEditors(); var _ve=document.getElementById('v-edit'); if(_ve)_ve.classList.remove('sec-open'); }
+  if(b.dataset.v==='config'){ try{renderConfig();}catch(e){console.warn('config',e);} }
   if(b.dataset.v==='admin'){ try{renderAdmin();carregarHistorico();}catch(e){} }
   if(b.dataset.v==='funil')renderFunil();
   if(b.dataset.v==='margem')renderPrecoMargem();
@@ -3291,6 +3332,109 @@ function renderSafraBar(){
     : (baseLancada(safraAtual())
         ? 'Toda a plataforma reflete a safra <b>'+safraAtual()+'</b> (base lançada).'
         : 'Safra <b>'+safraAtual()+'</b> em foco: <b>ainda sem base lançada</b>, então as abas operacionais aparecem zeradas. Use Funil, Preços &amp; Margem e Metas para projetar; a base entra por Lançamentos.'); }
+}
+/* ===== Configurações · Safras & Parâmetros (cadastro estrutural) ===== */
+function _cfgMsg(t,ok){ const m=document.getElementById('cfgSafraMsg'); if(m){ m.textContent=t||''; m.style.color=ok?'var(--leaf)':'var(--red)'; } }
+function cfgSugereSafra(){ const el=document.getElementById('cfgNovaSafra'); if(!el)return;
+  const ult=(D.safrasList||[]).slice().sort()[ (D.safrasList||[]).length-1 ] || SAFRA_BASE;
+  const prox=(typeof safraMais==='function')?safraMais(ult,1):''; if(prox) el.value=prox; _cfgMsg('',true); }
+function renderConfig(){
+  if(typeof document==='undefined')return;
+  // --- Safras ---
+  const host=document.getElementById('cfgSafras');
+  if(host){
+    const rows=(D.safrasList||[]).map(s=>{
+      const isBase=(s===SAFRA_BASE);
+      const nFunil=(D.funil||[]).filter(o=>o&&o.safra===s).length;
+      const nPrec=(D.precosSafra&&D.precosSafra[s])?Object.keys(D.precosSafra[s]).length:0;
+      const mt=(D.metasSafra&&D.metasSafra[s])||{};
+      return '<tr>'+
+        '<td><b>'+esc(s)+'</b>'+(isBase?' <span class="tag hi">base</span>':'')+'</td>'+
+        '<td class="num">'+(mt.receita?BRLk(+mt.receita):'—')+'</td>'+
+        '<td class="num">'+nFunil+'</td>'+
+        '<td class="num">'+nPrec+'</td>'+
+        '<td class="num"><label style="cursor:pointer;white-space:nowrap"><input type="radio" name="cfgBase" '+(isBase?'checked':'')+' onclick="cfgSetBase(\''+s+'\')"> base</label></td>'+
+        '<td class="num">'+(isBase?'<span class="cap">safra base</span>':'<button class="op-linkbtn" onclick="cfgRemSafra(\''+s+'\')">remover</button>')+'</td>'+
+        '</tr>';
+    }).join('');
+    host.innerHTML='<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Safra</th><th class="num">Meta receita</th><th class="num">Funil</th><th class="num">Preços</th><th class="num">Base</th><th class="num">Ação</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6"><div class="op-empty">Nenhuma safra.</div></td></tr>')+'</tbody></table></div>';
+  }
+  // --- Parâmetros globais (editam os campos que já vivem em D) ---
+  const ph=document.getElementById('cfgParams');
+  if(ph){
+    const pct=v=>(v!=null&&!isNaN(v))?(+v*100).toFixed(v*100%1?1:0):'';
+    const imp=pct((D.impostoNF&&D.impostoNF.rate)!=null?D.impostoNF.rate:taxRate);
+    const com=pct((D.comissao&&D.comissao.rate)!=null?D.comissao.rate:0.07);
+    const mib=(D.opEntregas&&D.opEntregas.mibPadrao!=null)?D.opEntregas.mibPadrao:20;
+    const fator=(D.opColeta&&D.opColeta.hectaresFator!=null)?D.opColeta.hectaresFator:'';
+    const prazo=(D.opAmostras&&D.opAmostras.prazoDias!=null)?D.opAmostras.prazoDias:'';
+    ph.innerHTML='<div class="edform">'+
+      '<label>Imposto sobre NF (%)<input type="number" min="0" step="0.5" value="'+imp+'" onchange="cfgSetParam(\'imposto\',this.value)"></label>'+
+      '<label>Comissão (%)<input type="number" min="0" step="0.5" value="'+com+'" onchange="cfgSetParam(\'comissao\',this.value)"></label>'+
+      '<label>MIB padrão<input type="number" min="0" step="1" value="'+mib+'" onchange="cfgSetParam(\'mib\',this.value)"></label>'+
+      '<label>Fator ha/ponto (padrão)<input type="number" min="0" step="0.5" value="'+fator+'" placeholder="a validar" onchange="cfgSetParam(\'fator\',this.value)"></label>'+
+      '<label>Prazo de amostras (dias)<input type="number" min="0" step="1" value="'+prazo+'" placeholder="sem prazo" onchange="cfgSetParam(\'prazo\',this.value)"></label>'+
+      '</div>';
+  }
+}
+function cfgAddSafra(){
+  const el=document.getElementById('cfgNovaSafra'); let v=(el&&el.value||'').trim();
+  if(!/^\d{2}\/\d{2}$/.test(v)){ _cfgMsg('Use o formato AA/AA (ex.: 28/29).',false); return; }
+  if(!Array.isArray(D.safrasList)) D.safrasList=[];
+  if(D.safrasList.indexOf(v)>=0){ _cfgMsg('A safra '+v+' já existe.',false); return; }
+  D.safrasList.push(v);
+  if(!D.metasSafra) D.metasSafra={}; if(!D.metasSafra[v]) D.metasSafra[v]={receita:0,area:0,receitaReal:0,areaReal:0};
+  if(!D.precosSafra) D.precosSafra={}; if(!D.precosSafra[v]) D.precosSafra[v]={};
+  // estende D.safras para que safraIdx()/recBruta() reconheçam a safra nova (receita 0)
+  if(D.safras && Array.isArray(D.safras.labels) && D.safras.labels.indexOf(v)<0){
+    D.safras.labels.push(v);
+    (D.safras.receita=D.safras.receita||[]).push(0);
+    (D.safras.custoCompetencia=D.safras.custoCompetencia||[]).push(0);
+  }
+  FUNIL_SAFRAS=D.safrasList.slice();
+  if(el) el.value='';
+  if(typeof commit==='function') commit();
+  try{ renderSafraBar(); }catch(_){}
+  renderConfig(); try{ renderAll(); }catch(_){}
+  _cfgMsg('Safra '+v+' criada — já aparece no seletor do topo.',true);
+}
+function cfgRemSafra(s){
+  if(!Array.isArray(D.safrasList) || D.safrasList.indexOf(s)<0) return;
+  if(D.safrasList.length<=1){ alert('É preciso manter ao menos uma safra.'); return; }
+  if(s===SAFRA_BASE){ alert('Não é possível remover a safra base. Defina outra safra como base primeiro.'); return; }
+  const nFunil=(D.funil||[]).filter(o=>o&&o.safra===s).length;
+  const nPrec=(D.precosSafra&&D.precosSafra[s])?Object.keys(D.precosSafra[s]).length:0;
+  const mt=(D.metasSafra&&D.metasSafra[s])||{}; const temMeta=+mt.receita||+mt.area||+mt.receitaReal||+mt.areaReal;
+  const temDados=nFunil>0||nPrec>0||temMeta;
+  if(!confirm('Remover a safra '+s+'?'+(temDados?('\n\nATENÇÃO: há dados lançados nela — '+nFunil+' item(ns) de funil, '+nPrec+' preço(s) e metas. Serão apagados.'):'')+'\n\nEsta ação não pode ser desfeita.')) return;
+  D.safrasList=D.safrasList.filter(x=>x!==s);
+  if(D.metasSafra) delete D.metasSafra[s];
+  if(D.precosSafra) delete D.precosSafra[s];
+  FUNIL_SAFRAS=D.safrasList.slice();
+  if(_safraAtiva===s){ _safraAtiva=SAFRA_BASE; _funilSafra=SAFRA_BASE; }
+  if(typeof commit==='function') commit();
+  try{ renderSafraBar(); }catch(_){}
+  renderConfig(); try{ renderAll(); }catch(_){}
+}
+function cfgSetBase(s){
+  if(!Array.isArray(D.safrasList) || D.safrasList.indexOf(s)<0) return;
+  D.safraBaseKey=s; SAFRA_BASE=s;
+  if(typeof commit==='function') commit();
+  try{ renderSafraBar(); }catch(_){}
+  renderConfig(); try{ renderAll(); }catch(_){}
+}
+function cfgSetParam(kind,val){
+  const num=v=>{ v=String(v==null?'':v).trim().replace(',','.'); if(v==='')return null; const n=parseFloat(v); return isNaN(n)?null:n; };
+  const p=num(val);
+  if(kind==='imposto'){ const rate=(p==null)?0.17:Math.max(0,p)/100; D.impostoNF=D.impostoNF||{}; D.impostoNF.rate=rate; taxRate=rate;
+    try{ document.querySelectorAll('#taxseg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.t)-rate)<1e-9)); }catch(_){}
+  }
+  else if(kind==='comissao'){ const rate=(p==null)?0.07:Math.max(0,p)/100; D.comissao=D.comissao||{}; D.comissao.rate=rate; }
+  else if(kind==='mib'){ D.opEntregas=D.opEntregas||{}; D.opEntregas.mibPadrao=(p==null)?20:Math.max(0,p); }
+  else if(kind==='fator'){ D.opColeta=D.opColeta||{}; D.opColeta.hectaresFator=(p==null)?null:Math.max(0,p); }
+  else if(kind==='prazo'){ D.opAmostras=D.opAmostras||{}; D.opAmostras.prazoDias=(p==null)?null:Math.max(0,Math.round(p)); }
+  if(typeof commit==='function') commit();
+  try{ renderAll(); }catch(_){}
 }
 function setSafra(s){ if(FUNIL_SAFRAS.indexOf(s)<0)return; _safraAtiva=s; _funilSafra=s;
   renderSafraBar();
