@@ -696,7 +696,7 @@ header .htxt h1{display:none}
   <nav class="sb-nav" id="sbNav">
     <button class="snav" data-target="geral"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Visão Geral</span></button>
     <div class="sb-group">Financeiro</div>
-    <button class="snav" data-target="fin"><svg class="sb-ic"><use href="#ic-wallet"></use></svg><span class="sb-tx">Financeiro / Margem</span></button>
+    <button class="snav" data-target="fin"><svg class="sb-ic"><use href="#ic-wallet"></use></svg><span class="sb-tx">Financeiro / Caixa</span></button>
     <button class="snav snav-sub" data-target="fin" data-scroll="cTimeline"><svg class="sb-ic"><use href="#ic-cash"></use></svg><span class="sb-tx">Fluxo de Caixa</span></button>
     <button class="snav snav-sub" data-target="geral" data-scroll="dreGeral"><svg class="sb-ic"><use href="#ic-doc"></use></svg><span class="sb-tx">DRE da safra</span></button>
     <button class="snav" data-target="margem"><svg class="sb-ic"><use href="#ic-tag"></use></svg><span class="sb-tx">Preços &amp; Margem</span></button>
@@ -721,19 +721,13 @@ header .htxt h1{display:none}
     <button class="snav" data-target="edit"><svg class="sb-ic"><use href="#ic-edit"></use></svg><span class="sb-tx">Lançamentos</span></button>
     <button class="snav" data-target="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Safras &amp; Parâmetros</span></button>
     <div class="sb-iahead" id="sbIAHead" style="display:none"><svg class="sb-ic"><use href="#ic-spark"></use></svg><span class="sb-tx">Inteligência Artificial</span></div>
-    <button class="snav snav-sub" data-target="iahub" data-ia="visao"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Visão Geral</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="prioridades"><svg class="sb-ic"><use href="#ic-flag"></use></svg><span class="sb-tx">Prioridades da IA</span></button>
+    <!-- Sidebar de IA enxuta (Fase 4): a Central de IA reúne todas as sub-telas em
+         pílulas (Prioridades, Agentes, Automações, Alertas, WhatsApp, Aprovações,
+         Saúde, Histórico, Configurações), então aqui ficam só os 4 pontos de entrada. -->
+    <button class="snav snav-sub" data-target="iahub" data-ia="visao"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Central de IA</span></button>
     <button class="snav snav-sub" data-target="iahub" data-ia="copiloto"><svg class="sb-ic"><use href="#ic-bot"></use></svg><span class="sb-tx">Copiloto AP</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="agentes"><svg class="sb-ic"><use href="#ic-hex"></use></svg><span class="sb-tx">Agentes</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="automacoes"><svg class="sb-ic"><use href="#ic-bolt"></use></svg><span class="sb-tx">Automações</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="alertas"><svg class="sb-ic"><use href="#ic-bell"></use></svg><span class="sb-tx">Alertas Inteligentes</span></button>
     <button class="snav snav-sub" data-target="ia"><svg class="sb-ic"><use href="#ic-book"></use></svg><span class="sb-tx">Conhecimento</span></button>
     <button class="snav snav-sub" data-target="iamem"><svg class="sb-ic"><use href="#ic-cpu"></use></svg><span class="sb-tx">Memória</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="whatsapp"><svg class="sb-ic"><use href="#ic-chat"></use></svg><span class="sb-tx">WhatsApp</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="aprovacoes"><svg class="sb-ic"><use href="#ic-check"></use></svg><span class="sb-tx">Aprovações</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="saude"><svg class="sb-ic"><use href="#ic-pulse"></use></svg><span class="sb-tx">Saúde da IA</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="historico"><svg class="sb-ic"><use href="#ic-archive"></use></svg><span class="sb-tx">Histórico &amp; Auditoria</span></button>
-    <button class="snav snav-sub" data-target="iahub" data-ia="config"><svg class="sb-ic"><use href="#ic-gear"></use></svg><span class="sb-tx">Configurações</span></button>
     <button class="snav" data-target="admin" id="sbAdmin" style="display:none"><svg class="sb-ic"><use href="#ic-shield"></use></svg><span class="sb-tx">Administração</span></button>
   </nav>
   <div class="sb-foot">
@@ -759,7 +753,7 @@ header .htxt h1{display:none}
 
 <nav class="tabs" id="tabs">
   <button class="active" data-v="geral">Visão Geral</button>
-  <button data-v="fin">Financeiro / Margem</button>
+  <button data-v="fin">Financeiro / Caixa</button>
   <button data-v="cli">Clientes</button>
   <button data-v="serv">Serviços</button>
   <button data-v="funil">Funil &amp; Projeção</button>
