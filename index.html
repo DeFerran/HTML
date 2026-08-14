@@ -1397,10 +1397,7 @@ header .htxt h1{display:none}
         <div style="margin-top:10px"><button class="edbtn primary" onclick="irPara('edit')">Abrir Lançamentos › Clientes</button></div></div>
     </div>
 
-    <div class="ctpane" data-pane="faz">
-      <div class="panel"><h3>🌱 Fazendas <span class="ia-badge">Chega na Fase 3</span></h3>
-        <div class="cap">Cada fazenda pertence a um cliente e fica em um município. A tela listará automaticamente os clientes já cadastrados.</div></div>
-    </div>
+    <div class="ctpane" data-pane="faz"><div class="edcard" id="cadFaz"></div></div>
 
     <div class="ctpane" data-pane="muni"><div class="edcard" id="cadMuni"></div></div>
 
@@ -1674,6 +1671,7 @@ function hydrate(d){
   if(!Array.isArray(d.veiculos)) d.veiculos=[];
   if(!Array.isArray(d.equipamentos)) d.equipamentos=[];
   if(!Array.isArray(d.municipios)) d.municipios=[];
+  if(!Array.isArray(d.fazendas)) d.fazendas=[];
   if(!Array.isArray(d.recorrencias)) d.recorrencias=[];
   if(!Array.isArray(d.orcamentos)) d.orcamentos=[];
   // colaboradores: deriva da Equipe quando ainda vazio (sem nomes fixos no código)
@@ -3545,10 +3543,11 @@ function renderConfig(){
       '<label>Prazo de amostras (dias)<input type="number" min="0" step="1" value="'+prazo+'" placeholder="sem prazo" onchange="cfgSetParam(\'prazo\',this.value)"></label>'+
       '</div>';
   }
-  // hub de cadastros: popula os hosts das abas internas (Fases 1–2)
+  // hub de cadastros: popula os hosts das abas internas (Fases 1–3)
   try{ renderColaboradoresEditor(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
   try{ renderMunicipiosEditor(); }catch(e){}
+  try{ renderFazendasEditor(); }catch(e){}
 }
 function cfgAddSafra(){
   const el=document.getElementById('cfgNovaSafra'); let v=(el&&el.value||'').trim();
@@ -3733,7 +3732,7 @@ function mergeImport(prev, fresh){
   // importação — senão hydrate() os recria vazios e apaga o trabalho manual.
   // Controle Operacional (opColeta/opAmostras/opEntregas) e as tabelas por safra
   // (metasSafra/precosSafra) só existem aqui; sem preservar, a importação zera tudo.
-  ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','municipios','orcamentos','funil',
+  ['lancamentos','recorrencias','centrosCusto','veiculos','equipamentos','colaboradores','municipios','fazendas','orcamentos','funil',
    'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa',
    'opColeta','opAmostras','opEntregas','metasSafra','precosSafra']
    .forEach(function(k){ if(_temDados(prev[k])) fresh[k]=prev[k]; });
@@ -5147,6 +5146,7 @@ function cadTab(t){ const sec=document.getElementById('v-config'); if(!sec)retur
   if(t==='colab'){ try{renderColaboradoresEditor();}catch(e){} }
   if(t==='veic'){ try{renderVeiculos();}catch(e){} }
   if(t==='muni'){ try{renderMunicipiosEditor();}catch(e){} }
+  if(t==='faz'){ try{renderFazendasEditor();}catch(e){} }
 }
 /* ===== cadastro de colaboradores (Fase 1) — nomes que alimentam os seletores da plataforma ===== */
 let _colabForm=null;
@@ -5228,6 +5228,66 @@ function renderMunicipiosEditor(){
   host.querySelectorAll('input.mcf,select.mcf').forEach(inp=>{ inp.onchange=()=>{ if(!_muniForm)return; const k=inp.dataset.k; _muniForm[k]=(k==='ativo')?(inp.value==='true'):inp.value; }; });
   host.querySelectorAll('button.medit').forEach(b=>b.onclick=()=>editarMuni(b.dataset.id));
   host.querySelectorAll('button.mrem').forEach(b=>b.onclick=()=>removerMuni(b.dataset.id));
+}
+/* ===== cadastro de fazendas (Fase 3) — cliente + município (base da gestão por município) ===== */
+function nomesClientes(){ return Array.from(new Set((D.clientes||[]).map(c=>c&&c.nome).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pt-BR')); }
+let _fazForm=null;
+function novoFazForm(cliente){ _fazForm={id:'',nome:'',clienteNome:cliente||'',municipioNome:'',areaHa:0,ativo:true}; renderFazendasEditor(); }
+function editarFaz(id){ const f=(D.fazendas||[]).find(x=>x.id===id); if(f){ _fazForm=JSON.parse(JSON.stringify(f)); renderFazendasEditor(); } }
+function salvarFazForm(){ const F=_fazForm; if(!F)return;
+  if(!(F.nome||'').trim()){ uiToast('Informe o nome da fazenda.','err'); return; }
+  if(!(F.clienteNome||'').trim()){ uiToast('Selecione o cliente dono da fazenda.','err'); return; }
+  if(!Array.isArray(D.fazendas)) D.fazendas=[];
+  const dup=D.fazendas.find(f=>f.id!==F.id && (f.clienteNome||'')===(F.clienteNome||'') && (f.nome||'').trim().toLowerCase()===(F.nome||'').trim().toLowerCase());
+  if(dup){ uiToast('Esse cliente já tem uma fazenda com esse nome.','err'); return; }
+  F.nome=(F.nome||'').trim(); F.areaHa=+F.areaHa||0;
+  if(F.id){ const i=D.fazendas.findIndex(f=>f.id===F.id); if(i>=0)D.fazendas[i]=F; }
+  else { F.id='faz'+uidLanc(); D.fazendas.push(F); }
+  _fazForm=null; commit(); renderFazendasEditor(); uiToast('✓ Fazenda salva'); }
+function removerFaz(id){ const f=(D.fazendas||[]).find(x=>x.id===id); if(!f)return;
+  if(!confirm('Remover a fazenda "'+(f.nome||'')+'" do cadastro?'))return;
+  D.fazendas=(D.fazendas||[]).filter(x=>x.id!==id); commit(); renderFazendasEditor(); }
+function renderFazendasEditor(){
+  const host=document.getElementById('cadFaz'); if(!host)return;
+  const sel=(val,opts,ph)=>'<option value="">'+(ph||'—')+'</option>'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  const faz=(D.fazendas||[]).slice().sort((a,b)=>(a.clienteNome||'').localeCompare(b.clienteNome||'','pt-BR')||(a.nome||'').localeCompare(b.nome||'','pt-BR'));
+  const clientes=nomesClientes(), munis=nomesMunicipios();
+  let h='<div class="edhead"><h3>🌱 Fazendas</h3><p class="edhelp">Cada fazenda pertence a um <b>cliente</b> e fica em um <b>município</b>. Escolha ambos por lista (sem digitar) para não quebrar as ligações. É a base da <b>gestão por município</b>.</p></div>';
+  // reaproveitamento: clientes já na base ainda sem fazenda
+  const comFaz=new Set((D.fazendas||[]).map(f=>f.clienteNome).filter(Boolean));
+  const semFaz=clientes.filter(n=>!comFaz.has(n));
+  if(clientes.length){
+    h+='<div class="edcard" style="background:var(--soft);border:1px solid var(--line);margin-bottom:14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+    h+= semFaz.length ? ('<b>'+semFaz.length+'</b> de '+clientes.length+' clientes já na base ainda <b>sem fazenda</b> — clique para cadastrar:') : ('<b style="color:var(--green)">Todos os '+clientes.length+' clientes já têm fazenda ✓</b>');
+    h+='</div>';
+    if(semFaz.length){ h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+semFaz.slice(0,40).map(n=>'<button class="op-linkbtn fazadd" data-cli="'+esc(n)+'" style="border:1px solid var(--line)">+ '+esc(n)+'</button>').join('')+(semFaz.length>40?'<span class="cap" style="align-self:center">e mais '+(semFaz.length-40)+'…</span>':'')+'</div>'; }
+    h+='</div>';
+  }
+  if(!munis.length){ h+='<div class="note" style="margin-bottom:12px">Nenhum município cadastrado ainda — cadastre na aba <b>Municípios</b> para vincular. Você ainda pode salvar sem município e completar depois.</div>'; }
+  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="fazNovo">+ Nova fazenda</button></div>';
+  if(_fazForm){ const F=_fazForm; const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
+    h+='<div class="edcard" style="border:1px solid var(--leaf);margin-bottom:14px"><div class="edhead"><h3 style="font-size:15px">'+(F.id?'Editar fazenda':'Nova fazenda')+'</h3></div><div class="labprec" style="gap:10px 14px">'+
+      field('Nome da fazenda',"<input class='edinp fcf' data-k='nome' value='"+esc(F.nome||'')+"' placeholder='ex.: Fazenda Santa Maria'>")+
+      field('Cliente',"<select class='edinp fcf' data-k='clienteNome'>"+sel(F.clienteNome,clientes,'— selecione —')+"</select>")+
+      field('Município',"<select class='edinp fcf' data-k='municipioNome'>"+sel(F.municipioNome,munis,'—')+"</select>")+
+      field('Área (ha)',"<input inputmode='decimal' class='edinp num fcf' data-k='areaHa' value='"+esc(F.areaHa||'')+"' placeholder='0'>")+
+      field('Ativo',"<select class='edinp fcf' data-k='ativo'><option value='true'"+(F.ativo!==false?' selected':'')+">Sim</option><option value='false'"+(F.ativo===false?' selected':'')+">Não</option></select>")+
+      '</div><div style="margin-top:12px;display:flex;gap:10px"><button class="edbtn primary" id="fazSalvar">Salvar fazenda</button><button class="edbtn ghost" id="fazCancelar">Cancelar</button></div></div>';
+  }
+  h+='<div class="mxwrap"><table class="edtab"><thead><tr><th>Fazenda</th><th>Cliente</th><th>Município</th><th class="num">Área (ha)</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  if(!faz.length)h+='<tr><td colspan="6" style="color:var(--muted);padding:14px 6px">Nenhuma fazenda cadastrada. Clique em <b>+ Nova fazenda</b> ou num cliente acima.</td></tr>';
+  faz.forEach(f=>{ const mOk=!f.municipioNome||munis.indexOf(f.municipioNome)>=0;
+    h+='<tr><td><b>'+esc(f.nome||'—')+'</b></td><td>'+esc(f.clienteNome||'—')+'</td><td>'+(f.municipioNome?(esc(f.municipioNome)+(mOk?'':' <span class="tag lo" title="município fora do cadastro">?</span>')):'<span style="color:var(--muted)">—</span>')+'</td><td class="num">'+(f.areaHa?fnum(f.areaHa):'—')+'</td><td>'+(f.ativo!==false?'Sim':'<span style="color:var(--muted)">Não</span>')+'</td>'+
+      '<td style="white-space:nowrap;text-align:right"><button class="edbtn fedit" data-id="'+esc(f.id)+'">editar</button> <button class="edbtn ghost frem" data-id="'+esc(f.id)+'">✕</button></td></tr>'; });
+  h+='</tbody></table></div>';
+  host.innerHTML=h;
+  const nv=document.getElementById('fazNovo'); if(nv)nv.onclick=()=>novoFazForm();
+  const sv=document.getElementById('fazSalvar'); if(sv)sv.onclick=salvarFazForm;
+  const cc=document.getElementById('fazCancelar'); if(cc)cc.onclick=()=>{ _fazForm=null; renderFazendasEditor(); };
+  host.querySelectorAll('button.fazadd').forEach(b=>b.onclick=()=>novoFazForm(b.dataset.cli));
+  host.querySelectorAll('input.fcf,select.fcf').forEach(inp=>{ inp.onchange=()=>{ if(!_fazForm)return; const k=inp.dataset.k; _fazForm[k]=(k==='areaHa')?pnum(inp.value):((k==='ativo')?(inp.value==='true'):inp.value); }; });
+  host.querySelectorAll('button.fedit').forEach(b=>b.onclick=()=>editarFaz(b.dataset.id));
+  host.querySelectorAll('button.frem').forEach(b=>b.onclick=()=>removerFaz(b.dataset.id));
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
