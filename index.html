@@ -334,6 +334,40 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 /* Hub de Cadastros (abas internas em Safras & Parâmetros) */
 .ctpane{display:none}
 .ctpane.on{display:block}
+/* ===== Orçamentos — wizard + resumo sticky ===== */
+.orc-wrap{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:900px){.orc-wrap{grid-template-columns:1fr minmax(300px,34%)}}
+.orc-side{align-self:start}
+@media(min-width:900px){.orc-side{position:sticky;top:14px}}
+.orc-steps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.orc-step{display:flex;align-items:center;gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:7px 14px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer}
+.orc-step .num{width:20px;height:20px;border-radius:50%;background:var(--line);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.orc-step.on{border-color:var(--leaf);color:var(--ink)}.orc-step.on .num{background:var(--leaf);color:#fff}
+.orc-step.done .num{background:var(--moss);color:#fff}
+.orc-scards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.orc-scard{border:1.5px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;background:var(--card);transition:border-color .12s,background .12s;min-height:104px;display:flex;flex-direction:column;justify-content:space-between;gap:8px}
+.orc-scard:hover{border-color:var(--leaf)}
+.orc-scard.on{border-color:var(--leaf);background:var(--tintG)}
+.orc-scard .st{font-weight:800;font-size:14.5px}
+.orc-scard .sp{color:var(--muted);font-size:12px}
+.orc-scard .sadd{font-weight:800;font-size:12.5px;color:var(--leaf)}
+.orc-scard.on .sadd{color:var(--moss)}
+.orc-chiprow{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 2px}
+.orc-chip{border:1.5px solid var(--line);border-radius:12px;padding:12px 18px;font-weight:800;font-size:14px;cursor:pointer;background:var(--card);min-height:46px;display:inline-flex;align-items:center;gap:8px}
+.orc-chip:hover{border-color:var(--leaf)}
+.orc-chip.on{border-color:var(--leaf);background:var(--tintG)}
+.orc-navbtns{display:flex;gap:10px;justify-content:space-between;margin-top:18px;flex-wrap:wrap}
+.orc-big{font-size:15px;padding:13px 22px;min-height:50px}
+.orc-sumcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.orc-sumrow{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13.5px}
+.orc-sumrow.tot{border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-weight:800;font-size:17px}
+.orc-sumrow .lbl{color:var(--muted)}
+.orc-sumitem{font-size:12.5px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.orc-field{display:block;margin-bottom:12px}
+.orc-field>span{display:block;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:5px}
+.orc-field input,.orc-field select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:15px;font-weight:600}
+.orc-qcard{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.orc-qtop{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
 .edbtns{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
 .edbtn{background:var(--soft);border:1px solid var(--line);color:var(--ink);padding:9px 13px;border-radius:9px;
   font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:var(--sans)}
@@ -708,6 +742,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="serv"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Serviços</span></button>
     <button class="snav snav-sub" data-target="serv" data-scroll="reconPanel"><svg class="sb-ic"><use href="#ic-link"></use></svg><span class="sb-tx">Conciliação</span></button>
     <button class="snav" data-target="funil"><svg class="sb-ic"><use href="#ic-funnel"></use></svg><span class="sb-tx">Funil &amp; Projeção</span></button>
+    <button class="snav" data-target="orcamentos"><svg class="sb-ic"><use href="#ic-doc"></use></svg><span class="sb-tx">Orçamentos</span></button>
     <div class="sb-group">Metas &amp; Equipe</div>
     <button class="snav" data-target="metas"><svg class="sb-ic"><use href="#ic-target"></use></svg><span class="sb-tx">Metas &amp; Margem/ha</span></button>
     <button class="snav" data-target="equipe"><svg class="sb-ic"><use href="#ic-team"></use></svg><span class="sb-tx">Equipe &amp; Metas</span></button>
@@ -760,6 +795,7 @@ header .htxt h1{display:none}
   <button data-v="cli">Clientes</button>
   <button data-v="serv">Serviços</button>
   <button data-v="funil">Funil &amp; Projeção</button>
+  <button data-v="orcamentos">Orçamentos</button>
   <button data-v="margem">Preços &amp; Margem</button>
   <button data-v="metas">Metas &amp; Margem/ha</button>
   <button data-v="equipe">Equipe &amp; Metas</button>
@@ -972,6 +1008,13 @@ header .htxt h1{display:none}
       <div class="panel"><h3>Quando entra — por mês previsto</h3><div class="cap">Distribuição da projeção ponderada ao longo do tempo. Ajuda a planejar caixa, coleta e capacidade da equipe.</div><div class="chartbox tall"><canvas id="cFunilMes"></canvas></div></div>
     </div>
     <div class="panel"><h3>Oportunidades da safra</h3><div class="cap">Lista completa do funil da safra selecionada, ordenada por valor ponderado. Edite em <b>Lançamentos → Funil de vendas</b>.</div><div style="overflow-x:auto"><table id="tFunil" class="resp-cards"></table></div></div>
+  </section>
+
+  <!-- ORÇAMENTOS COMERCIAIS -->
+  <section class="view" id="v-orcamentos">
+    <div class="lead"><h2>Orçamentos comerciais</h2>
+      <p>Gere um orçamento em poucos passos: <b>Cliente → Área → Serviços → Configuração → Pagamento → Resumo</b>. Preço automático da tabela vigente; o resumo fica sempre à vista. Reaproveita clientes, fazendas, serviços e preços já cadastrados.</p></div>
+    <div id="orcHost"></div>
   </section>
 
   <!-- PREÇOS & MARGEM -->
@@ -3533,6 +3576,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='config'){ try{renderConfig();}catch(e){console.warn('config',e);} }
   if(b.dataset.v==='admin'){ try{renderAdmin();carregarHistorico();}catch(e){} }
   if(b.dataset.v==='funil')renderFunil();
+  if(b.dataset.v==='orcamentos'){ try{renderOrcamentosView();}catch(e){console.warn('orcamentos',e);} }
   if(b.dataset.v==='margem')renderPrecoMargem();
   if(b.dataset.v==='equipe')renderEquipe();
   if(b.dataset.v==='custos')renderCustos();
@@ -5631,6 +5675,160 @@ function renderPacotes(){ const host=document.getElementById('ccPac'); if(!host)
   if(!list.length)h+='<tr><td colspan="4" style="color:var(--muted);padding:12px 6px">Nenhum pacote.</td></tr>';
   list.forEach(p=>{ h+='<tr><td><b>'+esc(p.nome||'—')+'</b></td><td style="font-size:12px">'+(p.servicos||[]).map(esc).join(', ')+'</td><td>'+(p.descontoPct?(+p.descontoPct+'%'):'—')+'</td><td style="text-align:right;white-space:nowrap"><button class="edbtn" onclick="pacEditar(\''+p.id+'\')">editar</button> <button class="edbtn ghost" onclick="pacRemover(\''+p.id+'\')">✕</button></td></tr>'; });
   h+='</tbody></table></div>'; host.innerHTML=h;
+}
+/* ================= Fase 3: Orçamentos — wizard Web ================= */
+const ORC_STEPS=['Cliente','Área','Serviços','Configuração','Pagamento','Resumo'];
+let _qz=null, _qzStep=0;
+function qzDataBR(s){ const m=String(s||'').split('-'); return m.length===3?(m[2]+'/'+m[1]+'/'+m[0]):(s||''); }
+function qtSafraAtual(){ return (typeof safraAtual==='function')?safraAtual():SAFRA_BASE; }
+function qtPrecoTabela(servico){ try{ const ps=(typeof precoServ==='function')?precoServ(qtSafraAtual(),servico):{preco:0}; return +ps.preco||0; }catch(e){ return 0; } }
+function qtMalhaHaPorPonto(id){ const m=(D.comercial.malhas||[]).find(x=>x.id===id); return m?+m.haPorPonto||0:0; }
+function qtServSampling(servico){ try{ return (typeof gridDoServico==='function' && gridDoServico(servico)>0) || /amostr|coleta|solo|grid/i.test(servico||''); }catch(e){ return /amostr|coleta|solo|grid/i.test(servico||''); } }
+function qtNumero(){ const ano=(function(){try{return new Date().getFullYear();}catch(e){return 2026;}})(); let mx=0; (D.quotes||[]).forEach(q=>{ const m=/ORC-\d+-(\d+)/.exec(q&&q.numero||''); if(m)mx=Math.max(mx,+m[1]); }); return 'ORC-'+ano+'-'+String(mx+1).padStart(4,'0'); }
+function qzFazendasDoCliente(nome){ return (D.fazendas||[]).filter(f=>f&&f.clienteNome===nome); }
+function qzVendedorDoCliente(nome){ const c=(D.clientes||[]).find(x=>x&&x.nome===nome&&x.vendedor); return c?c.vendedor:''; }
+function qzAddItem(servico,descPacote){ if(!_qz)return; if(_qz.itens.some(it=>it.servico===servico))return;
+  _qz.itens.push({servico:servico,metodo:qtMetodoServico(servico),incluso:'incluso',descricao:'',
+    config:qtServSampling(servico)?{malhaId:(D.comercial.malhas[0]||{}).id||'',profundidades:((D.comercial.profundidades||[]).filter(p=>+p.fator>=1).map(p=>p.id)),pontos:0,amostras:0}:null,
+    precoTabela:0,precoBase:0,unidade:'ha',quantidade:0,subtotal:0,descontoPct:+descPacote||0,total:0}); }
+function qzRemItem(servico){ if(!_qz)return; _qz.itens=_qz.itens.filter(it=>it.servico!==servico); }
+function qzRecalc(){ if(!_qz)return; const area=+_qz.areaHa||0;
+  (_qz.itens||[]).forEach(it=>{ const met=it.metodo||'ha'; let pontos=0,amostras=0;
+    if(it.config){ const g=qtMalhaHaPorPonto(it.config.malhaId); pontos=QuoteCalc.pontos(area,g);
+      const fatores=(it.config.profundidades||[]).map(pid=>{ const pf=(D.comercial.profundidades||[]).find(x=>x.id===pid); return pf?+pf.fator||0:0; });
+      amostras=QuoteCalc.amostrasTotal(pontos,fatores); it.config.pontos=pontos; it.config.amostras=amostras; }
+    it.precoTabela=qtPrecoTabela(it.servico); it.precoBase=it.precoTabela; it.unidade=met;
+    it.quantidade=QuoteCalc.quantidade(met,{areaHa:area,pontos:pontos,amostras:amostras});
+    it.subtotal=QuoteCalc.itemSubtotal(it.precoBase,it.quantidade);
+    it.total=QuoteCalc.itemTotal(it.subtotal,it.descontoPct||0); });
+  const t=QuoteCalc.totais(_qz.itens,_qz.descontoGeralPct||0);
+  _qz.subtotal=t.subtotal; _qz.descontoValor=t.descontoValor; _qz.total=t.total;
+  _qz.totalTabela=QuoteCalc.totalTabela(_qz.itens); _qz.desvioPct=QuoteCalc.desvioPct(_qz.total,_qz.totalTabela);
+  const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
+  const base=_qz.emitidoEm||'';
+  _qz.pagamento={condId:_qz.pagamentoCondId,parcelas:cond?QuoteCalc.parcelas(_qz.total,cond.parcelas,base):[]};
+  _qz.validoAte=QuoteCalc.venc(_qz.emitidoEm,+_qz.validadeDias||0); _qz.atualizadoEm=nowISO(); }
+function qzSalvarDraft(){ if(!_qz)return; qzRecalc(); if(!Array.isArray(D.quotes))D.quotes=[]; const i=D.quotes.findIndex(q=>q&&q.id===_qz.id); if(i>=0)D.quotes[i]=_qz; else D.quotes.push(_qz); commit(); }
+function orcNovo(){ const base=(function(){try{return new Date().toISOString().slice(0,10);}catch(e){return '';}})();
+  _qz={id:'q'+uidLanc(),numero:qtNumero(),versao:1,status:'rascunho',clienteNome:'',fazenda:'',municipio:'',vendedor:'',safra:qtSafraAtual(),areaHa:0,itens:[],descontoGeralPct:0,subtotal:0,descontoValor:0,total:0,totalTabela:0,desvioPct:null,pagamentoCondId:((D.comercial.condicoesPgto||[])[0]||{}).id||'',pagamento:{parcelas:[]},validadeDias:+D.comercial.validadePadraoDias||15,emitidoEm:base,validoAte:'',obsCliente:'',obsInterna:'',criadoEm:nowISO(),criadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||''};
+  _qzStep=0; qzSalvarDraft(); renderOrcamentosView(); }
+function orcAbrir(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(q){ _qz=JSON.parse(JSON.stringify(q)); if(!Array.isArray(_qz.itens))_qz.itens=[]; _qzStep=0; renderOrcamentosView(); } }
+function orcFechar(){ _qz=null; renderOrcamentosView(); }
+function orcRemover(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Remover o orçamento '+(q.numero||'')+'?'))return; D.quotes=(D.quotes||[]).filter(x=>x&&x.id!==id); commit(); renderOrcamentosView(); }
+function qzStep(n){ if(!_qz)return; _qzStep=Math.max(0,Math.min(ORC_STEPS.length-1,n)); qzSalvarDraft(); renderOrcamentosView(); }
+function qzSetField(f,v){ if(!_qz)return; _qz[f]=v; qzRecalc(); qzSalvarDraft(); qzRefreshSummary(); }
+function qzSetCliente(nome){ if(!_qz)return; _qz.clienteNome=nome; _qz.vendedor=qzVendedorDoCliente(nome)||_qz.vendedor; _qz.fazenda=''; const fs=qzFazendasDoCliente(nome); if(fs.length===1){ _qz.fazenda=fs[0].nome; _qz.municipio=fs[0].municipioNome||''; if(+fs[0].areaHa>0)_qz.areaHa=+fs[0].areaHa; } qzSalvarDraft(); renderOrcamentosView(); }
+function qzSetFazenda(nome){ if(!_qz)return; _qz.fazenda=nome; const f=qzFazendasDoCliente(_qz.clienteNome).find(x=>x.nome===nome); if(f){ _qz.municipio=f.municipioNome||''; if(+f.areaHa>0)_qz.areaHa=+f.areaHa; } qzSalvarDraft(); renderOrcamentosView(); }
+function qzToggleServ(servico){ if(!_qz)return; if(_qz.itens.some(it=>it.servico===servico))qzRemItem(servico); else qzAddItem(servico); qzSalvarDraft(); renderOrcamentosView(); }
+function qzAddPacote(id){ const p=(D.comercial.pacotes||[]).find(x=>x.id===id); if(!p||!_qz)return; (p.servicos||[]).forEach(s=>qzAddItem(s,p.descontoPct||0)); qzSalvarDraft(); renderOrcamentosView(); }
+function qzItemMalha(servico,malhaId){ const it=_qz.itens.find(x=>x.servico===servico); if(it&&it.config){ it.config.malhaId=malhaId; qzSalvarDraft(); renderOrcamentosView(); } }
+function qzItemProf(servico,profId){ const it=_qz.itens.find(x=>x.servico===servico); if(it&&it.config){ const a=it.config.profundidades||(it.config.profundidades=[]); const i=a.indexOf(profId); if(i>=0)a.splice(i,1); else a.push(profId); qzSalvarDraft(); renderOrcamentosView(); } }
+function qzGerar(){ if(!_qz)return; if(!_qz.clienteNome){uiToast('Selecione o cliente.','err');return qzStep(0);} if(!(+_qz.areaHa>0)){uiToast('Informe a área.','err');return qzStep(1);} if(!_qz.itens.length){uiToast('Adicione ao menos um serviço.','err');return qzStep(2);}
+  qzRecalc(); const rec=QuoteCalc.reconcilia(_qz); if(!rec.ok){ uiToast('Inconsistência: '+rec.erros.join(', '),'err'); return; }
+  qzSalvarDraft(); const num=_qz.numero; _qz=null; renderOrcamentosView(); uiToast('✓ Orçamento '+num+' salvo'); }
+/* ---- render: lista x wizard ---- */
+function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)renderOrcWizard(host); else renderOrcLista(host); }
+const ORC_STATUS_LBL={rascunho:'Rascunho',aguardando_aprovacao:'Aguardando aprovação',aprovado:'Aprovado',enviado:'Enviado',negociacao:'Em negociação',aceito:'Aceito',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
+function renderOrcLista(host){
+  const qs=(D.quotes||[]).slice().sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||'')));
+  let h='<div style="margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
+  if(!qs.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento ainda. Clique em <b>+ Novo orçamento</b> — leva cerca de 1–3 minutos.</div></div>'; host.innerHTML=h; return; }
+  h+='<div class="panel"><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th class="num">Área</th><th class="num">Serviços</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>';
+  qs.forEach(q=>{ h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b></td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">abrir</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>'; });
+  h+='</tbody></table></div></div>'; host.innerHTML=h;
+}
+function qzSummaryHTML(){ if(!_qz)return '';
+  let h='<div class="orc-sumcard"><div style="font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Resumo · '+esc(_qz.numero)+'</div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Cliente</span><span>'+esc(_qz.clienteNome||'—')+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Fazenda</span><span>'+esc(_qz.fazenda||'—')+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Área</span><span>'+fnum(+_qz.areaHa||0)+' ha</span></div>';
+  (_qz.itens||[]).forEach(it=>{ h+='<div class="orc-sumitem"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(it.servico)+'</b><span>'+BRL(+it.total||0)+'</span></div><div class="lbl" style="color:var(--muted);font-size:11.5px">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+' × '+BRL(+it.precoBase||0)+(it.config&&it.config.amostras?(' · ~'+it.config.amostras+' amostras'):'')+'</div></div>'; });
+  h+='<div class="orc-sumrow" style="margin-top:8px"><span class="lbl">Serviços</span><span>'+((_qz.itens||[]).length)+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Subtotal</span><span>'+BRL(+_qz.subtotal||0)+'</span></div>';
+  if(+_qz.descontoValor>0)h+='<div class="orc-sumrow"><span class="lbl">Desconto</span><span>−'+BRL(+_qz.descontoValor||0)+'</span></div>';
+  h+='<div class="orc-sumrow tot"><span>Total</span><span>'+BRL(+_qz.total||0)+'</span></div>';
+  const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
+  if(cond)h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(cond.nome)+'</span></div>';
+  h+='<div style="margin-top:12px">'+(_qzStep<ORC_STEPS.length-1?('<button class="edbtn primary orc-big" style="width:100%" onclick="qzStep('+(_qzStep+1)+')">Continuar</button>'):('<button class="edbtn primary orc-big" style="width:100%;background:#0A6A30" onclick="qzGerar()">Gerar orçamento</button>'))+'</div>';
+  h+='</div>'; return h;
+}
+function qzRefreshSummary(){ const s=document.getElementById('orcSummary'); if(s)s.innerHTML=qzSummaryHTML(); }
+function renderOrcWizard(host){
+  qzRecalc();
+  let h='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><button class="edbtn ghost" onclick="orcFechar()">‹ Voltar aos orçamentos</button><span class="cap">'+esc(_qz.numero)+' · rascunho salvo automaticamente</span></div>';
+  h+='<div class="orc-steps">'+ORC_STEPS.map((s,i)=>'<div class="orc-step'+(i===_qzStep?' on':(i<_qzStep?' done':''))+'" onclick="qzStep('+i+')"><span class="num">'+(i<_qzStep?'✓':(i+1))+'</span>'+esc(s)+'</div>').join('')+'</div>';
+  h+='<div class="orc-wrap"><div class="orc-main"><div class="panel">'+qzStepHTML()+'</div></div><div class="orc-side" id="orcSummary">'+qzSummaryHTML()+'</div></div>';
+  host.innerHTML=h;
+  const inp=document.getElementById('qzArea'); if(inp)inp.onchange=()=>qzSetField('areaHa',pnum(inp.value));
+  const val=document.getElementById('qzValidade'); if(val)val.onchange=()=>qzSetField('validadeDias',Math.round(pnum(val.value)));
+  const oc=document.getElementById('qzObsCli'); if(oc)oc.onchange=()=>qzSetField('obsCliente',oc.value);
+}
+function qzStepHTML(){ const s=_qzStep;
+  if(s===0){ // Cliente
+    const clientes=nomesClientes(); const fs=qzFazendasDoCliente(_qz.clienteNome);
+    let h='<h3>Quem é o cliente?</h3><div class="cap">Escolha um cliente já cadastrado. Vendedor e fazendas vêm automáticos.</div><div style="margin-top:12px">';
+    h+='<label class="orc-field"><span>Cliente</span><select onchange="qzSetCliente(this.value)"><option value="">— selecione —</option>'+clientes.map(n=>'<option'+(n===_qz.clienteNome?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select></label>';
+    if(_qz.clienteNome){ h+='<div class="orc-sumrow"><span class="lbl">Vendedor</span><span>'+esc(_qz.vendedor||'A definir')+'</span></div>';
+      if(_qz.municipio)h+='<div class="orc-sumrow"><span class="lbl">Município</span><span>'+esc(_qz.municipio)+'</span></div>';
+      h+='<div style="margin-top:12px"><div class="cap" style="margin-bottom:6px">Fazenda '+(fs.length?'':'(nenhuma cadastrada — cadastre em Cadastros › Fazendas)')+'</div><div class="orc-chiprow">'
+        + fs.map(f=>'<button class="orc-chip'+(_qz.fazenda===f.nome?' on':'')+'" onclick="qzSetFazenda(\''+esc(String(f.nome).replace(/\x27/g,"\\x27"))+'\')">'+esc(f.nome)+(+f.areaHa>0?(' · '+fnum(f.areaHa)+' ha'):'')+'</button>').join('')
+        +'</div></div>'; }
+    h+='</div>'; return h;
+  }
+  if(s===1){ // Área
+    const f=qzFazendasDoCliente(_qz.clienteNome).find(x=>x.nome===_qz.fazenda);
+    let h='<h3>Qual a área do orçamento?</h3><div class="cap">Use a área da fazenda cadastrada ou digite a área do serviço.</div><div style="margin-top:12px">';
+    if(f&&+f.areaHa>0)h+='<div class="orc-chiprow"><button class="orc-chip'+((+_qz.areaHa===+f.areaHa)?' on':'')+'" onclick="qzSetField(\'areaHa\','+(+f.areaHa)+');renderOrcamentosView()">Fazenda inteira · '+fnum(f.areaHa)+' ha</button></div>';
+    h+='<label class="orc-field" style="max-width:260px"><span>Área (hectares)</span><input id="qzArea" inputmode="decimal" value="'+esc(_qz.areaHa?fnum(_qz.areaHa):'')+'" placeholder="ex.: 1.250"></label>';
+    h+='<div class="orc-sumrow tot" style="max-width:260px"><span>Área total</span><span>'+fnum(+_qz.areaHa||0)+' ha</span></div>';
+    h+='</div>'; return h;
+  }
+  if(s===2){ // Serviços
+    const cat=(typeof funilServicoLista==='function')?funilServicoLista():((D.servicos||[]).map(x=>x.nome).filter(Boolean));
+    const pacs=(D.comercial.pacotes||[]);
+    let h='<h3>Quais serviços?</h3><div class="cap">Toque para incluir. Vários serviços viram itens do orçamento.</div>';
+    if(pacs.length){ h+='<div style="margin:12px 0 6px;font-weight:700">Pacotes</div><div class="orc-scards">'
+      + pacs.map(p=>'<div class="orc-scard" onclick="qzAddPacote(\''+p.id+'\')"><div class="st">📦 '+esc(p.nome)+'</div><div class="sp">'+(p.servicos||[]).length+' serviços'+(p.descontoPct?(' · '+p.descontoPct+'% off'):'')+'</div><div class="sadd">+ ADICIONAR PACOTE</div></div>').join('')+'</div>'; }
+    h+='<div style="margin:14px 0 6px;font-weight:700">Serviços</div><div class="orc-scards">'
+      + cat.map(sv=>{ const on=_qz.itens.some(it=>it.servico===sv); const pr=qtPrecoTabela(sv); return '<div class="orc-scard'+(on?' on':'')+'" onclick="qzToggleServ(\''+esc(String(sv).replace(/\x27/g,"\\x27"))+'\')"><div class="st">'+esc(sv)+'</div><div class="sp">'+(pr>0?('a partir de '+BRL(pr)+'/ha'):'preço a definir')+'</div><div class="sadd">'+(on?'✓ INCLUÍDO':'+ ADICIONAR')+'</div></div>'; }).join('')
+      +'</div>'; return h;
+  }
+  if(s===3){ // Configuração
+    const sampItens=_qz.itens.filter(it=>it.config);
+    let h='<h3>Configuração dos serviços</h3><div class="cap">Malha e profundidade dos serviços de amostragem. Os demais serviços não precisam de configuração.</div>';
+    if(!_qz.itens.length){ h+='<div class="op-empty" style="margin-top:12px">Nenhum serviço adicionado. Volte à etapa Serviços.</div>'; return h; }
+    if(!sampItens.length){ h+='<div class="note" style="margin-top:12px">Os serviços escolhidos não exigem configuração de amostragem. Pode seguir para Pagamento.</div>'; }
+    sampItens.forEach(it=>{ h+='<div class="orc-qcard"><div class="orc-qtop"><b>'+esc(it.servico)+'</b><span class="cap">'+(it.config.pontos?(it.config.pontos+' pontos · ~'+it.config.amostras+' amostras'):'')+'</span></div>';
+      h+='<div style="margin-top:8px"><div class="cap" style="margin-bottom:4px">Malha</div><div class="orc-chiprow">'
+        + (D.comercial.malhas||[]).map(m=>'<button class="orc-chip'+(it.config.malhaId===m.id?' on':'')+'" onclick="qzItemMalha(\''+esc(String(it.servico).replace(/\x27/g,"\\x27"))+'\',\''+m.id+'\')">'+esc(m.nome)+'</button>').join('')+'</div>';
+      h+='<div style="margin-top:8px"><div class="cap" style="margin-bottom:4px">Profundidades</div><div class="orc-chiprow">'
+        + (D.comercial.profundidades||[]).map(p=>'<button class="orc-chip'+((it.config.profundidades||[]).indexOf(p.id)>=0?' on':'')+'" onclick="qzItemProf(\''+esc(String(it.servico).replace(/\x27/g,"\\x27"))+'\',\''+p.id+'\')">'+esc(p.nome)+'</button>').join('')+'</div></div>';
+      h+='</div></div>'; });
+    return h;
+  }
+  if(s===4){ // Pagamento
+    const conds=(D.comercial.condicoesPgto||[]);
+    let h='<h3>Condição de pagamento</h3><div class="cap">Escolha a condição e a validade da proposta.</div><div class="orc-chiprow" style="margin-top:12px">'
+      + conds.map(c=>'<button class="orc-chip'+(_qz.pagamentoCondId===c.id?' on':'')+'" onclick="qzSetField(\'pagamentoCondId\',\''+c.id+'\');renderOrcamentosView()">'+esc(c.nome)+'</button>').join('')+'</div>';
+    h+='<label class="orc-field" style="max-width:220px;margin-top:14px"><span>Validade (dias)</span><input id="qzValidade" inputmode="decimal" value="'+esc(_qz.validadeDias||'')+'"></label>';
+    if(_qz.pagamento&&_qz.pagamento.parcelas&&_qz.pagamento.parcelas.length){ h+='<div style="margin-top:10px"><div class="cap" style="margin-bottom:6px">Cronograma</div>';
+      _qz.pagamento.parcelas.forEach(p=>{ h+='<div class="orc-sumrow" style="max-width:340px"><span class="lbl">Parcela '+p.n+' · '+p.dias+' dias</span><span><b>'+BRL(p.valor)+'</b>'+(p.venc?(' · '+qzDataBR(p.venc)):'')+'</span></div>'; }); h+='</div>'; }
+    return h;
+  }
+  // s===5 Resumo
+  let h='<h3>Resumo do orçamento</h3><div class="cap">Confira antes de gerar. A qualquer momento você pode voltar e ajustar.</div>';
+  h+='<div style="margin-top:12px"><b>'+esc(_qz.clienteNome||'—')+'</b>'+(_qz.fazenda?(' · '+esc(_qz.fazenda)):'')+' · '+fnum(+_qz.areaHa||0)+' ha · vendedor '+esc(_qz.vendedor||'A definir')+'</div>';
+  h+='<div style="margin-top:12px">';
+  (_qz.itens||[]).forEach(it=>{ h+='<div class="orc-qcard"><div class="orc-qtop"><b>'+esc(it.servico)+'</b><span><b>'+BRL(+it.total||0)+'</b></span></div><div class="cap">'+fnum(+it.quantidade||0)+' '+esc(it.unidade)+' × '+BRL(+it.precoBase||0)+(it.config&&it.config.amostras?(' · malha/'+((D.comercial.malhas.find(m=>m.id===it.config.malhaId)||{}).nome||'')+' · ~'+it.config.amostras+' amostras'):'')+'</div></div>'; });
+  h+='</div>';
+  h+='<label class="orc-field"><span>Observações para o cliente (opcional)</span><input id="qzObsCli" value="'+esc(_qz.obsCliente||'')+'" placeholder="condições, prazos, escopo…"></label>';
+  const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
+  h+='<div class="orc-sumrow"><span class="lbl">Subtotal</span><span>'+BRL(+_qz.subtotal||0)+'</span></div>';
+  h+='<div class="orc-sumrow tot"><span>Total</span><span>'+BRL(+_qz.total||0)+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(cond?cond.nome:'—')+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Validade</span><span>'+(_qz.validadeDias||0)+' dias'+(_qz.validoAte?(' (até '+qzDataBR(_qz.validoAte)+')'):'')+'</span></div>';
+  h+='<div class="orc-navbtns"><button class="edbtn" onclick="qzStep(0)">Editar</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">Gerar orçamento</button></div>';
+  return h;
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
