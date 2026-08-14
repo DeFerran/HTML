@@ -6393,6 +6393,44 @@ function projMoverKanban(id,cod){ const p=projPorId(id); if(!p)return; if(p.etap
   if(!confirm('Mover '+p.numero+' de "'+pipeEtapaNome(tp,p.etapaAtual)+'" para "'+pipeEtapaNome(tp,cod)+'"?\n\nA mudança é registrada no histórico do projeto.'))return;
   projMover(p,cod,{origem:'kanban'}); commit(); renderProjetosView(); uiToast('→ '+pipeEtapaNome(tp,cod)); }
 
+/* Fase 9 — dados das etapas finais (regulagem/acompanhamento) + conclusão */
+function projDado(p,etapa){ if(!p.etapaDados||typeof p.etapaDados!=='object')p.etapaDados={}; if(!p.etapaDados[etapa]||typeof p.etapaDados[etapa]!=='object')p.etapaDados[etapa]={}; return p.etapaDados[etapa]; }
+function projSetDado(id,etapa,campo,val){ const p=projPorId(id); if(!p)return; projDado(p,etapa)[campo]=val; commit(); }
+function projIdx(p,cod){ return pipeEtapasCodigos(p.tipoWorkflowId).indexOf(cod); }
+function projAlcancou(p,cod){ const i=projIdx(p,p.etapaAtual), j=projIdx(p,cod); return (i>=0&&j>=0&&i>=j)||!!(PipelineCalc.marcos(p)[cod]); }
+function projCampo(id,etapa,campo,val,tipo,ph){ tipo=tipo||'text'; return '<input class="edinp" type="'+tipo+'" value="'+esc(val||'')+'"'+(ph?(' placeholder="'+esc(ph)+'"'):'')+' onchange="projSetDado(\''+id+'\',\''+etapa+'\',\''+campo+'\',this.value)">'; }
+function projCampoSel(id,etapa,campo,val,opts){ return '<select class="edinp" onchange="projSetDado(\''+id+'\',\''+etapa+'\',\''+campo+'\',this.value)">'+opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===(val||'')?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>'; }
+function projRegulagemFeita(id){ const p=projPorId(id); if(!p)return; const d=projDado(p,'REGULAGEM'); if(!confirm('Marcar regulagem como realizada e avançar para Acompanhamento?'))return; if(!d.dataRealizada)d.dataRealizada=painelHojeISO();
+  projLog(p,{tipo:'REGULAGEM_OK',obs:'regulagem realizada'+(d.talhao?(' · talhão '+d.talhao):'')+(d.equipamento?(' · '+d.equipamento):''),responsavel:d.responsavel||'',origem:'manual'});
+  const cods=pipeEtapasCodigos(p.tipoWorkflowId); if(cods.indexOf(p.etapaAtual)<cods.indexOf('ACOMPANHAMENTO'))projMover(p,'ACOMPANHAMENTO',{origem:'manual',obs:'após regulagem',responsavel:d.responsavel||''}); commit(); renderProjetosView(); uiToast('✓ Regulagem registrada'); }
+function projConcluir(id){ const p=projPorId(id); if(!p)return; const cc=pipeCondConclusao(p.tipoWorkflowId); const d=projDado(p,'ACOMPANHAMENTO');
+  if(!confirm('Concluir o serviço '+p.numero+'?\n\nCondição de conclusão deste tipo de serviço: "'+pipeEtapaNome(p.tipoWorkflowId,cc)+'". Não é só a apresentação — confirme que o acompanhamento foi tratado.'))return;
+  if(!d.data)d.data=painelHojeISO(); d.concluido='sim'; projMover(p,cc,{origem:'manual',obs:'serviço concluído (acompanhamento)',responsavel:d.responsavel||''}); commit(); renderProjetosView(); uiToast('✓ Serviço concluído'); }
+function projFasesFinaisHTML(p,tp){ let h=''; const id=p.id; const concl=(p.status==='concluido');
+  if(projAlcancou(p,'APRESENTACAO')||projAlcancou(p,'REGULAGEM')){ const d=projDado(p,'REGULAGEM');
+    h+='<div class="pl-card"><h3 style="margin:0 0 8px">Regulagem</h3><div class="pl-hdrgrid">'
+      +'<div><span class="k">Data programada</span><br>'+projCampo(id,'REGULAGEM','dataProgramada',d.dataProgramada,'date')+'</div>'
+      +'<div><span class="k">Data realizada</span><br>'+projCampo(id,'REGULAGEM','dataRealizada',d.dataRealizada,'date')+'</div>'
+      +'<div><span class="k">Responsável</span><br>'+projCampo(id,'REGULAGEM','responsavel',d.responsavel,'text','quem regulou')+'</div>'
+      +'<div><span class="k">Equipamento / máquina</span><br>'+projCampo(id,'REGULAGEM','equipamento',d.equipamento,'text','ex.: distribuidora')+'</div>'
+      +'<div><span class="k">Talhão</span><br>'+projCampo(id,'REGULAGEM','talhao',d.talhao,'text','ex.: TH 01')+'</div>'
+      +'<div><span class="k">Produto / insumo</span><br>'+projCampo(id,'REGULAGEM','produto',d.produto,'text','opcional')+'</div>'
+      +'<div style="grid-column:1/-1"><span class="k">Observações</span><br>'+projCampo(id,'REGULAGEM','obs',d.obs,'text','')+'</div>'
+      +'<div style="grid-column:1/-1"><span class="k">Pendências</span><br>'+projCampo(id,'REGULAGEM','pendencias',d.pendencias,'text','')+'</div></div>';
+    if(!concl && p.status!=='cancelado')h+='<button class="edbtn primary" style="margin-top:10px" onclick="projRegulagemFeita(\''+id+'\')">✓ Regulagem realizada → Acompanhamento</button>';
+    h+='</div>'; }
+  if(projAlcancou(p,'REGULAGEM')||projAlcancou(p,'ACOMPANHAMENTO')){ const a=projDado(p,'ACOMPANHAMENTO'); const simnao=[['','—'],['sim','Sim'],['nao','Não']];
+    h+='<div class="pl-card"><h3 style="margin:0 0 8px">Acompanhamento</h3><div class="cap" style="margin-bottom:8px">Pós-regulagem: a aplicação aconteceu e como foi. O serviço só conclui aqui — não na apresentação.</div><div class="pl-hdrgrid">'
+      +'<div><span class="k">Aplicação realizada?</span><br>'+projCampoSel(id,'ACOMPANHAMENTO','aplicacaoRealizada',a.aplicacaoRealizada,simnao)+'</div>'
+      +'<div><span class="k">Necessidade de retorno?</span><br>'+projCampoSel(id,'ACOMPANHAMENTO','retorno',a.retorno,simnao)+'</div>'
+      +'<div><span class="k">Data</span><br>'+projCampo(id,'ACOMPANHAMENTO','data',a.data,'date')+'</div>'
+      +'<div style="grid-column:1/-1"><span class="k">Arquivos utilizados</span><br>'+projCampo(id,'ACOMPANHAMENTO','arquivos',a.arquivos,'text','ex.: mapa de aplicação X')+'</div>'
+      +'<div style="grid-column:1/-1"><span class="k">Problemas</span><br>'+projCampo(id,'ACOMPANHAMENTO','problemas',a.problemas,'text','')+'</div>'
+      +'<div style="grid-column:1/-1"><span class="k">Observações</span><br>'+projCampo(id,'ACOMPANHAMENTO','obs',a.obs,'text','')+'</div></div>';
+    if(concl)h+='<div class="cap" style="margin-top:10px;color:var(--leaf);font-weight:800">✓ Serviço concluído'+(p.concluidoEm?(' em '+esc(qzDataBR(String(p.concluidoEm).slice(0,10)))):'')+'</div>';
+    else if(p.status!=='cancelado')h+='<button class="edbtn primary" style="margin-top:10px" onclick="projConcluir(\''+id+'\')">✓ Concluir serviço</button>';
+    h+='</div>'; }
+  return h; }
 function renderProjetoDetalhe(host,p){ const tp=p.tipoWorkflowId; const codigos=pipeEtapasCodigos(tp); const marcos=PipelineCalc.marcos(p); const idx=codigos.indexOf(p.etapaAtual); const s=projSla(p); const lead=projLead(p);
   let h='<div class="ed-back" onclick="projFechar()" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-weight:800;color:var(--orange)"><svg class="ed-ic"><use href="#ic-chevron"></use></svg> Voltar aos projetos</div>';
   h+='<div class="lead"><h2>'+esc(p.numero||'Projeto')+' — '+esc(p.clienteNome||'')+'</h2></div>';
@@ -6422,6 +6460,7 @@ function renderProjetoDetalhe(host,p){ const tp=p.tipoWorkflowId; const codigos=
     h+='<div class="pl-step '+cls+'"><div class="pl-node">'+node+'</div><div class="pl-scont"><div class="pl-snome">'+esc(pipeEtapaNome(tp,c))+'</div><div class="pl-smeta">'
       +(dt?('<span>📅 '+esc(dt)+'</span>'):'<span>—</span>')+(resp?('<span>👤 '+esc(resp)+'</span>'):'')+(tempo?('<span>⏱ '+esc(tempo)+'</span>'):'')+'</div></div></div>'; });
   h+='</div></div>';
+  h+=projFasesFinaisHTML(p,tp);
   const tempos=PipelineCalc.temposEntreEtapas(p);
   if(tempos.length){ h+='<div class="pl-card"><h3 style="margin:0 0 8px">Tempo entre etapas</h3><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>De</th><th>Para</th><th>Dias</th></tr></thead><tbody>'
     +tempos.map(t=>'<tr><td data-label="De">'+esc(pipeEtapaNome(tp,t.de))+'</td><td data-label="Para">'+esc(pipeEtapaNome(tp,t.para))+'</td><td data-label="Dias">'+(t.dias!=null?t.dias+'d':'—')+'</td></tr>').join('')+'</tbody></table></div></div>'; }
