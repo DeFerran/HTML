@@ -11,6 +11,8 @@ if (A < 0 || B < 0) throw new Error("marcadores <op-csv> não encontrados");
 const opToCsv: any = (0, eval)(html.slice(A, B) + "\nopToCsv");
 // deno-lint-ignore no-explicit-any
 const opParseCsv: any = (0, eval)(html.slice(A, B) + "\nopParseCsv");
+// deno-lint-ignore no-explicit-any
+const opNum: any = (0, eval)(html.slice(A, B) + "\nopNum");
 
 test("separador ';' e linhas com CRLF", () => {
   expect(opToCsv([["a", "b"], ["1", "2"]])).toBe("a;b\r\n1;2");
@@ -42,6 +44,28 @@ test("opParseCsv: campos com aspas, ';' e quebra de linha internos", () => {
   const { rows } = opParseCsv('A;B\r\n"x;y";"linha1\nlinha2"');
   expect(rows[0].A).toBe("x;y");
   expect(rows[0].B).toBe("linha1\nlinha2");
+});
+
+test("opNum: preserva decimais do próprio Exportar (número cru '1234.5')", () => {
+  expect(opNum("1234.5")).toBe(1234.5);   // bug antigo /[^\d]/g virava 12345
+  expect(opNum("500")).toBe(500);
+  expect(opNum(320)).toBe(320);
+});
+
+test("opNum: aceita formato digitado pt-BR (milhar '.' + decimal ',')", () => {
+  expect(opNum("1.234,5")).toBe(1234.5);
+  expect(opNum("1.000")).toBe(1);         // convenção pt-BR do app (ponto=decimal quando só há ponto)
+  expect(opNum("2,75")).toBe(2.75);
+  expect(opNum("R$ 47,50")).toBe(47.5);
+});
+
+test("opNum: vazio/'-'/inválido → '' (preserva 'a validar', não vira 0)", () => {
+  expect(opNum("")).toBe("");
+  expect(opNum("   ")).toBe("");
+  expect(opNum("-")).toBe("");
+  expect(opNum(null)).toBe("");
+  expect(opNum(undefined)).toBe("");
+  expect(opNum("abc")).toBe("");
 });
 
 test("round-trip: opParseCsv(opToCsv(...)) preserva os dados", () => {

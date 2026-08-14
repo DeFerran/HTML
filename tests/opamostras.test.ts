@@ -57,6 +57,16 @@ test("agg: sem recebidos → tempoMedio null", () => {
   expect(a.aguardando).toBe(1);
 });
 
+test("agg: dias negativos (resultado antes do envio) não entram na média", () => {
+  const remessas = [
+    { dataEnvio: "2026-02-01", dataResultado: "2026-02-09" }, // recebido, 8 dias
+    { dataEnvio: "2026-02-10", dataResultado: "2026-02-05" }, // erro de digitação: -5 dias
+  ];
+  const a = OP.agg(remessas, HOJE, 7);
+  expect(a.recebido).toBe(2);        // ambos contam como recebidos
+  expect(a.tempoMedio).toBeCloseTo(8, 5); // só o dia válido entra na média
+});
+
 test("filtra: data, fazenda, responsável e busca (fazenda/talhão/obs)", () => {
   const remessas = [
     { dataEnvio: "2026-02-03", fazendas: ["Santa Helena", "Telles Pires"], talhoes: ["TH 01"], etiquetagem: ["Álvaro"], respEnvio: "Álvaro", obs: "" },

@@ -1592,9 +1592,11 @@ const DLnum={anchor:'end',align:'end',clamp:true,clip:false,color:()=>_labInk,fo
 /* para barras horizontais: rótulo dentro/na ponta à direita, em branco */
 const DLmoneyH={anchor:'end',align:'right',clamp:true,clip:false,color:'#ffffff',font:{weight:'700',size:10},formatter:v=>v?BRLk(v):''};
 let taxRate = (D.impostoNF && D.impostoNF.rate) || 0.17;
-const BRL = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
-const BRLk = v => Math.abs(v)>=1e6 ? 'R$ '+(v/1e6).toFixed(2).replace('.',',')+' mi' : 'R$ '+Math.round(v/1000)+'k';
-const PCT = v => (v*100).toFixed(1).replace('.',',')+'%';
+/* formatadores à prova de divisão por zero: NaN/Infinity (ex.: x/receita quando
+   a receita é 0) viram 0 em vez de "R$ NaN" / "Infinity%". Valores finitos não mudam. */
+const BRL = v => 'R$ ' + Math.round(Number.isFinite(v)?v:0).toLocaleString('pt-BR');
+const BRLk = v => { v=Number.isFinite(v)?v:0; return Math.abs(v)>=1e6 ? 'R$ '+(v/1e6).toFixed(2).replace('.',',')+' mi' : 'R$ '+Math.round(v/1000)+'k'; };
+const PCT = v => ((Number.isFinite(v)?v:0)*100).toFixed(1).replace('.',',')+'%';
 const C = {navy:'#004820',moss:'#1E7D3C',gold:'#C08A2C',red:'#C0392B',mut:'#8a9990',
   set:['#004820','#C08A2C','#1E7D3C','#7BA05B','#C0392B','#DDB25A','#0A6A30','#A0651A','#3C9A54']};
 const C_LIGHT={navy:'#004820',moss:'#1E7D3C',gold:'#C08A2C',red:'#C0392B',mut:'#8a9990',
@@ -1968,6 +1970,18 @@ function opToCsv(matrix){
   const cell=v=>{ let s=(v==null?'':String(v)); return /[";\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s; };
   return (matrix||[]).map(row=>(row||[]).map(cell).join(';')).join('\r\n');
 }
+/* número pt-BR para importação (área, fator, média): aceita o que o próprio
+   Exportar grava (número cru "1234.5") e o que o usuário digita ("1.234,5").
+   Retorna '' para vazio (preserva "a validar") e null-safe. NÃO remove os
+   separadores decimais — o bug antigo (/[^\d]/g) transformava 1.234,5 em 12345. */
+function opNum(v){
+  if(v==null) return '';
+  let s=String(v).trim().replace(/[R$\s]/g,'');
+  if(s===''||s==='-') return '';
+  if(s.indexOf(',')>-1 && s.indexOf('.')>-1) s=s.replace(/\./g,'').replace(',','.');
+  else if(s.indexOf(',')>-1) s=s.replace(',','.');
+  const n=parseFloat(s); return isNaN(n)?'':n;
+}
 function opParseCsv(text){
   text=String(text||'').replace(/^﻿/,'');
   const rows=[]; let row=[], cur='', inq=false;
@@ -2092,13 +2106,13 @@ function opColetaExportar(){ const lancs=OpColetaCalc.filtra(D.opColeta.lancamen
   lancs.forEach(l=>rows.push([l.data,l.equipe,l.cliente,l.fazenda,l.talhao,(l.fator!=null?l.fator:''),(l.colaboradores||[]).map(c=>c.nome+': '+(+c.pontos||0)).join(' | '),OpColetaCalc.totalDia(l),OpColetaCalc.statusInfo(l.status).label,l.obs]));
   opDownload('coleta-de-pontos.csv',opToCsv(rows)); }
 function opAmExportar(){ const hoje=opHoje(),prazo=D.opAmostras.prazoDias; let rem=OpAmostrasCalc.filtra(D.opAmostras.remessas||[],_opAmFiltro); if(_opAmFiltro.situacao) rem=rem.filter(r=>OpAmostrasCalc.situacao(r,hoje,prazo)===_opAmFiltro.situacao);
-  const rows=[['Data envio','Fazendas','Talhões','Etiquetagem','Resp. envio','Volume','Arquivo na máquina','Data resultado','Dias','Situação']];
-  rem.forEach(r=>{ const ai=opArqInfo(r.arquivoMaquina); rows.push([r.dataEnvio,(r.fazendas||[]).join(' | '),(r.talhoes||[]).join(' | '),(r.etiquetagem||[]).join(' | '),r.respEnvio,r.volume,(ai?ai.label:''),r.dataResultado,OpAmostrasCalc.diasRemessa(r,hoje),OpAmostrasCalc.situacaoInfo(OpAmostrasCalc.situacao(r,hoje,prazo)).label]); });
+  const rows=[['Data envio','Fazendas','Talhões','Etiquetagem','Resp. envio','Volume','Arquivo na máquina','Data resultado','Dias','Situação','Observações']];
+  rem.forEach(r=>{ const ai=opArqInfo(r.arquivoMaquina); rows.push([r.dataEnvio,(r.fazendas||[]).join(' | '),(r.talhoes||[]).join(' | '),(r.etiquetagem||[]).join(' | '),r.respEnvio,r.volume,(ai?ai.label:''),r.dataResultado,OpAmostrasCalc.diasRemessa(r,hoje),OpAmostrasCalc.situacaoInfo(OpAmostrasCalc.situacao(r,hoje,prazo)).label,r.obs||'']); });
   opDownload('envio-de-amostras.csv',opToCsv(rows)); }
 function opEnExportar(){ const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas||[],_opEnFiltro); const items=OpEntregasCalc.ITENS;
-  const head=['Cliente','Fazenda','Área (ha)']; items.forEach(it=>{ if(it.media) head.push(it.label+' (média)'); head.push(it.label); }); head.push('Progresso %');
+  const head=['Cliente','Fazenda','Área (ha)']; items.forEach(it=>{ if(it.media) head.push(it.label+' (média)'); head.push(it.label); }); head.push('Progresso %'); head.push('Observações');
   const rows=[head]; const lbl={concluido:'Concluído',andamento:'Em andamento',pendente:'Pendente',na:'—'};
-  linhas.forEach(l=>{ const row=[l.cliente,l.fazenda,(l.areaHa!=null?l.areaHa:'')]; items.forEach(it=>{ const c=(l.itens&&l.itens[it.k])||{}; if(it.media) row.push(c.media!=null?c.media:''); row.push(lbl[OpEntregasCalc.statusItem(l,it.k)]||'—'); }); row.push(OpEntregasCalc.progresso(l).pct); rows.push(row); });
+  linhas.forEach(l=>{ const row=[l.cliente,l.fazenda,(l.areaHa!=null?l.areaHa:'')]; items.forEach(it=>{ const c=(l.itens&&l.itens[it.k])||{}; if(it.media) row.push(c.media!=null?c.media:''); row.push(lbl[OpEntregasCalc.statusItem(l,it.k)]||'—'); }); row.push(OpEntregasCalc.progresso(l).pct); row.push(l.obs||''); rows.push(row); });
   opDownload('controle-de-entregas.csv',opToCsv(rows)); }
 /* importação CSV (formato do próprio Exportar): lê o arquivo e ADICIONA linhas. */
 function opReadFile(input,cb){ const f=input&&input.files&&input.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ cb(String(rd.result||'')); }catch(e){ alert('Falha ao importar: '+((e&&e.message)||e)); } }; rd.readAsText(f,'utf-8'); input.value=''; }
@@ -2114,7 +2128,7 @@ function opColImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ ale
 function opAmImportFile(input){ opReadFile(input,opAmImport); }
 function opAmImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ alert('CSV vazio ou inválido.'); return; }
   const arq={'Colocado':'colocado','Pendente':'pendente'}; const split=s=>String(s||'').split('|').map(x=>x.trim()).filter(Boolean);
-  const novos=rows.map(o=>({id:'opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),dataEnvio:(o['Data envio']||'').trim(),fazendas:split(o['Fazendas']),talhoes:split(o['Talhões']),etiquetagem:split(o['Etiquetagem']),respEnvio:(o['Resp. envio']||'').trim(),volume:(o['Volume']||'').trim(),arquivoMaquina:(arq[(o['Arquivo na máquina']||'').trim()]||''),dataResultado:(o['Data resultado']||'').trim(),obs:''})).filter(r=>r.dataEnvio);
+  const novos=rows.map(o=>({id:'opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),dataEnvio:(o['Data envio']||'').trim(),fazendas:split(o['Fazendas']),talhoes:split(o['Talhões']),etiquetagem:split(o['Etiquetagem']),respEnvio:(o['Resp. envio']||'').trim(),volume:(o['Volume']||'').trim(),arquivoMaquina:(arq[(o['Arquivo na máquina']||'').trim()]||''),dataResultado:(o['Data resultado']||'').trim(),obs:(o['Observações']||'').trim()})).filter(r=>r.dataEnvio);
   if(!novos.length){ alert('Nenhuma linha válida (coluna "Data envio" obrigatória).'); return; }
   if(!confirm('Importar '+novos.length+' remessa(s)? Serão ADICIONADAS (nada é apagado).')) return;
   D.opAmostras.remessas=(D.opAmostras.remessas||[]).concat(novos); if(typeof commit==='function')commit(); renderOpAmostras(); alert(novos.length+' remessa(s) importada(s).'); }
@@ -2122,8 +2136,8 @@ function opEnImportFile(input){ opReadFile(input,opEnImport); }
 function opEnImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ alert('CSV vazio ou inválido.'); return; }
   const st={'Concluído':'concluido','Em andamento':'andamento','Pendente':'pendente','—':'na','':'na'}; const items=OpEntregasCalc.ITENS;
   const novos=rows.map(o=>{ const itens={}; items.forEach(it=>{ const stv=(o[it.label]||'').trim(); const cell={status:(st[stv]!=null?st[stv]:'na')}; if(it.media){ const mv=String(o[it.label+' (média)']||'').trim().replace(',','.'); if(mv!=='') cell.media=+mv||0; } itens[it.k]=cell; });
-    const area=String(o['Área (ha)']||'').replace(/[^\d]/g,'');
-    return {id:'ope'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cliente:(o['Cliente']||'').trim(),fazenda:(o['Fazenda']||'').trim(),areaHa:(area===''?'':(+area||0)),obs:'',itens:itens}; }).filter(l=>l.cliente);
+    const area=opNum(o['Área (ha)']);
+    return {id:'ope'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cliente:(o['Cliente']||'').trim(),fazenda:(o['Fazenda']||'').trim(),areaHa:area,obs:(o['Observações']||'').trim(),itens:itens}; }).filter(l=>l.cliente);
   if(!novos.length){ alert('Nenhuma linha válida (coluna "Cliente" obrigatória).'); return; }
   if(!confirm('Importar '+novos.length+' linha(s) de entrega? Serão ADICIONADAS (nada é apagado).')) return;
   D.opEntregas.linhas=(D.opEntregas.linhas||[]).concat(novos); if(typeof commit==='function')commit(); renderOpEntregas(); alert(novos.length+' linha(s) importada(s).'); }
@@ -2161,7 +2175,7 @@ const OpAmostrasCalc=(function(){
   function agg(remessas,hoje,prazoDias){ remessas=remessas||[];
     let aguardando=0,atrasado=0,recebido=0; const recDias=[];
     remessas.forEach(r=>{ const s=situacao(r,hoje,prazoDias);
-      if(s==='recebido'){ recebido++; const d=diffDias(r.dataEnvio,r.dataResultado); if(d!=null) recDias.push(d); }
+      if(s==='recebido'){ recebido++; const d=diffDias(r.dataEnvio,r.dataResultado); if(d!=null && d>=0) recDias.push(d); }
       else if(s==='atrasado') atrasado++; else aguardando++; });
     const tempoMedio=recDias.length? recDias.reduce((a,b)=>a+b,0)/recDias.length : null;
     return {total:remessas.length,aguardando,atrasado,recebido,tempoMedio}; }
@@ -3379,8 +3393,14 @@ function _temDados(v){
 }
 function mergeImport(prev, fresh){
   prev=prev||{}; fresh=fresh||{};
+  // Cadastros que o usuário mantém à mão e NÃO existem na planilha GESTÃO_AP.
+  // A planilha não reconstrói nenhum deles, então precisam ser preservados na
+  // importação — senão hydrate() os recria vazios e apaga o trabalho manual.
+  // Controle Operacional (opColeta/opAmostras/opEntregas) e as tabelas por safra
+  // (metasSafra/precosSafra) só existem aqui; sem preservar, a importação zera tudo.
   ['lancamentos','recorrencias','centrosCusto','veiculos','orcamentos','funil',
-   'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa']
+   'clientes','categorias','equipe','comissao','impostoNF','recebimento2027','custoHa',
+   'opColeta','opAmostras','opEntregas','metasSafra','precosSafra']
    .forEach(function(k){ if(_temDados(prev[k])) fresh[k]=prev[k]; });
   return fresh;
 }
