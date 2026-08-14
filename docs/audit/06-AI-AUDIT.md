@@ -29,7 +29,7 @@ externa nem muda recomendação agronômica crítica automaticamente. ✅
 
 | # | Item | Efeito | Classe |
 |---|------|--------|--------|
-| I-08 | `get_costs` lê `bi_custos_mensais` (zerada) | IA responde **custo mensal R$ 0** | 🔴 dado de origem (ETL), não código |
+| I-08 | ~~`get_costs` lê `bi_custos_mensais` (zerada)~~ **CORRIGIDO (D-03)**: total/categoria via `bi_custo_categoria` (reconcilia); mensal omitido com aviso quando zerado | IA não reporta mais **R$ 0**; deploy pendente | ✅ código corrigido/testado |
 | I-09 | Metas via `bi_metas` defasada | IA/relatório de meta desatualizado | 🟡 ETL |
 | I-16 | Chave Anthropic e `whatsapp_config` ausentes | IA/WhatsApp **desligados** | ⚪ configuração |
 

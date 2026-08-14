@@ -42,15 +42,20 @@ sobre margem? Depois padronizar em **um** ponto (single source).
 
 ---
 
-## D-03 (P1) — `bi_custos_mensais` zerada → IA diz "custo R$ 0"
+## D-03 (P1) — `bi_custos_mensais` zerada → IA dizia "custo R$ 0" ✅ RESOLVIDO (Opção B)
 
-288 linhas, `SUM(valor)=0`. `get_costs` (ai-gateway) lê dela.
+288 linhas, `SUM(valor)=0`. `get_costs` (ai-gateway) lia dela para o **total**.
 
-- **Opção A:** reprocessar o ETL do espelho (fora do código do app).
-- **Opção B (código):** apontar `get_costs` para `bi_custo_categoria`/
-  `bi_lancamentos`, que **reconciliam** (R$ 908.726,57). Muda a fonte da tool.
+- ~~**Opção A:** reprocessar o ETL do espelho (fora do código do app).~~
+- **Opção B (código) — APLICADA:** `get_costs` agora tira o **total** e o
+  detalhamento **por categoria** de `bi_custo_categoria` (reconcilia com os
+  lançamentos pagos: 2026 = **R$ 908.726,57**). O detalhamento **por mês** só
+  aparece quando `bi_custos_mensais` tiver valores; enquanto estiver zerada, a
+  tool **omite** o mensal e devolve um **aviso** — nunca reporta "R$ 0 em todo
+  mês". Verificado com dados reais (ver 07). **Deploy da edge function pendente.**
 
-**Recomendação:** B como paliativo rápido e confiável; A como correção de raiz.
+**Correção de raiz ainda recomendada (A):** reprocessar o ETL de
+`bi_custos_mensais` para reativar o detalhamento mensal na IA.
 
 ---
 

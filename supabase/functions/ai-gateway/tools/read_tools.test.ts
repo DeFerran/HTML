@@ -167,13 +167,42 @@ test("get_season: safra real → dados + serviços", async () => {
   expect(Array.isArray(d.servicos)).toBe(true);
 });
 
-test("get_costs: agrega por mês/categoria e compara real vs projetado", async () => {
+test("get_costs: total vem da fonte que reconcilia (bi_custo_categoria), não do mensal", async () => {
   const { db } = makeDb(SAMPLE);
   const r = await runReadTool(db, "get_costs", {}, CTX);
   expect(r.encontrado).toBe(true);
   const d = r.dados as Record<string, any>;
-  expect(d.total).toBe(22000); // 10000 + 12000
+  expect(d.total).toBe(30000); // soma de bi_custo_categoria (não 22000 do mensal)
+  expect(d.real_vs_projetado.real).toBe(30000);
   expect(d.real_vs_projetado.projetado).toBe(25000);
+  // mensal presente (não-zerado) → detalhamento por mês aparece
+  expect(d.por_mes.length).toBe(2);
+  expect(r.aviso).toBeUndefined();
+});
+
+test("get_costs: espelho mensal ZERADO → total pela categoria + por_mes omitido com aviso (D-03)", async () => {
+  const ZERADO = {
+    ...SAMPLE,
+    bi_custos_mensais: [
+      { mes: "Jan", idx: 0, valor: 0 },
+      { mes: "Fev", idx: 1, valor: 0 },
+    ],
+  };
+  const { db } = makeDb(ZERADO);
+  const r = await runReadTool(db, "get_costs", {}, CTX);
+  expect(r.encontrado).toBe(true); // NÃO reporta "custo R$ 0"
+  const d = r.dados as Record<string, any>;
+  expect(d.total).toBe(30000); // vem de bi_custo_categoria, que reconcilia
+  expect(d.por_mes).toEqual([]); // não apresenta zeros como se fossem reais
+  expect(String(r.aviso)).toContain("Detalhamento por mês indisponível");
+});
+
+test("get_costs: filtro por categoria propaga para categoria e mensal", async () => {
+  const { db } = makeDb(SAMPLE);
+  const r = await runReadTool(db, "get_costs", { categoria: "Combust" }, CTX);
+  expect(r.encontrado).toBe(true);
+  const d = r.dados as Record<string, any>;
+  expect(d.por_categoria.every((c: any) => /combust/i.test(c.categoria))).toBe(true);
 });
 
 test("get_costs: sem dados → encontrado=false", async () => {

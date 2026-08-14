@@ -44,9 +44,21 @@ Vários KPIs fazem `PCT(x/receita)`. Com receita 0, saía `Infinity%`/`NaN`.
 Formatadores agora tratam não-finito como 0 — corrige **todos** os call sites de
 uma vez (single source), sem alterar nenhum valor finito.
 
+## Correção de backend (autorizada em separado): D-03
+
+| # | Prior. | Arquivo:local | Antes → Depois | Teste |
+|---|--------|---------------|----------------|-------|
+| I-08 / D-03 | P1 🔴 | `supabase/functions/ai-gateway/tools/read_tools.ts` `get_costs` | **total** vinha de `bi_custos_mensais` (zerada) → IA reportava **custo R$ 0**. Agora o **total** e o **por categoria** vêm de `bi_custo_categoria` (reconcilia: 2026 = **R$ 908.726,57**); o **por mês** só aparece se o espelho mensal tiver dados, senão é **omitido com aviso** (nunca "R$ 0 em todo mês"). | `read_tools.test.ts` (+3: total pela categoria, espelho zerado→aviso, filtro por categoria) |
+
+**Verificado com dados reais:** `get_costs(2026)` passa a devolver total
+R$ 908.726,57, 24 categorias, `por_mes` omitido com aviso (espelho mensal = 0),
+real vs projetado 908.726,57 × 1.193.135,52.
+**Pendente:** deploy da edge function `ai-gateway` (rede bloqueada neste
+ambiente). O código está corrigido, tipado e testado.
+
 ## Verificação
 
-- **bun test:** 120 passam (110 anteriores + 10 novos), 0 falhas.
+- **bun test:** 122 passam (110 + 10 frontend + 3 backend get_costs − ajuste), 0 falhas.
 - **Smoke headless (Chromium):** 4 telas operacionais renderizam; round-trip
   obs+área ok; `mergeImport`+`hydrate` preservam operacional/metas/preços;
   **0 erros de JS**.

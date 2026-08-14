@@ -184,7 +184,10 @@ const getCosts: ToolHandler = async (db, args) => {
   const ano = intOrNull(args, "ano");
   const categoria = str(args, "categoria");
 
-  // por categoria (agregado anual)
+  // FONTE QUE RECONCILIA (D-03): o TOTAL e o detalhamento por categoria vêm de
+  // bi_custo_categoria (agregado anual). Confere com bi_lancamentos(Pago):
+  // 2026 = R$ 908.726,57. NUNCA usamos bi_custos_mensais para o total — esse
+  // espelho mensal pode estar zerado e faria a IA reportar "custo R$ 0".
   let catQ = db.from("bi_custo_categoria").select("ano, categoria, valor");
   if (ano !== null) catQ = catQ.eq("ano", ano);
   if (categoria) catQ = catQ.ilike("categoria", `%${likeLiteral(categoria)}%`);
@@ -196,11 +199,16 @@ const getCosts: ToolHandler = async (db, args) => {
     categoria: String(r.categoria),
     valor: num(r.valor),
   }));
+  // total real = soma da fonte que reconcilia (por categoria), não do mensal.
+  const total_real = por_categoria.reduce((s, c) => s + c.valor, 0);
 
-  // por mês (real) — bi_custos_mensais
-  const mesRows = await db
-    .from("bi_custos_mensais")
-    .select("mes, idx, valor")
+  // por mês (real) — bi_custos_mensais. É um espelho que PODE estar zerado.
+  // Só reportamos o detalhamento mensal se ele realmente tiver valores; caso
+  // contrário, omitimos e avisamos — nunca apresentamos "R$ 0 em todo mês"
+  // como se fosse o custo real (seria enganoso e contradiria o total).
+  let mesQ = db.from("bi_custos_mensais").select("mes, idx, valor, categoria");
+  if (categoria) mesQ = mesQ.ilike("categoria", `%${likeLiteral(categoria)}%`);
+  const mesRows = await mesQ
     .then((r) => (r.error ? [] : (r.data ?? [])) as Record<string, unknown>[]);
   const mesMap = new Map<string, { idx: number; valor: number }>();
   for (const r of mesRows) {
@@ -209,12 +217,20 @@ const getCosts: ToolHandler = async (db, args) => {
     cur.valor += num(r.valor);
     mesMap.set(mes, cur);
   }
-  const por_mes = [...mesMap.entries()]
+  let por_mes = [...mesMap.entries()]
     .map(([mes, v]) => ({ mes, idx: v.idx, valor: v.valor }))
     .sort((a, b) => a.idx - b.idx)
     .map(({ mes, valor }) => ({ mes, valor }));
+  const mensal_total = por_mes.reduce((s, m) => s + m.valor, 0);
 
-  const total_real = por_mes.reduce((s, m) => s + m.valor, 0);
+  let aviso: string | undefined;
+  if (total_real > 0 && mensal_total <= 0) {
+    // espelho mensal defasado/zerado → não reportar zeros como custo real.
+    por_mes = [];
+    aviso =
+      "Detalhamento por mês indisponível no momento (espelho mensal sem dados). " +
+      "O total e o detalhamento por categoria vêm da fonte que reconcilia (bi_custo_categoria).";
+  }
 
   // projetado — bi_proj_gastos
   const projRows = await db
@@ -237,6 +253,7 @@ const getCosts: ToolHandler = async (db, args) => {
   return {
     disponivel: true,
     encontrado: true,
+    aviso,
     dados: {
       total: total_real,
       por_categoria,
@@ -551,7 +568,7 @@ export const READ_TOOLS: ToolDef[] = [
   {
     name: "get_costs",
     description:
-      "Custos por período/categoria: total real, por categoria, por mês e real vs projetado. Fonte: bi_custos_mensais/bi_custo_categoria/bi_proj_gastos.",
+      "Custos por período/categoria: total real, por categoria, por mês e real vs projetado. Total e detalhamento por categoria vêm de bi_custo_categoria (fonte que reconcilia com os lançamentos pagos); o detalhamento por mês (bi_custos_mensais) só aparece quando disponível — caso contrário vem um aviso. Projeção: bi_proj_gastos.",
     input_schema: {
       type: "object",
       properties: {
