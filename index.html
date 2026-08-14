@@ -2241,7 +2241,14 @@ const QuoteCalc=(function(){
     const totCalc=r2((+q.subtotal||0)-(+q.descontoValor||0)); if(Math.abs(totCalc-(+q.total||0))>0.005) erros.push('total≠subtotal−desconto');
     const pp=q.pagamento&&q.pagamento.parcelas; if(Array.isArray(pp)&&pp.length){ const sp=r2(pp.reduce((a,x)=>a+(+x.valor||0),0)); if(Math.abs(sp-(+q.total||0))>0.005) erros.push('Σparcelas≠total'); }
     return {ok:erros.length===0,erros:erros}; }
-  return {round2:r2,pontos,amostras,amostrasTotal,quantidade,itemSubtotal,itemTotal,somaItens,totais,totalTabela,desvioPct,venc,parcelas,reconcilia};
+  // desconto efetivo (%) do total vs tabela: >0 = desconto concedido
+  function descontoEfetivoPct(total,totTab){ const t=+totTab||0; return t>0?r2((t-(+total||0))/t*100):0; }
+  // decisão de aprovação: exige aprovação se o desconto passar da alçada OU o total ficar abaixo do preço mínimo
+  function aprovacaoNecessaria(descontoPct,alcadaMaxPct,total,totTab,precoMinimoPct){ const motivos=[];
+    if((+descontoPct||0) > (+alcadaMaxPct||0)+1e-9) motivos.push('Desconto de '+r2(descontoPct)+'% acima da sua alçada ('+r2(alcadaMaxPct)+'%)');
+    if((+precoMinimoPct||0)>0){ const min=r2((+totTab||0)*(+precoMinimoPct||0)/100); if((+total||0) < min-0.005) motivos.push('Total abaixo do preço mínimo ('+r2(precoMinimoPct)+'% da tabela)'); }
+    return {exigida:motivos.length>0,motivos:motivos}; }
+  return {round2:r2,pontos,amostras,amostrasTotal,quantidade,itemSubtotal,itemTotal,somaItens,totais,totalTabela,desvioPct,descontoEfetivoPct,aprovacaoNecessaria,venc,parcelas,reconcilia};
 })();
 // </quote-calc>
 // <op-csv>
@@ -5702,6 +5709,19 @@ function qtSafraAtual(){ return (typeof safraAtual==='function')?safraAtual():SA
 function qtPrecoTabela(servico){ try{ const ps=(typeof precoServ==='function')?precoServ(qtSafraAtual(),servico):{preco:0}; return +ps.preco||0; }catch(e){ return 0; } }
 function qtMalhaHaPorPonto(id){ const m=(D.comercial.malhas||[]).find(x=>x.id===id); return m?+m.haPorPonto||0:0; }
 function qtServSampling(servico){ try{ return (typeof gridDoServico==='function' && gridDoServico(servico)>0) || /amostr|coleta|solo|grid/i.test(servico||''); }catch(e){ return /amostr|coleta|solo|grid/i.test(servico||''); } }
+/* Fase 5: alçada/margem por papel. Gestor = admin (ou dono local, não-membro); vendedor = editor logado. */
+function qzEhGestor(){ return !!((typeof ehAdmin!=='undefined'&&ehAdmin) || (typeof ehMembro!=='undefined'&&!ehMembro)); }
+function qzPodeVerMargem(){ return qzEhGestor(); }
+function qzPodeAprovar(){ return qzEhGestor(); }
+function qzAlcadaMaxPct(){ const A=(D.comercial&&D.comercial.alcadas)||{}; return +(qzEhGestor()?A.gestorMaxDescPct:A.vendedorMaxDescPct)||0; }
+function qzPrecoMinimoPct(){ const A=(D.comercial&&D.comercial.alcadas)||{}; return +A.precoMinimoPct||0; }
+function qzDescEfetivoPct(q){ q=q||_qz; if(!q)return 0; return QuoteCalc.descontoEfetivoPct(q.total,q.totalTabela); }
+function qtCustoHa(servico){ try{ return (typeof custoExecHa==='function')?(+custoExecHa(servico,'antigo')||0):0; }catch(e){ return 0; } }
+function qzMargem(q){ q=q||_qz; if(!q)return {receita:0,custo:0,imp:0,com:0,mc:0,mcPct:0}; const area=+q.areaHa||0; let custo=0;
+  (q.itens||[]).forEach(it=>{ try{ if(it.metodo==='ha'||!it.metodo) custo+=(qtCustoHa(it.servico))*area; }catch(e){} });
+  const receita=+q.total||0; const imp=receita*((typeof taxRate!=='undefined')?taxRate:0); const com=receita*((typeof comRate==='function')?comRate():0); const mc=receita-imp-custo-com;
+  return {receita:receita,custo:custo,imp:imp,com:com,mc:mc,mcPct:receita?mc/receita:0}; }
+function qzAvisoAprovacao(q){ q=q||_qz; if(!q)return {exigida:false,motivos:[]}; return QuoteCalc.aprovacaoNecessaria(qzDescEfetivoPct(q),qzAlcadaMaxPct(),q.total,q.totalTabela,qzPrecoMinimoPct()); }
 function qtNumero(){ const ano=(function(){try{return new Date().getFullYear();}catch(e){return 2026;}})(); let mx=0; (D.quotes||[]).forEach(q=>{ const m=/ORC-\d+-(\d+)/.exec(q&&q.numero||''); if(m)mx=Math.max(mx,+m[1]); }); return 'ORC-'+ano+'-'+String(mx+1).padStart(4,'0'); }
 function qzFazendasDoCliente(nome){ return (D.fazendas||[]).filter(f=>f&&f.clienteNome===nome); }
 function qzVendedorDoCliente(nome){ const c=(D.clientes||[]).find(x=>x&&x.nome===nome&&x.vendedor); return c?c.vendedor:''; }
@@ -5745,14 +5765,30 @@ let _qzGerando=false;
 function qzGerar(){ if(!_qz||_qzGerando)return; if(!_qz.clienteNome){uiToast('Selecione o cliente.','err');return qzStep(0);} if(!(+_qz.areaHa>0)){uiToast('Informe a área.','err');return qzStep(1);} if(!_qz.itens.length){uiToast('Adicione ao menos um serviço.','err');return qzStep(2);}
   _qzGerando=true;
   try{ qzRecalc(); const rec=QuoteCalc.reconcilia(_qz); if(!rec.ok){ uiToast('Inconsistência: '+rec.erros.join(', '),'err'); return; }
-    qzSalvarDraft(); const num=_qz.numero; _qz=null; renderOrcamentosView(); uiToast('✓ Orçamento '+num+' salvo'); }
+    const ap=qzAvisoAprovacao();
+    if(ap.exigida){ _qz.status='aguardando_aprovacao'; _qz.aprovacao={exigida:true,status:'pendente',motivo:ap.motivos.join(' · '),por:'',em:'',solicitadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'',solicitadoEm:nowISO()}; }
+    else { _qz.status='rascunho'; _qz.aprovacao={exigida:false,status:'',motivo:'',por:'',em:''}; }
+    qzSalvarDraft(); const num=_qz.numero, exig=ap.exigida; _qz=null; renderOrcamentosView(); uiToast(exig?('⏳ '+num+' salvo — enviado para aprovação'):('✓ Orçamento '+num+' salvo')); }
   finally{ _qzGerando=false; } }
+/* aprovações do gestor */
+function orcAprovar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; q.status='aprovado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'aprovado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); commit(); renderOrcamentosView(); uiToast('✓ '+q.numero+' aprovado'); }
+function orcDevolver(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; const m=prompt('Motivo da devolução (para o vendedor ajustar):',''); if(m===null)return; q.status='rascunho'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'devolvido',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO(),motivoDevolucao:m}); commit(); renderOrcamentosView(); uiToast('↩ '+q.numero+' devolvido para ajuste'); }
+function orcRejeitar(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Rejeitar (recusar) o orçamento '+q.numero+'?'))return; q.status='recusado'; q.aprovacao=Object.assign(q.aprovacao||{},{status:'rejeitado',por:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'gestor',em:nowISO()}); commit(); renderOrcamentosView(); uiToast('✕ '+q.numero+' recusado'); }
 /* ---- render: lista x wizard ---- */
 function renderOrcamentosView(){ const host=document.getElementById('orcHost'); if(!host)return; if(_qz)renderOrcWizard(host); else renderOrcLista(host); }
 const ORC_STATUS_LBL={rascunho:'Rascunho',aguardando_aprovacao:'Aguardando aprovação',aprovado:'Aprovado',enviado:'Enviado',negociacao:'Em negociação',aceito:'Aceito',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
 function renderOrcLista(host){
   const qs=(D.quotes||[]).slice().sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||'')));
   let h='<div style="margin-bottom:14px"><button class="edbtn primary orc-big" onclick="orcNovo()">+ Novo orçamento</button></div>';
+  // Aprovações comerciais (gestor)
+  if(qzPodeAprovar()){ const pend=(D.quotes||[]).filter(q=>q&&q.status==='aguardando_aprovacao');
+    if(pend.length){ h+='<div class="panel" style="border-left:3px solid var(--gold);margin-bottom:14px"><h3>⏳ Aprovações comerciais ('+pend.length+')</h3><div class="cap">Desconto acima da alçada ou abaixo do preço mínimo. Aprove, devolva para ajuste ou recuse.</div>';
+      pend.forEach(q=>{ const desc=QuoteCalc.descontoEfetivoPct(q.total,q.totalTabela); const m=qzMargem(q);
+        h+='<div class="orc-qcard" style="margin-top:10px"><div class="orc-qtop"><b>'+esc(q.numero)+' · '+esc(q.clienteNome||'—')+(q.vendedor?(' · '+esc(q.vendedor)):'')+'</b><span><b>'+BRL(+q.total||0)+'</b></span></div>'
+          +'<div class="cap">Tabela '+BRL(+q.totalTabela||0)+' · Desconto '+PCT(desc/100)+(qzPodeVerMargem()?(' · Margem '+PCT(m.mcPct)+' ('+BRLk(m.mc)+')'):'')+'</div>'
+          +'<div class="note" style="margin:6px 0">⚠ '+esc((q.aprovacao&&q.aprovacao.motivo)||'')+'</div>'
+          +'<div class="orc-navbtns"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">ver</button><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="edbtn primary" style="background:#0A6A30" onclick="orcAprovar(\''+q.id+'\')">Aprovar</button><button class="edbtn" onclick="orcDevolver(\''+q.id+'\')">Devolver</button><button class="edbtn ghost" onclick="orcRejeitar(\''+q.id+'\')">Rejeitar</button></span></div></div>'; });
+      h+='</div>'; } }
   if(!qs.length){ h+='<div class="panel"><div class="op-empty">Nenhum orçamento ainda. Clique em <b>+ Novo orçamento</b> — leva cerca de 1–3 minutos.</div></div>'; host.innerHTML=h; return; }
   h+='<div class="panel"><div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Número</th><th>Cliente</th><th>Fazenda</th><th class="num">Área</th><th class="num">Serviços</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>';
   qs.forEach(q=>{ h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b></td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Status"><span class="tag '+(q.status==='aceito'||q.status==='convertido'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span></td><td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">abrir</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>'; });
@@ -5789,6 +5825,7 @@ function renderOrcWizard(host){
   const inp=document.getElementById('qzArea'); if(inp)inp.onchange=()=>qzSetField('areaHa',pnum(inp.value));
   const val=document.getElementById('qzValidade'); if(val)val.onchange=()=>qzSetField('validadeDias',Math.round(pnum(val.value)));
   const oc=document.getElementById('qzObsCli'); if(oc)oc.onchange=()=>qzSetField('obsCliente',oc.value);
+  const dsc=document.getElementById('qzDesc'); if(dsc)dsc.onchange=()=>{ qzSetField('descontoGeralPct',pnum(dsc.value)); renderOrcamentosView(); };
 }
 function qzStepHTML(){ const s=_qzStep;
   if(s===0){ // Cliente
@@ -5850,11 +5887,16 @@ function qzStepHTML(){ const s=_qzStep;
   h+='</div>';
   h+='<label class="orc-field"><span>Observações para o cliente (opcional)</span><input id="qzObsCli" value="'+esc(_qz.obsCliente||'')+'" placeholder="condições, prazos, escopo…"></label>';
   const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
-  h+='<div class="orc-sumrow"><span class="lbl">Subtotal</span><span>'+BRL(+_qz.subtotal||0)+'</span></div>';
-  h+='<div class="orc-sumrow tot"><span>Total</span><span>'+BRL(+_qz.total||0)+'</span></div>';
+  const descEf=qzDescEfetivoPct();
+  h+='<label class="orc-field" style="max-width:220px"><span>Desconto geral (%)</span><input id="qzDesc" inputmode="decimal" value="'+esc(_qz.descontoGeralPct||'')+'"></label>';
+  h+='<div class="orc-sumrow"><span class="lbl">Preço de tabela</span><span>'+BRL(+_qz.totalTabela||0)+'</span></div>';
+  if(+_qz.descontoValor>0)h+='<div class="orc-sumrow"><span class="lbl">Desconto ('+PCT(descEf/100)+')</span><span>−'+BRL(+_qz.descontoValor||0)+'</span></div>';
+  h+='<div class="orc-sumrow tot"><span>Total negociado</span><span>'+BRL(+_qz.total||0)+'</span></div>';
+  const ap=qzAvisoAprovacao(); if(ap.exigida)h+='<div class="note" style="border-left:3px solid var(--gold);margin-top:8px">⚠ '+ap.motivos.map(esc).join(' · ')+'. Ao gerar, o orçamento vai para <b>Aguardando aprovação</b> do gestor.</div>';
+  if(qzPodeVerMargem()){ const m=qzMargem(); h+='<div class="orc-sumrow" style="margin-top:10px"><span class="lbl">Custo previsto</span><span>'+BRL(m.custo)+'</span></div><div class="orc-sumrow"><span class="lbl">Margem de contribuição</span><span>'+BRL(m.mc)+' · '+PCT(m.mcPct)+'</span></div>'; }
   h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(cond?cond.nome:'—')+'</span></div>';
   h+='<div class="orc-sumrow"><span class="lbl">Validade</span><span>'+(_qz.validadeDias||0)+' dias'+(_qz.validoAte?(' (até '+qzDataBR(_qz.validoAte)+')'):'')+'</span></div>';
-  h+='<div class="orc-navbtns"><button class="edbtn" onclick="qzStep(0)">Editar</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">Gerar orçamento</button></div>';
+  h+='<div class="orc-navbtns"><button class="edbtn" onclick="qzStep(0)">Editar</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">'+(ap.exigida?'Enviar para aprovação':'Gerar orçamento')+'</button></div>';
   return h;
 }
 function renderCustoVeiculo(){

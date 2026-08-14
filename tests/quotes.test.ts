@@ -105,3 +105,36 @@ test("caso área zero: subtotais zeram sem NaN", () => {
   expect(Q.itemSubtotal(30, Q.quantidade("ha", { areaHa: 0 }))).toBe(0);
   expect(Q.pontos(0, 3)).toBe(0);
 });
+
+test("desconto efetivo % do total vs tabela", () => {
+  expect(Q.descontoEfetivoPct(28500, 30000)).toBe(5); // 5% de desconto
+  expect(Q.descontoEfetivoPct(30000, 30000)).toBe(0);
+  expect(Q.descontoEfetivoPct(31500, 30000)).toBe(-5); // prêmio (acima da tabela)
+  expect(Q.descontoEfetivoPct(100, 0)).toBe(0); // sem tabela
+});
+
+test("aprovação: dentro da alçada e sem preço mínimo → não exige", () => {
+  const r = Q.aprovacaoNecessaria(5, 5, 28500, 30000, 0);
+  expect(r.exigida).toBe(false);
+  expect(r.motivos).toEqual([]);
+});
+
+test("aprovação: desconto acima da alçada → exige", () => {
+  const r = Q.aprovacaoNecessaria(12, 5, 26400, 30000, 0);
+  expect(r.exigida).toBe(true);
+  expect(r.motivos.length).toBe(1);
+  expect(r.motivos[0]).toContain("acima da sua alçada");
+});
+
+test("aprovação: total abaixo do preço mínimo → exige", () => {
+  // preço mínimo 80% da tabela (30000) = 24000; total 22000 < 24000
+  const r = Q.aprovacaoNecessaria(4, 15, 22000, 30000, 80);
+  expect(r.exigida).toBe(true);
+  expect(r.motivos.some((m: string) => m.includes("preço mínimo"))).toBe(true);
+});
+
+test("aprovação: acumula os dois motivos", () => {
+  const r = Q.aprovacaoNecessaria(30, 5, 21000, 30000, 80);
+  expect(r.exigida).toBe(true);
+  expect(r.motivos.length).toBe(2);
+});
