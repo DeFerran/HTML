@@ -1036,8 +1036,8 @@ header .htxt h1{display:none}
       <div class="lead" style="margin:0"><h2>Coleta de Pontos Diários</h2>
         <p>Lançamentos por dia, agrupados por mês. A tabela é o centro da tela. Substitui a planilha "Controle de Pontos Diários".</p></div>
       <div class="op-actions">
-        <div class="op-campo" style="min-width:auto"><label>Hectares por ponto (fator)</label>
-          <input type="number" id="opFator" min="0" step="0.1" style="width:150px" placeholder="a validar (PDF: 3)" onchange="opColetaSetFator()" title="Configurável — Hectares estimados = total de pontos × este fator. Deixe vazio para manter desligado."></div>
+        <div class="op-campo" style="min-width:auto"><label>Fator padrão (ha/ponto)</label>
+          <input type="number" id="opFator" min="0" step="0.5" style="width:150px" list="opFatorList" placeholder="ex.: 3" onchange="opColetaSetFator()" title="Fator sugerido para novos lançamentos (ha por ponto). Varia por cliente/grade: 1, 2, 3, 5, 10… O valor real fica em cada lançamento."></div>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
       </div>
     </div>
@@ -1089,6 +1089,7 @@ header .htxt h1{display:none}
         <label>Cliente<select id="mCliente"></select></label>
         <label>Fazenda<input type="text" id="mFazenda" placeholder="ex.: Casari" list="opFazendasList"></label>
         <label>Talhão<input type="text" id="mTalhao" placeholder="ex.: TH 01"></label>
+        <label>Fator (ha/ponto)<input type="number" id="mFator" min="0" step="0.5" list="opFatorList" placeholder="1, 2, 3, 5, 10…" title="Fator da grade deste cliente/coleta. Hectares = pontos × fator."></label>
         <label>Status<select id="mStatus">
           <option value="planejada">Planejada</option><option value="andamento" selected>Em andamento</option>
           <option value="finalizada">Finalizada</option><option value="nao_trabalhado">Não trabalhado</option></select></label>
@@ -1105,6 +1106,7 @@ header .htxt h1{display:none}
   </div>
   <datalist id="opEquipesList"></datalist>
   <datalist id="opFazendasList"></datalist>
+  <datalist id="opFatorList"><option value="1"></option><option value="2"></option><option value="3"></option><option value="5"></option><option value="10"></option></datalist>
 
   <!-- CONTROLE OPERACIONAL · Tela 2 — Envio de Amostras -->
   <section class="view" id="v-opamostras">
@@ -1160,7 +1162,8 @@ header .htxt h1{display:none}
         <label>Responsável do envio<input type="text" id="maResp" placeholder="ex.: Álvaro"></label>
         <label>Volume (nº de amostras)<input type="number" id="maVolume" min="0" placeholder="ex.: 120"></label>
         <label>Data do resultado<input type="date" id="maResultado"></label>
-        <label>Arquivo na máquina <span style="text-transform:none;font-weight:600;color:var(--muted)">(a validar)</span><input type="date" id="maArquivo" title="Etapa intermediária do fluxo (a confirmar com a empresa). Opcional."></label>
+        <label>Arquivo na máquina <span style="text-transform:none;font-weight:600;color:var(--muted)">(status)</span><select id="maArquivo" title="Colocar o arquivo para rodar operacionalmente no cliente.">
+          <option value="">—</option><option value="pendente">Pendente</option><option value="colocado">Colocado (rodando no cliente)</option></select></label>
         <label class="full">Fazenda(s)<input type="text" id="maFaz" placeholder="separe por vírgula: Santa Helena, Telles Pires" list="oaFazendasList"></label>
         <label class="full">Talhões<input type="text" id="maTalhoes" placeholder="separe por vírgula: TH 01, TH 02, TH 03"></label>
         <label class="full">Etiquetagem (quem etiquetou)<input type="text" id="maEtiq" placeholder="separe por vírgula: Álvaro, Wons, Bruno"></label>
@@ -1181,8 +1184,8 @@ header .htxt h1{display:none}
       <div class="lead" style="margin:0"><h2>Controle de Entregas</h2>
         <p>Matriz/checklist por cliente e fazenda. Progresso automático por linha. Substitui a planilha "Controle de Entregas".</p></div>
       <div class="op-actions">
-        <div class="op-campo" style="min-width:auto"><label>Média MIB padrão</label>
-          <input type="number" id="oeMibPadrao" min="0" style="width:120px" placeholder="20" onchange="opEnSetMibPadrao()" title="Valor padrão da Média MIB (a validar). Usado quando a linha não tem MIB preenchido; pode ser sobrescrito por linha."></div>
+        <div class="op-campo" style="min-width:auto"><label>Dose MIB padrão</label>
+          <input type="number" id="oeMibPadrao" min="0" style="width:120px" placeholder="20" onchange="opEnSetMibPadrao()" title="Dose MIB é estipulada por fazenda (varia). Este é só o valor sugerido quando a linha não tem MIB preenchido; pode ser sobrescrito por linha."></div>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opEnNovo()">+ Nova entrega</button>
       </div>
     </div>
@@ -1942,7 +1945,12 @@ const OpColetaCalc=(function(){
   function gruposPorMes(lancs){ const g=new Map();
     (lancs||[]).slice().sort((a,b)=>String(a.data||'').localeCompare(String(b.data||''))).forEach(l=>{ const y=ym(l.data); if(!g.has(y)) g.set(y,[]); g.get(y).push(l); });
     return [...g.entries()].map(([y,items])=>({ym:y,label:mesLabel(y),lancs:items,total:items.reduce((a,l)=>a+totalDia(l),0)})); }
-  function hectares(totalPontos,fator){ if(fator==null||!(+fator>0)) return null; return totalPontos*(+fator); }
+  /* Hectares estimados = Σ(pontos do lançamento × fator do lançamento).
+     O fator (ha/ponto) varia por cliente/grade (1,2,3,5,10…). Retorna null se
+     NENHUM lançamento tem fator definido (card fica "—"). */
+  function hectares(lancs){ lancs=lancs||[]; let has=false,tot=0;
+    lancs.forEach(l=>{ const f=+((l&&l.fator))||0; if(f>0){ has=true; tot+=totalDia(l)*f; } });
+    return has? tot : null; }
   return {statusInfo,totalDia,ym,mesLabel,filtra,agg,gruposPorMes,hectares,MESES};
 })();
 // </op-coleta-calc>
@@ -1991,13 +1999,13 @@ function renderOpColeta(){
   const dlF=document.getElementById('opFazendasList'); if(dlF) dlF.innerHTML=opColFazendas().map(v=>'<option value="'+esc(v)+'">').join('');
   const lancs=OpColetaCalc.filtra(D.opColeta.lancamentos||[],_opColFiltro);
   const a=OpColetaCalc.agg(lancs);
-  const nHa=OpColetaCalc.hectares(a.totalPontos,D.opColeta.hectaresFator);
+  const nHa=OpColetaCalc.hectares(lancs);
   const cards=[
     {rot:'Total de pontos',val:a.totalPontos.toLocaleString('pt-BR'),obs:'no período filtrado',accent:'accent'},
     {rot:'Dias trabalhados',val:a.diasTrabalhados,obs:'dias com pontos > 0'},
     {rot:'Média diária',val:(a.diasTrabalhados?a.mediaDiaria.toFixed(0):'0'),obs:'pontos/dia'},
     {rot:'Lançamentos',val:lancs.length,obs:'linhas no período'},
-    {rot:'Hectares estimados',val:(nHa!=null?Math.round(nHa).toLocaleString('pt-BR'):'—'),obs:(nHa!=null?('fator '+D.opColeta.hectaresFator+'×'):'fator a validar'),accent:'accent-gold'},
+    {rot:'Hectares estimados',val:(nHa!=null?Math.round(nHa).toLocaleString('pt-BR'):'—'),obs:(nHa!=null?'Σ pontos × fator':'informe o fator no lançamento'),accent:'accent-gold'},
   ];
   document.getElementById('opColCards').innerHTML=cards.map(c=>'<div class="op-card '+(c.accent||'')+'"><div class="op-rot">'+esc(c.rot)+'</div><div class="op-val">'+c.val+'</div><div class="op-obs">'+esc(c.obs)+'</div></div>').join('');
   const grupos=OpColetaCalc.gruposPorMes(lancs);
@@ -2026,19 +2034,21 @@ function opColabAdd(nome,pts){ const box=document.getElementById('mColabs'); if(
 function opColModalDatalist(){ let dl=document.getElementById('opColabList'); if(!dl){ dl=document.createElement('datalist'); dl.id='opColabList'; document.body.appendChild(dl); } dl.innerHTML=opColColabs().map(v=>'<option value="'+esc(v)+'">').join(''); }
 function opColetaNovo(){ _opColEdit=null; document.getElementById('opColModalTit').textContent='Novo lançamento';
   ['mData','mEquipe','mFazenda','mTalhao','mObs'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';});
+  document.getElementById('mFator').value=(D.opColeta.hectaresFator!=null?D.opColeta.hectaresFator:''); /* fator padrão sugerido */
   document.getElementById('mStatus').value='andamento'; document.getElementById('mCliente').innerHTML=opColClienteOptions('');
   document.getElementById('mColabs').innerHTML=''; opColabAdd('',''); document.getElementById('opColDel').style.display='none';
   opColModalDatalist(); document.getElementById('opColModal').classList.add('on'); }
 function opColetaEditar(id){ const l=(D.opColeta.lancamentos||[]).find(x=>x.id===id); if(!l)return; _opColEdit=id;
   document.getElementById('opColModalTit').textContent='Editar lançamento';
   document.getElementById('mData').value=l.data||''; document.getElementById('mEquipe').value=l.equipe||''; document.getElementById('mFazenda').value=l.fazenda||''; document.getElementById('mTalhao').value=l.talhao||''; document.getElementById('mObs').value=l.obs||''; document.getElementById('mStatus').value=l.status||'andamento';
+  document.getElementById('mFator').value=(l.fator!=null&&l.fator!==''?l.fator:'');
   document.getElementById('mCliente').innerHTML=opColClienteOptions(l.cliente||'');
   document.getElementById('mColabs').innerHTML=''; (l.colaboradores||[]).forEach(c=>opColabAdd(c.nome,c.pontos)); if(!(l.colaboradores||[]).length) opColabAdd('','');
   document.getElementById('opColDel').style.display=''; opColModalDatalist(); document.getElementById('opColModal').classList.add('on'); }
 function opColetaFecha(){ document.getElementById('opColModal').classList.remove('on'); }
 function opColetaSalvar(){
   const colabs=[...document.querySelectorAll('#mColabs .op-colab-row')].map(r=>({nome:r.querySelector('.nome').value.trim(),pontos:+r.querySelector('.pts').value||0})).filter(c=>c.nome);
-  const rec={data:opv('mData'),equipe:opv('mEquipe').trim(),cliente:opv('mCliente'),fazenda:opv('mFazenda').trim(),talhao:opv('mTalhao').trim(),status:opv('mStatus'),obs:opv('mObs').trim(),colaboradores:colabs};
+  const rec={data:opv('mData'),equipe:opv('mEquipe').trim(),cliente:opv('mCliente'),fazenda:opv('mFazenda').trim(),talhao:opv('mTalhao').trim(),fator:(opv('mFator')===''?'':(+opv('mFator')||0)),status:opv('mStatus'),obs:opv('mObs').trim(),colaboradores:colabs};
   if(!rec.data){ alert('Informe a data do lançamento.'); return; }
   if(_opColEdit){ const l=(D.opColeta.lancamentos||[]).find(x=>x.id===_opColEdit); if(l) Object.assign(l,rec); }
   else { rec.id='opc'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); D.opColeta.lancamentos.push(rec); }
@@ -2120,7 +2130,7 @@ function renderOpAmostras(){
       +'<td>'+chips(r.etiquetagem)+'</td>'
       +'<td>'+esc(r.respEnvio||'—')+'</td>'
       +'<td class="num">'+(r.volume!=null&&r.volume!==''?esc(String(r.volume)):'—')+'</td>'
-      +'<td>'+(r.arquivoMaquina?esc(dataFmt(r.arquivoMaquina)):'<span style="color:var(--muted)">—</span>')+'</td>'
+      +'<td>'+(function(){const ai=opArqInfo(r.arquivoMaquina); return ai?('<span class="op-badge '+ai.cls+'">'+esc(ai.label)+'</span>'):'<span style="color:var(--muted)">—</span>';})()+'</td>'
       +'<td>'+(r.dataResultado?esc(dataFmt(r.dataResultado)):'<span style="color:var(--muted)">—</span>')+'</td>'
       +'<td class="num">'+(dias!=null?dias:'—')+'</td>'
       +'<td><span class="op-badge '+si.cls+'">'+esc(si.label)+'</span></td>'
@@ -2132,6 +2142,7 @@ function renderOpAmostras(){
 function opAmAplicaFiltro(){ _opAmFiltro={de:opv('oaDe'),ate:opv('oaAte'),fazenda:opv('oaFazenda'),resp:opv('oaResp'),situacao:opv('oaSituacao'),busca:opv('oaBusca')}; renderOpAmostras(); }
 function opAmLimpaFiltro(){ _opAmFiltro={}; ['oaDe','oaAte','oaFazenda','oaResp','oaSituacao','oaBusca'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';}); renderOpAmostras(); }
 function opAmSetPrazo(){ const v=opv('oaPrazo').trim(); D.opAmostras.prazoDias=(v===''?null:(+v||0)); if(typeof commit==='function') commit(); renderOpAmostras(); }
+function opArqInfo(v){ return v==='colocado'?{label:'Colocado',cls:'op-b-ok'}:(v==='pendente'?{label:'Pendente',cls:'op-b-wait'}:null); }
 function opAmList(arr){ return (arr||[]).join(', '); }
 function opAmParse(s){ return String(s||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function opAmNovo(){ _opAmEdit=null; document.getElementById('oaModalTit').textContent='Novo envio';

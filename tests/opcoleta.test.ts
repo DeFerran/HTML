@@ -74,8 +74,17 @@ test("statusInfo mapeia rótulo + classe", () => {
   expect(OP.statusInfo("xyz").cls).toBe("op-b-none");
 });
 
-test("hectares: null quando fator ausente; calcula quando fator>0", () => {
-  expect(OP.hectares(100, null)).toBeNull();
-  expect(OP.hectares(100, 0)).toBeNull();
-  expect(OP.hectares(100, 3)).toBe(300);
+test("hectares: soma pontos×fator por lançamento; null se nenhum fator", () => {
+  expect(OP.hectares([{ colaboradores: [{ pontos: 100 }] }])).toBeNull(); // sem fator
+  expect(OP.hectares([{ fator: 0, colaboradores: [{ pontos: 100 }] }])).toBeNull();
+  // 100 pts × 3 + 40 pts × 5 = 300 + 200 = 500 (fator varia por lançamento/cliente)
+  expect(OP.hectares([
+    { fator: 3, colaboradores: [{ pontos: 100 }] },
+    { fator: 5, colaboradores: [{ pontos: 40 }] },
+  ])).toBe(500);
+  // lançamento sem fator é ignorado na soma
+  expect(OP.hectares([
+    { fator: 2, colaboradores: [{ pontos: 10 }] },
+    { colaboradores: [{ pontos: 999 }] },
+  ])).toBe(20);
 });
