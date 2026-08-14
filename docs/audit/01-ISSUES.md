@@ -30,7 +30,7 @@ inventado — cada item aponta arquivo:linha ou tabela.
 | I-08 | P1 | 🔵 | `bi_custos_mensais` (288 linhas, `SUM(valor)=0`) | Tabela-espelho de custos mensais **totalmente zerada**. `get_costs` (ai-gateway) lê dela → IA reporta custo mensal **R$ 0**. | Requer decidir/reprocessar o ETL do snapshot; não é bug de código do app. |
 | I-09 | P2 | 🟡 | `bi_metas` (`receita_meta=1.800.000`, `receita_real=0`) | Espelho de metas com **realizado zerado/defasado**. | ETL/snapshot; a fonte viva é `D.metasSafra` no app. |
 | I-10 | P2 | 🔵 | `OpEntregasCalc.statusLinha`/`agg` (~2270) | Linha 100% pendente conta como **andamento E pendente** ao mesmo tempo. | Definição de "em andamento" é regra de negócio ambígua. |
-| I-11 | P2 | 🟡 | Renders operacionais (renderOpColeta/Amostras/Entregas/Resumo) | Sem filtro por safra, mas rótulos dizem "na safra"/"26/27". Enganoso. | Candidato a re-rotular (baixo risco) — deixado para lote de UX aprovado. |
+| I-11 | P2 | 🟡→✅ | `renderOpResumo` (Ciclo) | Único rótulo enganoso ("pontos na safra") sem filtro por safra → trocado para "pontos no total" (D-07). Demais telas já usavam "no período". | **CORRIGIDO** — render headless confirma. |
 | I-12 | P2 | 🔵 | Hectares: `bi_clientes`≈20.003 vs `bi_servicos`≈28.500 | Duas bases de área divergentes conforme a origem. | Qual é a área oficial é decisão de negócio. |
 
 ## Abertos — higiene / risco futuro (P3)

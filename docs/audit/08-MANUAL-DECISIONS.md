@@ -86,11 +86,18 @@ Meta 1.8M, realizado 0. Fonte viva é `D.metasSafra`.
 
 ---
 
-## D-07 (P2) — Rótulos operacionais dizem "na safra"/"26/27" sem filtro
+## D-07 (P2) — Rótulos operacionais diziam "na safra" sem filtro ✅ RESOLVIDO
 
-As telas operacionais não filtram por safra, mas os rótulos sugerem 26/27.
-Baixo risco re-rotular ("total" em vez de "na safra"), mas deixei no lote de UX
-para você aprovar o texto.
+As telas operacionais não filtram por safra. Auditado o Controle Operacional
+inteiro: o **único** rótulo enganoso era `"pontos na safra"` na **Visão do Ciclo**
+(`renderOpResumo`) — as demais telas já usavam "no período"/"no período filtrado"
+(corretos). Trocado para **`"pontos no total"`** (reflete o acumulado, sem
+sugerir escopo de safra). Verificado em render headless: o Ciclo mostra
+"27 pontos no total", 0 erros JS. Mudança mínima, sem tocar em cálculo.
+
+*Observação:* não foi adicionado filtro por safra às telas operacionais — os
+dados (coleta/amostras/entregas) não têm safra associada hoje; se você quiser
+segmentá-los por safra no futuro, isso é uma fase de modelagem à parte.
 
 ---
 
