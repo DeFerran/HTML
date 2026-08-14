@@ -812,6 +812,7 @@ header .htxt h1{display:none}
     <button class="snav" data-target="painelop"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Painel Operacional</span></button>
     <button class="snav" data-target="opresumo"><svg class="sb-ic"><use href="#ic-overview"></use></svg><span class="sb-tx">Ciclo Operacional</span></button>
     <button class="snav" data-target="projetos"><svg class="sb-ic"><use href="#ic-funnel"></use></svg><span class="sb-tx">Projetos (Pipeline)</span></button>
+    <button class="snav" data-target="gargalos"><svg class="sb-ic"><use href="#ic-receipt"></use></svg><span class="sb-tx">Gargalos & SLA</span></button>
     <button class="snav" data-target="opcoleta"><svg class="sb-ic"><use href="#ic-bars"></use></svg><span class="sb-tx">Coleta de Pontos</span></button>
     <button class="snav" data-target="produtividade"><svg class="sb-ic"><use href="#ic-target"></use></svg><span class="sb-tx">Produtividade</span></button>
     <button class="snav" data-target="opamostras"><svg class="sb-ic"><use href="#ic-flask"></use></svg><span class="sb-tx">Envio de Amostras</span></button>
@@ -865,6 +866,7 @@ header .htxt h1{display:none}
   <button data-v="painelop">Painel Operacional</button>
   <button data-v="opresumo">Ciclo Operacional</button>
   <button data-v="projetos">Projetos</button>
+  <button data-v="gargalos">Gargalos &amp; SLA</button>
   <button data-v="opcoleta">Coleta de Pontos</button>
   <button data-v="produtividade">Produtividade</button>
   <button data-v="opamostras">Envio de Amostras</button>
@@ -1215,6 +1217,11 @@ header .htxt h1{display:none}
   <!-- CONTROLE OPERACIONAL · Produtividade da equipe -->
   <section class="view" id="v-produtividade">
     <div id="prodHost"></div>
+  </section>
+
+  <!-- CONTROLE OPERACIONAL · Gargalos, aging e SLA -->
+  <section class="view" id="v-gargalos">
+    <div id="gargHost"></div>
   </section>
 
   <!-- CONTROLE OPERACIONAL · Tela 1 — Coleta de Pontos Diários -->
@@ -2399,7 +2406,24 @@ const PipelineCalc=(function(){
       const dias=diasNaEtapa(p,nowISO); if(slaStatus(dias,slaMap[et])==='vermelho')atrasados++;
       if(!p.responsaveis||!p.responsaveis[et])semResp++; });
     return {porEtapa,ativos,concluidos,cancelados,atrasados,semResp,backlog,wip:ativos,total:projetos.length}; }
-  return {ETAPAS_PADRAO,ms,diasEntre,ordem,movimentos,marcos,entradaEtapaAtual,diasNaEtapa,leadTime,slaStatus,temposEntreEtapas,tempoEntreMarcos,agg};
+  /* ===== Fase 6 — gargalos, aging e tempo médio por etapa ===== */
+  // durações de permanência em cada etapa concluída: [{etapa,dias,saiuEm(ym)}]
+  function duracoesEtapa(projetos){ const out=[]; (projetos||[]).forEach(p=>{ const mv=movimentos(p);
+    for(let i=1;i<mv.length;i++){ out.push({etapa:mv[i-1].etapaPara,dias:diasEntre(mv[i-1].em,mv[i].em),saiuEm:String(mv[i].em||'').slice(0,7)}); } }); return out; }
+  // tempo médio por etapa (opcional: filtra pelo mês de SAÍDA da etapa): {codigo:{n,media}}
+  function mediaPorEtapa(duracoes,ym){ const m={}; (duracoes||[]).forEach(d=>{ if(ym&&d.saiuEm!==ym)return; if(d.dias==null)return;
+    if(!m[d.etapa])m[d.etapa]={n:0,soma:0}; m[d.etapa].n++; m[d.etapa].soma+=d.dias; });
+    const out={}; Object.keys(m).forEach(k=>out[k]={n:m[k].n,media:m[k].n?m[k].soma/m[k].n:0}); return out; }
+  // gargalos AGORA (fila, tempo médio/máx na etapa, atrasados, sem responsável) por etapa
+  function gargalos(projetos,opts){ opts=opts||{}; const etapas=opts.etapas||ETAPAS_PADRAO; const slaMap=opts.slaPorEtapa||{}; const nowISO=opts.nowISO;
+    const m={}; etapas.forEach(c=>m[c]={etapa:c,fila:0,somaDias:0,maxDias:0,atrasados:0,semResp:0,sla:+slaMap[c]||0});
+    (projetos||[]).forEach(p=>{ if(((p&&p.status)||'ativo')!=='ativo')return; const c=p.etapaAtual;
+      if(!m[c])m[c]={etapa:c,fila:0,somaDias:0,maxDias:0,atrasados:0,semResp:0,sla:+slaMap[c]||0};
+      const dias=diasNaEtapa(p,nowISO)||0; m[c].fila++; m[c].somaDias+=dias; if(dias>m[c].maxDias)m[c].maxDias=dias;
+      if(slaStatus(dias,slaMap[c])==='vermelho')m[c].atrasados++;
+      if(!p.responsaveis||!p.responsaveis[c])m[c].semResp++; });
+    return Object.keys(m).map(k=>({etapa:k,fila:m[k].fila,tempoMedio:m[k].fila?m[k].somaDias/m[k].fila:0,maxDias:m[k].maxDias,atrasados:m[k].atrasados,semResp:m[k].semResp,sla:m[k].sla})); }
+  return {ETAPAS_PADRAO,ms,diasEntre,ordem,movimentos,marcos,entradaEtapaAtual,diasNaEtapa,leadTime,slaStatus,temposEntreEtapas,tempoEntreMarcos,agg,duracoesEtapa,mediaPorEtapa,gargalos};
 })();
 // </pipeline-calc>
 // <op-csv>
@@ -3760,6 +3784,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='painelop'){ try{renderPainelOp();}catch(e){console.warn('painelop',e);} }
   if(b.dataset.v==='projetos'){ _projSel=null; try{renderProjetosView();}catch(e){console.warn('projetos',e);} }
   if(b.dataset.v==='produtividade'){ _prodColab=null; try{renderProdutividade();}catch(e){console.warn('produtividade',e);} }
+  if(b.dataset.v==='gargalos'){ try{renderGargalos();}catch(e){console.warn('gargalos',e);} }
   if(b.dataset.v==='opcoleta'){ try{renderOpColeta();}catch(e){console.warn('opColeta',e);} }
   if(b.dataset.v==='opamostras'){ try{renderOpAmostras();}catch(e){console.warn('opAmostras',e);} }
   if(b.dataset.v==='opentregas'){ try{renderOpEntregas();}catch(e){console.warn('opEntregas',e);} }
@@ -6012,6 +6037,70 @@ function projMover(p,novaEtapa,opts){ if(!p||!novaEtapa)return; opts=opts||{}; c
   p.etapaAtual=novaEtapa; projLog(p,{tipo:'ETAPA',etapaDe:de,etapaPara:novaEtapa,responsavel:opts.responsavel||'',obs:opts.obs||'',origem:opts.origem||'manual',em:opts.em});
   if(novaEtapa===pipeCondConclusao(p.tipoWorkflowId)){ p.status='concluido'; p.concluidoEm=opts.em||nowISO(); }
   else if(p.status==='concluido'){ p.status='ativo'; p.concluidoEm=''; } }
+/* ===== Gargalos, aging e SLA (Fase 6) ===== */
+function garYM(off){ try{ const n=new Date(); return new Date(Date.UTC(n.getFullYear(),n.getMonth()+off,1)).toISOString().slice(0,7); }catch(e){return '';} }
+function garMesLabel(ym){ const p=String(ym||'').split('-'); const i=(+p[1]||0)-1; return (OpColetaCalc.MESES[i]||'—')+(p[0]?('/'+p[0].slice(2)):''); }
+function pipeTipoEdit(){ return pipeTipo(pipeTipoPadraoId()); }
+function pipeSetSla(cod,v){ const t=pipeTipoEdit(); const e=((t&&t.etapas)||[]).find(x=>x.codigo===cod); if(e){ e.slaDias=Math.max(0,Math.round(+v||0)); commit(); renderGargalos(); } }
+function pipeSetRespPadrao(cod,v){ const t=pipeTipoEdit(); const e=((t&&t.etapas)||[]).find(x=>x.codigo===cod); if(e){ e.responsavelPadrao=String(v||'').trim(); commit(); } }
+function pipeSetEtapaNome(cod,v){ const t=pipeTipoEdit(); const e=((t&&t.etapas)||[]).find(x=>x.codigo===cod); if(e){ e.nome=String(v||'').trim()||cod; commit(); renderGargalos(); } }
+function garDec(v){ return (v==null)?'—':(+v).toFixed(1); }
+function renderGargalos(){ const host=document.getElementById('gargHost'); if(!host)return;
+  const projs=(D.projetos||[]); const tp=pipeTipoPadraoId(); const etapasDef=pipeEtapas(tp); const codigos=etapasDef.map(e=>e.codigo); const slaMap=pipeSlaMap(tp);
+  const g=PipelineCalc.gargalos(projs,{etapas:codigos,slaPorEtapa:slaMap,nowISO:nowISO()});
+  const gMap={}; g.forEach(x=>gMap[x.etapa]=x);
+  const comFila=g.filter(x=>x.fila>0);
+  const maiorFila=comFila.slice().sort((a,b)=>b.fila-a.fila)[0]||null;
+  const maiorTempo=comFila.slice().sort((a,b)=>b.tempoMedio-a.tempoMedio)[0]||null;
+  const totalAtras=g.reduce((a,x)=>a+x.atrasados,0); const totalSemResp=g.reduce((a,x)=>a+x.semResp,0);
+  const parados=projs.filter(p=>{ if(((p.status)||'ativo')!=='ativo')return false; const d=PipelineCalc.diasNaEtapa(p,nowISO())||0; const sla=slaMap[p.etapaAtual]||0; return d>Math.max(14,sla*2); });
+  const dur=PipelineCalc.duracoesEtapa(projs); const ymA=garYM(0), ymP=garYM(-1);
+  const medAtual=PipelineCalc.mediaPorEtapa(dur,ymA), medPrev=PipelineCalc.mediaPorEtapa(dur,ymP), medGeral=PipelineCalc.mediaPorEtapa(dur);
+  let h='<div class="lead"><h2>Gargalos, aging & SLA</h2><p>Onde os projetos estão <b>parados</b>, quanto tempo levam por etapa e quais <b>estouraram o prazo</b>. Configure o SLA de cada etapa embaixo — nada é fixo no código.</p></div>';
+  h+='<div class="kpis" id="gargKpi"></div>';
+  // painel de gargalos
+  h+='<div class="panel"><h3>Gargalos por etapa</h3><div class="cap">Etapas com projetos ativos — maior fila e maior tempo primeiro.</div>';
+  if(!comFila.length){ h+='<div class="op-empty">Nenhum projeto ativo no pipeline.</div>'; }
+  else { h+='<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Etapa</th><th class="num">Fila</th><th class="num">Tempo médio</th><th class="num">Máx (aging)</th><th class="num">SLA</th><th class="num">Atrasados</th><th class="num">Sem resp.</th></tr></thead><tbody>';
+    comFila.slice().sort((a,b)=>(b.fila-a.fila)||(b.tempoMedio-a.tempoMedio)).forEach(x=>{ h+='<tr>'
+      +'<td data-label="Etapa"><b>'+esc(pipeEtapaNome(tp,x.etapa))+'</b></td>'
+      +'<td data-label="Fila" class="num">'+x.fila+'</td>'
+      +'<td data-label="Tempo médio" class="num">'+garDec(x.tempoMedio)+'d</td>'
+      +'<td data-label="Máx (aging)" class="num">'+x.maxDias+'d</td>'
+      +'<td data-label="SLA" class="num">'+(x.sla>0?x.sla+'d':'—')+'</td>'
+      +'<td data-label="Atrasados" class="num">'+(x.atrasados?'<b style="color:var(--red)">'+x.atrasados+'</b>':'0')+'</td>'
+      +'<td data-label="Sem resp." class="num">'+(x.semResp||0)+'</td></tr>'; });
+    h+='</tbody></table></div>'; }
+  h+='</div>';
+  // tempo médio por etapa: mês atual x anterior
+  const codsComDur=codigos.filter(c=>medGeral[c]);
+  h+='<div class="panel"><h3>Tempo médio por etapa</h3><div class="cap">Dias de permanência em cada etapa (concluídas). Compara <b>'+esc(garMesLabel(ymA))+'</b> com <b>'+esc(garMesLabel(ymP))+'</b>.</div>';
+  if(!codsComDur.length){ h+='<div class="op-empty">Ainda não há transições de etapa suficientes para medir.</div>'; }
+  else { h+='<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Etapa</th><th class="num">Geral</th><th class="num">'+esc(garMesLabel(ymA))+'</th><th class="num">'+esc(garMesLabel(ymP))+'</th><th class="num">Δ</th></tr></thead><tbody>';
+    codsComDur.forEach(c=>{ const mg=medGeral[c],ma=medAtual[c],mp=medPrev[c]; let delta='—';
+      if(ma&&mp){ const d=ma.media-mp.media; const cor=d>0.05?'var(--red)':(d<-0.05?'var(--leaf)':'var(--muted)'); const arr=d>0.05?'▲':(d<-0.05?'▼':'•'); delta='<span style="color:'+cor+';font-weight:800">'+arr+' '+garDec(Math.abs(d))+'d</span>'; }
+      h+='<tr><td data-label="Etapa"><b>'+esc(pipeEtapaNome(tp,c))+'</b></td>'
+       +'<td data-label="Geral" class="num">'+garDec(mg.media)+'d <span class="cap">('+mg.n+')</span></td>'
+       +'<td data-label="'+esc(garMesLabel(ymA))+'" class="num">'+(ma?garDec(ma.media)+'d':'—')+'</td>'
+       +'<td data-label="'+esc(garMesLabel(ymP))+'" class="num">'+(mp?garDec(mp.media)+'d':'—')+'</td>'
+       +'<td data-label="Δ" class="num">'+delta+'</td></tr>'; });
+    h+='</tbody></table></div>'; }
+  h+='</div>';
+  // editor de SLA por etapa
+  h+='<div class="panel"><h3>Configurar SLA por etapa</h3><div class="cap">Prazo esperado (em dias) de cada etapa e responsável padrão. 0 = sem prazo. Alterações valem para novos cálculos de atraso.</div>';
+  h+='<div style="overflow-x:auto"><table class="resp-cards"><thead><tr><th>Etapa (nome)</th><th class="num">SLA (dias)</th><th>Responsável padrão</th></tr></thead><tbody>';
+  etapasDef.forEach(e=>{ h+='<tr>'
+    +'<td data-label="Etapa"><input class="edinp" style="min-width:170px" value="'+esc(e.nome||e.codigo)+'" onchange="pipeSetEtapaNome(\''+e.codigo+'\',this.value)"></td>'
+    +'<td data-label="SLA (dias)" class="num"><input class="edinp num" inputmode="numeric" style="width:80px" value="'+esc(String(+e.slaDias||0))+'" onchange="pipeSetSla(\''+e.codigo+'\',this.value)"></td>'
+    +'<td data-label="Responsável padrão"><input class="edinp" style="min-width:150px" value="'+esc(e.responsavelPadrao||'')+'" placeholder="opcional" onchange="pipeSetRespPadrao(\''+e.codigo+'\',this.value)"></td></tr>'; });
+  h+='</tbody></table></div></div>';
+  host.innerHTML=h;
+  kpi('gargKpi',[
+    {lab:'Maior fila',val:maiorFila?String(maiorFila.fila):'0',c:'gold',sub:maiorFila?pipeEtapaNome(tp,maiorFila.etapa):'—'},
+    {lab:'Maior tempo médio',val:maiorTempo?garDec(maiorTempo.tempoMedio)+'d':'—',c:'gold',sub:maiorTempo?pipeEtapaNome(tp,maiorTempo.etapa):'—'},
+    {lab:'Etapas atrasadas',val:String(totalAtras),c:totalAtras?'r':'g',sub:'SLA estourado'},
+    {lab:'Projetos parados',val:String(parados.length),c:parados.length?'r':'g',sub:'> 2× SLA (mín. 14d)'},
+    {lab:'Sem responsável',val:String(totalSemResp),c:totalSemResp?'gold':'g',sub:'na etapa atual'} ]); }
 /* ===== Painel Operacional (Fase 5) — KPIs hoje/mês + pipeline por etapa clicável ===== */
 function painelHojeISO(){ try{return new Date().toISOString().slice(0,10);}catch(e){return '';} }
 function painelMesIniISO(){ try{ const n=new Date(); return new Date(Date.UTC(n.getFullYear(),n.getMonth(),1)).toISOString().slice(0,10); }catch(e){return '';} }

@@ -169,6 +169,50 @@ test("SEM eventos: aging cai para criadoEm; sem crash", () => {
   expect(P.temposEntreEtapas(semEv)).toEqual([]);
 });
 
+test("gargalos: fila, tempo médio/máx na etapa, atrasados e sem responsável", () => {
+  const now = "2026-08-20T00:00:00Z";
+  const projetos = [
+    { status: "ativo", etapaAtual: "LABORATORIO", responsaveis: { LABORATORIO: "Ana" },
+      eventos: [ev("LABORATORIO", "2026-08-05T00:00:00Z")] }, // 15 dias, SLA 7 -> atrasado
+    { status: "ativo", etapaAtual: "LABORATORIO", responsaveis: {},
+      eventos: [ev("LABORATORIO", "2026-08-18T00:00:00Z")] }, // 2 dias, sem resp
+    { status: "ativo", etapaAtual: "COLETA", responsaveis: { COLETA: "Bruno" },
+      eventos: [ev("COLETA", "2026-08-19T00:00:00Z")] }, // 1 dia
+    { status: "concluido", etapaAtual: "CONCLUIDO", eventos: [] }, // ignorado
+  ];
+  const g = P.gargalos(projetos, { slaPorEtapa: { LABORATORIO: 7, COLETA: 7 }, nowISO: now });
+  const lab = g.find((x: { etapa: string }) => x.etapa === "LABORATORIO");
+  expect(lab.fila).toBe(2);
+  expect(lab.tempoMedio).toBeCloseTo((15 + 2) / 2, 5);
+  expect(lab.maxDias).toBe(15);
+  expect(lab.atrasados).toBe(1);
+  expect(lab.semResp).toBe(1);
+  const col = g.find((x: { etapa: string }) => x.etapa === "COLETA");
+  expect(col.fila).toBe(1);
+  expect(col.semResp).toBe(0);
+});
+
+test("duracoesEtapa + mediaPorEtapa: tempo médio por etapa, com filtro de mês de saída", () => {
+  const projetos = [
+    { eventos: [ev("PEDIDO", "2026-08-01T00:00:00Z"), ev("PLANEJAMENTO", "2026-08-03T00:00:00Z"), ev("COLETA", "2026-08-06T00:00:00Z")] },
+    { eventos: [ev("PEDIDO", "2026-09-01T00:00:00Z"), ev("PLANEJAMENTO", "2026-09-05T00:00:00Z")] },
+  ];
+  const dur = P.duracoesEtapa(projetos);
+  // proj1: PEDIDO(2d, saiu 08), PLANEJAMENTO(3d, saiu 08); proj2: PEDIDO(4d, saiu 09)
+  expect(dur.length).toBe(3);
+  const geral = P.mediaPorEtapa(dur);
+  expect(geral.PEDIDO.n).toBe(2);
+  expect(geral.PEDIDO.media).toBeCloseTo((2 + 4) / 2, 5);
+  expect(geral.PLANEJAMENTO.media).toBeCloseTo(3, 5);
+  // filtra por mês de saída 2026-08
+  const ago = P.mediaPorEtapa(dur, "2026-08");
+  expect(ago.PEDIDO.n).toBe(1);
+  expect(ago.PEDIDO.media).toBeCloseTo(2, 5);
+  const set = P.mediaPorEtapa(dur, "2026-09");
+  expect(set.PEDIDO.media).toBeCloseTo(4, 5);
+  expect(set.PLANEJAMENTO).toBeUndefined(); // não saiu do planejamento em setembro
+});
+
 test("REABERTURA: sequência com volta de etapa é preservada nos movimentos", () => {
   const reab = { criadoEm: "2026-08-01T00:00:00Z", etapaAtual: "PROCESSAMENTO",
     eventos: [ev("MAPAS", "2026-08-10T00:00:00Z"), ev("PROCESSAMENTO", "2026-08-12T00:00:00Z", { obs: "reaberto: revisar interpolação" })] };
