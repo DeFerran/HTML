@@ -537,6 +537,13 @@ td.lbtot,td.coltot,td.estot{background:var(--totbg);color:var(--head)}
   .edpills button,.taxseg button{padding:10px 16px;font-size:13px;min-height:44px}
   .edbtn{padding:11px 14px;font-size:13px;min-height:44px}
   .toggle{padding:11px 14px;min-height:44px}
+  /* alvos de toque: links pequenos de ação (remover safra, remover linha) */
+  .op-linkbtn,.ghchip{min-height:40px}
+  .edform > label > input[type=checkbox]{width:22px;height:22px}
+  /* barra de ações do formulário de despesa fixa no rodapé no celular */
+  #v-edit .dform-actions{position:sticky;bottom:0;z-index:4;background:var(--cream);
+    margin:12px -14px -14px;padding:12px 14px;border-top:1px solid var(--line)}
+  #v-edit .dform-actions .edbtn{flex:1 1 auto}
   .simctrl{gap:12px}
   /* segmentado de imposto ocupa a largura no mobile p/ toque */
   .taxseg{display:flex;width:100%}
@@ -4844,7 +4851,7 @@ function renderDespesas(){
       field('Forma pgto',"<select class='edinp dpf' data-k='formaPagamento'>"+sel(F.formaPagamento,FORMAS_PGTO,'—')+"</select>")+
       field('Status',"<select class='edinp dpf' data-k='status'>"+sel(F.status,STATUS_LANC,'—')+"</select>")+
       field('Observação',"<input class='edinp dpf' data-k='obs' value='"+esc(F.obs||'')+"'>")+
-      '</div><div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despSalvar">Salvar lançamento</button>'+(F.id?'':'<button class="edbtn" id="despSalvarNovo">Salvar e criar outro</button>')+'<button class="edbtn ghost" id="despCancelar">Cancelar</button></div></div>';
+      '</div><div class="dform-actions" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despSalvar">Salvar lançamento</button>'+(F.id?'':'<button class="edbtn" id="despSalvarNovo">Salvar e criar outro</button>')+'<button class="edbtn ghost" id="despCancelar">Cancelar</button></div></div>';
   }
   // filtros (recolhíveis no mobile atrás de "⚙ Filtros")
   const filtAtivos=Object.values(_despFiltro).filter(Boolean).length;
@@ -6493,7 +6500,7 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
 .edform > label > input:focus,.edform > label > select:focus,.edform > label > textarea:focus{outline:none;border-color:var(--leaf,#2E9E52);box-shadow:0 0 0 3px rgba(30,125,60,.16)}
 .edform > label > input[type=file]{padding:8px 10px;font-size:12px;color:var(--muted)}
 .edform > label.chk,.edform > label:has(> input[type=checkbox]){flex-direction:row;align-items:center;gap:8px;text-transform:none;font-size:12.5px;font-weight:600;color:var(--ink)}
-.edform > label > input[type=checkbox]{width:16px;height:16px;accent-color:var(--green,#1E7D3C)}
+.edform > label > input[type=checkbox]{width:20px;height:20px;accent-color:var(--green,#1E7D3C)}
 /* botões e mensagens */
 #v-iahub .edbtn,#v-ia .edbtn,#v-iamem .edbtn{min-height:38px}
 #v-iahub .authmsg,#v-ia .authmsg,#v-iamem .authmsg{font-size:12.5px}
@@ -6519,7 +6526,8 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
   #v-edit>.lead{display:none}                 /* texto longo não ajuda no celular */
   #v-edit .edpills{order:-2}                    /* grade de cards primeiro */
   #v-edit .ed-back{order:-1}
-  #v-edit.sec-open .edbar{display:none}         /* no drill-in, foco total na seção */
+  #v-edit.sec-open .edbtns{display:none}        /* no drill-in some a barra de botões, MAS o status "● salvo" fica visível */
+  #v-edit.sec-open .edbar{padding:8px 0;border:none;background:none;box-shadow:none;margin:0}
   #v-edit .edpills{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
   #v-edit .edpills button{flex-direction:column;gap:9px;min-height:96px;justify-content:center;text-align:center;
     padding:14px 8px;border-radius:16px;background:var(--card);border:1px solid var(--line);color:var(--ink);
