@@ -90,6 +90,24 @@ test("todo insight traz os 6 campos obrigatórios + confiança 0..1", () => {
   }
 });
 
+test("6) amostras atrasadas (Controle Operacional)", () => {
+  const st = baseState({ amostras: { prazoDefinido: true, atrasadas: [{ fazendas: "Santa Helena", respEnvio: "Álvaro", diasEmAberto: 22 }] } });
+  const r = AIDetectors.detectAmostrasAtrasadas(st);
+  expect(r).toHaveLength(1);
+  expect(r[0].id).toBe("amostras_atrasadas");
+  expect(r[0].nivel).toBe("aviso");
+  // sem atrasadas → nada
+  expect(AIDetectors.detectAmostrasAtrasadas(baseState())).toHaveLength(0);
+});
+
+test("7) entregas pendentes (Controle Operacional)", () => {
+  const st = baseState({ entregas: { pendentes: [{ cliente: "Edras", fazenda: "", pct: 83, itensPendentes: 1 }] } });
+  const r = AIDetectors.detectEntregasPendentes(st);
+  expect(r).toHaveLength(1);
+  expect(r[0].id).toBe("entregas_pendentes");
+  expect(AIDetectors.detectEntregasPendentes(baseState())).toHaveLength(0);
+});
+
 test("runAll ordena por severidade (aviso antes de info) e depois confiança", () => {
   const st = baseState({
     clientes: [{ nome: "A", grupo: "fert", coletaNaSafra: true, ha: 50 }], // info (nova_analise)

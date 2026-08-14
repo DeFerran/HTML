@@ -1857,15 +1857,43 @@ const AIDetectors=(function(){
     return out;
   }
 
+  // 6) AMOSTRAS ATRASADAS — do Controle Operacional (só quando há prazo definido;
+  //    sem regra de prazo nada é inferido — coerente com a Tela 2).
+  function detectAmostrasAtrasadas(st){
+    const am=st.amostras||{}; const atr=am.atrasadas||[];
+    if(!atr.length) return [];
+    return [ins({id:'amostras_atrasadas',tipo:'amostras',nivel:'aviso',
+      titulo:'Amostras atrasadas no laboratório',
+      o_que:atr.length+' remessa(s) passaram do prazo esperado sem resultado.',
+      por_que:'Resultado atrasado trava a análise, a recomendação e a entrega ao cliente.',
+      dados:atr.slice(0,4).map(r=>(r.fazendas||'—')+(r.diasEmAberto!=null?(' · '+r.diasEmAberto+' dias em aberto'):'')+(r.respEnvio?(' · resp. '+r.respEnvio):'')),
+      impacto:'Atraso em cadeia: análise → recomendação → entrega.',
+      confianca:0.9,
+      proxima_acao:'Cobrar o laboratório e priorizar as remessas mais antigas.'})];
+  }
+  // 7) ENTREGAS PENDENTES — do Controle Operacional (linhas não concluídas).
+  function detectEntregasPendentes(st){
+    const en=st.entregas||{}; const pend=en.pendentes||[];
+    if(!pend.length) return [];
+    return [ins({id:'entregas_pendentes',tipo:'entregas',nivel:'info',
+      titulo:'Entregas pendentes',
+      o_que:pend.length+' cliente(s)/fazenda(s) com a matriz de entregas não concluída.',
+      por_que:'Entrega em aberto é ciclo não fechado — atrasa o próximo passo e o histórico do talhão.',
+      dados:pend.slice(0,5).map(p=>p.cliente+(p.fazenda?(' / '+p.fazenda):'')+' — '+p.pct+'%'+(p.itensPendentes?(' · '+p.itensPendentes+' pendente(s)'):'')),
+      impacto:'Ciclo não fechado trava a recomendação/faturamento e a próxima venda.',
+      confianca:0.9,
+      proxima_acao:'Priorizar os itens pendentes das entregas mais avançadas.'})];
+  }
   function runAll(st){
     st=st||{};
     const all=[].concat(
       detectNovaAnalise(st),detectColetaAtrasada(st),detectColetaConcluida(st),
-      detectCustoHa(st),detectDadoFaltante(st));
+      detectCustoHa(st),detectDadoFaltante(st),
+      detectAmostrasAtrasadas(st),detectEntregasPendentes(st));
     return all.sort((a,b)=>(NIVEL_ORD[a.nivel]-NIVEL_ORD[b.nivel])||(b.confianca-a.confianca));
   }
   return {detectNovaAnalise,detectColetaAtrasada,detectColetaConcluida,
-    detectCustoHa,detectDadoFaltante,runAll};
+    detectCustoHa,detectDadoFaltante,detectAmostrasAtrasadas,detectEntregasPendentes,runAll};
 })();
 // </ai-detectors>
 // <op-coleta-calc>
@@ -5432,8 +5460,22 @@ function buildDetectStateFromD(){
   });
   const etapasConcluidas=((((D.operacao||{}).etapas)||[]).filter(e=>e&&e.concluido).map(e=>({etapa:e.etapa})));
   const margemAlvo=(D.metasServico&&+D.metasServico.margemGeralMeta)||0.30;
+  /* sinais do Controle Operacional (dado REAL agora existente) para as Prioridades da IA */
+  const am=D.opAmostras||{remessas:[],prazoDias:null};
+  const hoje=(typeof opHoje==='function')?opHoje():'';
+  const atrasadas=(am.prazoDias!=null && typeof OpAmostrasCalc!=='undefined')
+    ? (am.remessas||[]).filter(r=>OpAmostrasCalc.situacao(r,hoje,am.prazoDias)==='atrasado')
+        .map(r=>({fazendas:(r.fazendas||[]).join(', '),respEnvio:r.respEnvio,diasEmAberto:OpAmostrasCalc.diasRemessa(r,hoje)}))
+    : [];
+  const en=D.opEntregas||{linhas:[]};
+  const pendentes=(typeof OpEntregasCalc!=='undefined')
+    ? (en.linhas||[]).filter(l=>{const p=OpEntregasCalc.progresso(l); return p.aplicaveis>0 && OpEntregasCalc.statusLinha(l)!=='concluida';})
+        .map(l=>{const p=OpEntregasCalc.progresso(l); return {cliente:l.cliente,fazenda:l.fazenda,pct:p.pct,itensPendentes:OpEntregasCalc.contaPendentes(l)};})
+    : [];
   return {safraAtual:safraAtual(),safraBase:SAFRA_BASE,margemAlvo:margemAlvo,
-    clientes:clientes,servicos:servicos,etapasConcluidas:etapasConcluidas};
+    clientes:clientes,servicos:servicos,etapasConcluidas:etapasConcluidas,
+    amostras:{atrasadas:atrasadas,prazoDefinido:(am.prazoDias!=null)},
+    entregas:{pendentes:pendentes}};
 }
 /* PRIORIDADES DA IA — mostra os insights proativos. Cada card traz os 6 campos
    obrigatórios. A IA NÃO executa ação externa: só sugere a próxima ação. */
