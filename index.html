@@ -5851,6 +5851,30 @@ function orcFechar(){ _qz=null; renderOrcamentosView(); }
 function orcRemover(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return; if(!confirm('Remover o orçamento '+(q.numero||'')+(q.versao>1?(' v'+q.versao):'')+'?'))return; D.quotes=(D.quotes||[]).filter(x=>x&&x.id!==id); (D.quotes||[]).forEach(x=>{ if(x&&x.substituidoPor===id)x.substituidoPor=null; }); commit(); renderOrcamentosView(); }
 let _orcHist={};
 function orcToggleHist(id){ _orcHist[id]=!_orcHist[id]; renderOrcamentosView(); }
+/* Fase 10: conversão do orçamento ACEITO → projeto operacional (mesmos dados) + registro no funil.
+   Não lança receita automaticamente: a receita segue a regra existente (carteira/safra). */
+function orcConverter(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return;
+  if(q.status!=='aceito' && q.status!=='convertido' && !confirm('Converter é recomendado para orçamentos ACEITOS (atual: '+(ORC_STATUS_LBL[q.status]||q.status)+'). Continuar?'))return;
+  if(q.convertidoEm && !confirm('Este orçamento já foi convertido. Converter de novo pode duplicar os lançamentos operacionais. Continuar?'))return;
+  const inclui=(q.itens||[]).filter(it=>it.incluso!=='opcional');
+  const samp=inclui.filter(it=>qtServSampling(it.servico));
+  const fator=samp.length?qtMalhaHaPorPonto((samp[0].config||{}).malhaId):null;
+  const amostras=samp.reduce((a,it)=>a+((it.config&&it.config.amostras)||0),0);
+  const base=(q.safra||qtSafraAtual())===SAFRA_BASE;
+  const vai=[]; if(samp.length){ vai.push('Coleta de Pontos'); vai.push('Envio de Amostras (~'+amostras+' amostras)'); } vai.push('Controle de Entregas'); if(!base)vai.push('Oportunidade "Fechado" no funil');
+  if(!confirm('Converter '+q.numero+' em projeto operacional?\n\nSerá criado (com cliente/fazenda/área/serviços do orçamento):\n· '+vai.join('\n· ')+'\n\nA receita NÃO é lançada automaticamente — segue a regra da carteira/safra.'))return;
+  const criados=[];
+  if(samp.length){ if(!D.opColeta||typeof D.opColeta!=='object')D.opColeta={lancamentos:[],hectaresFator:null}; if(!Array.isArray(D.opColeta.lancamentos))D.opColeta.lancamentos=[];
+    D.opColeta.lancamentos.push({id:'opc'+uidLanc(),data:'',equipe:'',cliente:q.clienteNome||'',fazenda:q.fazenda||'',talhao:'',fator:(fator||''),status:'planejada',obs:'Orçamento '+q.numero,colaboradores:[]}); criados.push('Coleta');
+    if(!D.opAmostras||typeof D.opAmostras!=='object')D.opAmostras={remessas:[]}; if(!Array.isArray(D.opAmostras.remessas))D.opAmostras.remessas=[];
+    D.opAmostras.remessas.push({id:'opa'+uidLanc(),dataEnvio:'',respEnvio:'',volume:(amostras||''),arquivoMaquina:'',dataResultado:'',obs:'Orçamento '+q.numero,fazendas:(q.fazenda?[q.fazenda]:[]),talhoes:[],etiquetagem:[]}); criados.push('Amostras'); }
+  if(!D.opEntregas||typeof D.opEntregas!=='object')D.opEntregas={linhas:[],mibPadrao:20}; if(!Array.isArray(D.opEntregas.linhas))D.opEntregas.linhas=[];
+  const itens={}; inclui.forEach(it=>{ if(/mapa/i.test(it.servico))itens.mapas={status:'pendente'}; if(/qu[íi]mic|an[áa]lise|fertil/i.test(it.servico))itens.propQuimicas={status:'pendente'}; });
+  D.opEntregas.linhas.push({id:'ope'+uidLanc(),cliente:q.clienteNome||'',fazenda:q.fazenda||'',areaHa:(+q.areaHa||''),obs:'Orçamento '+q.numero,itens:itens}); criados.push('Entregas');
+  if(!base){ if(!Array.isArray(D.funil))D.funil=[]; const primServ=(inclui[0]||{}).servico||'';
+    D.funil.push({cliente:q.clienteNome||'',safra:q.safra||qtSafraAtual(),servico:primServ,estagio:'Fechado',vendedor:q.vendedor||'A definir',mes:'',area:+q.areaHa||0,precoHa:(+q.areaHa>0?(+q.total||0)/(+q.areaHa):0),valor:+q.total||0}); criados.push('Funil'); }
+  q.status='convertido'; q.convertidoEm=nowISO(); qzLog(q,'convertido em projeto',criados.join(' · ')); commit(); renderOrcamentosView();
+  uiToast('✓ '+q.numero+' convertido — '+criados.join(' · ')); }
 function qzStep(n){ if(!_qz)return; _qzStep=Math.max(0,Math.min(ORC_STEPS.length-1,n)); qzSalvarDraft(); renderOrcamentosView(); }
 function qzSetField(f,v){ if(!_qz)return; _qz[f]=v; qzRecalc(); qzSalvarDraft(); qzRefreshSummary(); }
 function qzSetCliente(nome){ if(!_qz)return; _qz.clienteNome=nome; _qz.vendedor=qzVendedorDoCliente(nome)||_qz.vendedor; _qz.fazenda=''; const fs=qzFazendasDoCliente(nome); if(fs.length===1){ _qz.fazenda=fs[0].nome; _qz.municipio=fs[0].municipioNome||''; if(+fs[0].areaHa>0)_qz.areaHa=+fs[0].areaHa; } qzSalvarDraft(); renderOrcamentosView(); }
@@ -5938,7 +5962,7 @@ function renderOrcLista(host){
     const stTag='<span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span>';
     const stSel='<select class="edinp" style="margin-top:5px;font-size:11px;padding:3px" onchange="orcSetStatus(\''+q.id+'\',this.value)"><option value="">marcar…</option>'+ORC_STATUS_MANUAL.map(k=>'<option value="'+k+'">'+esc(ORC_STATUS_LBL[k])+'</option>').join('')+'</select>';
     h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Vendedor">'+esc(q.vendedor||'—')+'</td><td data-label="Emissão">'+esc(qzDataBR(q.emitidoEm))+'</td><td data-label="Validade">'+(q.validoAte?('<span'+(exp?' style="color:var(--gold);font-weight:700"':'')+'>'+esc(qzDataBR(q.validoAte))+(exp?' ⏳':'')+'</span>'):'—')+'</td><td data-label="Status">'+stTag+stSel+'</td>'
-      +'<td style="white-space:nowrap;text-align:right"><button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
+      +'<td style="white-space:nowrap;text-align:right">'+((q.status==='aceito'&&!q.convertidoEm)?('<button class="edbtn primary" style="background:#0A6A30" onclick="orcConverter(\''+q.id+'\')">converter</button> '):(q.convertidoEm?'<span class="tag hi" title="convertido em projeto">✓ convertido</span> ':''))+'<button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
     if(histOn)h+='<tr><td colspan="11" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
   h+='</tbody></table></div></div>'; host.innerHTML=h;
 }
