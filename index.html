@@ -1038,6 +1038,7 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Fator padrão (ha/ponto)</label>
           <input type="number" id="opFator" min="0" step="0.5" style="width:150px" list="opFatorList" placeholder="ex.: 3" onchange="opColetaSetFator()" title="Fator sugerido para novos lançamentos (ha por ponto). Varia por cliente/grade: 1, 2, 3, 5, 10… O valor real fica em cada lançamento."></div>
+        <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV no formato do Exportar (adiciona linhas)">⬆ Importar<input type="file" accept=".csv,text/csv" style="display:none" onchange="opColImportFile(this)"></label>
         <button class="btn" style="align-self:end" onclick="opColetaExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
       </div>
@@ -1117,6 +1118,7 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Prazo esperado (dias)</label>
           <input type="number" id="oaPrazo" min="0" style="width:120px" placeholder="a validar" onchange="opAmSetPrazo()" title="Configurável — acima deste prazo sem resultado, a remessa fica 'atrasada'"></div>
+        <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV no formato do Exportar (adiciona linhas)">⬆ Importar<input type="file" accept=".csv,text/csv" style="display:none" onchange="opAmImportFile(this)"></label>
         <button class="btn" style="align-self:end" onclick="opAmExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opAmNovo()">+ Novo envio</button>
       </div>
@@ -1188,6 +1190,7 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Dose MIB padrão</label>
           <input type="number" id="oeMibPadrao" min="0" style="width:120px" placeholder="20" onchange="opEnSetMibPadrao()" title="Dose MIB é estipulada por fazenda (varia). Este é só o valor sugerido quando a linha não tem MIB preenchido; pode ser sobrescrito por linha."></div>
+        <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV no formato do Exportar (adiciona linhas)">⬆ Importar<input type="file" accept=".csv,text/csv" style="display:none" onchange="opEnImportFile(this)"></label>
         <button class="btn" style="align-self:end" onclick="opEnExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opEnNovo()">+ Nova entrega</button>
       </div>
@@ -1958,10 +1961,27 @@ const OpColetaCalc=(function(){
 })();
 // </op-coleta-calc>
 // <op-csv>
-/* CSV puro para exportação (separador ';' — padrão do Excel pt-BR). Testável. */
+/* CSV puro (separador ';' — padrão do Excel pt-BR). Ida (opToCsv) e volta
+   (opParseCsv → objetos por cabeçalho). Testável. */
 function opToCsv(matrix){
   const cell=v=>{ let s=(v==null?'':String(v)); return /[";\n\r]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s; };
   return (matrix||[]).map(row=>(row||[]).map(cell).join(';')).join('\r\n');
+}
+function opParseCsv(text){
+  text=String(text||'').replace(/^﻿/,'');
+  const rows=[]; let row=[], cur='', inq=false;
+  for(let i=0;i<text.length;i++){ const ch=text[i];
+    if(inq){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else inq=false; } else cur+=ch; }
+    else if(ch==='"') inq=true;
+    else if(ch===';'){ row.push(cur); cur=''; }
+    else if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; }
+    else if(ch==='\r'){ /* ignora */ }
+    else cur+=ch; }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); }
+  if(!rows.length) return {headers:[],rows:[]};
+  const headers=rows[0].map(h=>String(h).trim());
+  const objs=rows.slice(1).filter(r=>r.some(c=>String(c).trim()!=='')).map(r=>{ const o={}; headers.forEach((h,i)=>{ o[h]=(r[i]!=null?r[i]:''); }); return o; });
+  return {headers,rows:objs};
 }
 // </op-csv>
 /* ===== Controle Operacional · Visão do ciclo (reusa os cálculos puros das telas) ===== */
@@ -2079,6 +2099,34 @@ function opEnExportar(){ const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas|
   const rows=[head]; const lbl={concluido:'Concluído',andamento:'Em andamento',pendente:'Pendente',na:'—'};
   linhas.forEach(l=>{ const row=[l.cliente,l.fazenda,(l.areaHa!=null?l.areaHa:'')]; items.forEach(it=>{ const c=(l.itens&&l.itens[it.k])||{}; if(it.media) row.push(c.media!=null?c.media:''); row.push(lbl[OpEntregasCalc.statusItem(l,it.k)]||'—'); }); row.push(OpEntregasCalc.progresso(l).pct); rows.push(row); });
   opDownload('controle-de-entregas.csv',opToCsv(rows)); }
+/* importação CSV (formato do próprio Exportar): lê o arquivo e ADICIONA linhas. */
+function opReadFile(input,cb){ const f=input&&input.files&&input.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ cb(String(rd.result||'')); }catch(e){ alert('Falha ao importar: '+((e&&e.message)||e)); } }; rd.readAsText(f,'utf-8'); input.value=''; }
+function opNum(v){ const s=String(v==null?'':v).trim().replace(/\./g,'').replace(',','.'); return s===''?'':(+s||0); }
+function opColImportFile(input){ opReadFile(input,opColImport); }
+function opColImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ alert('CSV vazio ou inválido.'); return; }
+  const st={'Planejada':'planejada','Em andamento':'andamento','Finalizada':'finalizada','Não trabalhado':'nao_trabalhado'};
+  const novos=rows.map(o=>{ const colab=String(o['Colaboradores/Pontos']||'').split('|').map(s=>{ const m=s.split(':'); const nome=(m[0]||'').trim(); return nome?{nome:nome,pontos:+String(m[1]||'').trim()||0}:null; }).filter(Boolean);
+    const fatorRaw=String(o['Fator (ha/ponto)']!=null?o['Fator (ha/ponto)']:(o['Fator']||'')).trim().replace(',','.');
+    return {id:'opc'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),data:(o['Data']||'').trim(),equipe:(o['Equipe']||'').trim(),cliente:(o['Cliente']||'').trim(),fazenda:(o['Fazenda']||'').trim(),talhao:(o['Talhão']||'').trim(),fator:(fatorRaw===''?'':(+fatorRaw||0)),status:(st[(o['Status']||'').trim()]||'andamento'),obs:(o['Observações']||'').trim(),colaboradores:colab}; }).filter(l=>l.data);
+  if(!novos.length){ alert('Nenhuma linha válida (coluna "Data" obrigatória).'); return; }
+  if(!confirm('Importar '+novos.length+' lançamento(s)? Serão ADICIONADOS aos existentes (nada é apagado).')) return;
+  D.opColeta.lancamentos=(D.opColeta.lancamentos||[]).concat(novos); if(typeof commit==='function')commit(); renderOpColeta(); alert(novos.length+' lançamento(s) importado(s).'); }
+function opAmImportFile(input){ opReadFile(input,opAmImport); }
+function opAmImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ alert('CSV vazio ou inválido.'); return; }
+  const arq={'Colocado':'colocado','Pendente':'pendente'}; const split=s=>String(s||'').split('|').map(x=>x.trim()).filter(Boolean);
+  const novos=rows.map(o=>({id:'opa'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),dataEnvio:(o['Data envio']||'').trim(),fazendas:split(o['Fazendas']),talhoes:split(o['Talhões']),etiquetagem:split(o['Etiquetagem']),respEnvio:(o['Resp. envio']||'').trim(),volume:(o['Volume']||'').trim(),arquivoMaquina:(arq[(o['Arquivo na máquina']||'').trim()]||''),dataResultado:(o['Data resultado']||'').trim(),obs:''})).filter(r=>r.dataEnvio);
+  if(!novos.length){ alert('Nenhuma linha válida (coluna "Data envio" obrigatória).'); return; }
+  if(!confirm('Importar '+novos.length+' remessa(s)? Serão ADICIONADAS (nada é apagado).')) return;
+  D.opAmostras.remessas=(D.opAmostras.remessas||[]).concat(novos); if(typeof commit==='function')commit(); renderOpAmostras(); alert(novos.length+' remessa(s) importada(s).'); }
+function opEnImportFile(input){ opReadFile(input,opEnImport); }
+function opEnImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ alert('CSV vazio ou inválido.'); return; }
+  const st={'Concluído':'concluido','Em andamento':'andamento','Pendente':'pendente','—':'na','':'na'}; const items=OpEntregasCalc.ITENS;
+  const novos=rows.map(o=>{ const itens={}; items.forEach(it=>{ const stv=(o[it.label]||'').trim(); const cell={status:(st[stv]!=null?st[stv]:'na')}; if(it.media){ const mv=String(o[it.label+' (média)']||'').trim().replace(',','.'); if(mv!=='') cell.media=+mv||0; } itens[it.k]=cell; });
+    const area=String(o['Área (ha)']||'').replace(/[^\d]/g,'');
+    return {id:'ope'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cliente:(o['Cliente']||'').trim(),fazenda:(o['Fazenda']||'').trim(),areaHa:(area===''?'':(+area||0)),obs:'',itens:itens}; }).filter(l=>l.cliente);
+  if(!novos.length){ alert('Nenhuma linha válida (coluna "Cliente" obrigatória).'); return; }
+  if(!confirm('Importar '+novos.length+' linha(s) de entrega? Serão ADICIONADAS (nada é apagado).')) return;
+  D.opEntregas.linhas=(D.opEntregas.linhas||[]).concat(novos); if(typeof commit==='function')commit(); renderOpEntregas(); alert(novos.length+' linha(s) importada(s).'); }
 // <op-amostras-calc>
 /* Controle Operacional · Tela 2 — CÁLCULO PURO (sem DOM/D): dias de análise,
    situação (recebido/aguardando/atrasado), tempo médio e agregados.

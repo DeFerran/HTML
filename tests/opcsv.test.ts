@@ -9,6 +9,8 @@ const B = html.indexOf("// </op-csv>");
 if (A < 0 || B < 0) throw new Error("marcadores <op-csv> não encontrados");
 // deno-lint-ignore no-explicit-any
 const opToCsv: any = (0, eval)(html.slice(A, B) + "\nopToCsv");
+// deno-lint-ignore no-explicit-any
+const opParseCsv: any = (0, eval)(html.slice(A, B) + "\nopParseCsv");
 
 test("separador ';' e linhas com CRLF", () => {
   expect(opToCsv([["a", "b"], ["1", "2"]])).toBe("a;b\r\n1;2");
@@ -26,4 +28,25 @@ test("células nulas/indefinidas viram vazio; números viram texto", () => {
 
 test("matriz vazia → string vazia", () => {
   expect(opToCsv([])).toBe("");
+});
+
+test("opParseCsv: cabeçalho → objetos; ignora linhas vazias e BOM", () => {
+  const { headers, rows } = opParseCsv("﻿Data;Cliente\r\n2026-08-11;Casari\r\n;\r\n2026-08-12;Progresso");
+  expect(headers).toEqual(["Data", "Cliente"]);
+  expect(rows).toHaveLength(2); // linha vazia descartada
+  expect(rows[0]).toEqual({ Data: "2026-08-11", Cliente: "Casari" });
+  expect(rows[1].Cliente).toBe("Progresso");
+});
+
+test("opParseCsv: campos com aspas, ';' e quebra de linha internos", () => {
+  const { rows } = opParseCsv('A;B\r\n"x;y";"linha1\nlinha2"');
+  expect(rows[0].A).toBe("x;y");
+  expect(rows[0].B).toBe("linha1\nlinha2");
+});
+
+test("round-trip: opParseCsv(opToCsv(...)) preserva os dados", () => {
+  const matrix = [["Data", "Colaboradores/Pontos"], ["2026-08-11", "Deivison: 27 | Emanuel: 20"]];
+  const { rows } = opParseCsv(opToCsv(matrix));
+  expect(rows[0]["Data"]).toBe("2026-08-11");
+  expect(rows[0]["Colaboradores/Pontos"]).toBe("Deivison: 27 | Emanuel: 20");
 });
