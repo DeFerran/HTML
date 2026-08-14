@@ -6235,9 +6235,10 @@ window.addEventListener('offline',()=>{ try{ if(typeof syncStamp==='function') s
   /* drill-in: no modo grade, esconde as seções; ao abrir, esconde a grade */
   #v-edit:not(.sec-open) .edsec{display:none!important}
   #v-edit.sec-open .edpills{display:none}
+  /* barra Voltar em laranja da marca (var(--orange)) p/ destacar a navegação */
   #v-edit.sec-open .ed-back{display:flex;align-items:center;gap:9px;position:sticky;top:70px;z-index:6;
-    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-bottom:12px;
-    font-weight:800;color:var(--head);cursor:pointer;box-shadow:var(--shadow);font-size:14px}
+    background:var(--tintGold);border:1px solid var(--orange);border-radius:14px;padding:13px 15px;margin-bottom:12px;
+    font-weight:800;color:var(--orange);cursor:pointer;box-shadow:var(--shadow);font-size:14px}
   /* botões da barra de topo maiores e roláveis no celular */
   #v-edit .edbtns{gap:8px}
   #v-edit .edbtn{padding:11px 14px;font-size:13px}
