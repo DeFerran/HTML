@@ -1377,6 +1377,7 @@ header .htxt h1{display:none}
   <section class="view" id="v-config" data-ct="colab">
     <div class="lead"><h2>Cadastros, Safras &amp; Parâmetros</h2>
       <p>Base única de <b>cadastros</b> da plataforma — colaboradores, veículos, equipamentos, clientes, fazendas e municípios — junto das <b>safras</b> e dos <b>parâmetros globais</b>. Os nomes escolhidos nas outras telas (Colaborador, Veículo, Vendedor, Serviço…) nascem aqui. Tudo salva automaticamente.</p></div>
+    <div id="cadIntegridade"></div>
     <div class="mtabs" id="cadTabs">
       <button class="mtab on" data-ct="colab" onclick="cadTab('colab')">Colaboradores</button>
       <button class="mtab" data-ct="veic" onclick="cadTab('veic')">Veículos</button>
@@ -1491,6 +1492,15 @@ function hydrate(d){
     if(c.ultimaColeta==null)c.ultimaColeta=''; if(c.cicloColeta==null)c.cicloColeta=0;
     // pré-preenche clientes de Fertilidade Grid já vendidos nesta safra: última = safra-base, ciclo padrão 2 anos
     if(!c.ultimaColeta && /Fertilidade Grid/i.test(c.servico||'') && (+c.ha||0)>0){ c.ultimaColeta=_safraBaseHy; if(!(+c.cicloColeta>0))c.cicloColeta=2; } });
+  // Fase 6: normaliza a grafia "Anderlirio" -> "Anderlírio" (evita o mesmo colaborador virar dois nomes nos gráficos)
+  (function(){ const fix=s=>((s||'')==='Anderlirio'?'Anderlírio':s);
+    (d.clientes||[]).forEach(c=>{ if(c)c.vendedor=fix(c.vendedor); });
+    (d.funil||[]).forEach(o=>{ if(o)o.vendedor=fix(o.vendedor); });
+    (d.colaboradores||[]).forEach(c=>{ if(c)c.nome=fix(c.nome); });
+    if(d.equipe&&Array.isArray(d.equipe.colaboradores)) d.equipe.colaboradores.forEach(c=>{ if(c)c.nome=fix(c.nome); });
+    (d.veiculos||[]).forEach(v=>{ if(v)v.responsavel=fix(v.responsavel); });
+    (d.equipamentos||[]).forEach(e=>{ if(e)e.responsavel=fix(e.responsavel); });
+    (d.lancamentos||[]).forEach(l=>{ if(l)l.colaborador=fix(l.colaborador); }); })();
   if(!Array.isArray(d.grupos)||!d.grupos.length) d.grupos=[
     {nome:'Fertilidade',servicos:['Fertilidade Grid 3','Fertilidade Grid 5','Fertilidade Grid 2'],custoDiretoLab:188000,custoDiretoCampo:null,custoDiretoCampoHa:null},
     {nome:'Coleta AP+',servicos:['Coleta Solo AP - Safra+'],custoDiretoLab:0,custoDiretoCampo:null,custoDiretoCampoHa:null},
@@ -1505,7 +1515,7 @@ function hydrate(d){
         mk('Vendas — Receita','R$','sum'),mk('Vendas — Hectares','ha','sum'),
         mk('Margem média por venda','%','avg'),mk('Margem gerada','R$','sum'),
         mk('Visitas / atendimentos','num','sum')]},
-      {nome:'Anderlirio',papel:'Vendas e Gestão',indicadores:[
+      {nome:'Anderlírio',papel:'Vendas e Gestão',indicadores:[
         mk('Vendas — Receita','R$','sum'),mk('Vendas — Hectares','ha','sum'),
         mk('Margem média por venda','%','avg'),mk('Margem gerada','R$','sum'),
         mk('Visitas / atendimentos','num','sum')]},
@@ -3587,6 +3597,7 @@ function renderConfig(){
       '</div>';
   }
   // hub de cadastros: popula os hosts das abas internas (Fases 1–5)
+  try{ renderIntegridade(); }catch(e){}
   try{ renderColaboradoresEditor(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
   try{ renderMunicipiosEditor(); }catch(e){}
@@ -4075,9 +4086,9 @@ function renderEquipe(){
     {lab:'Mês de maior venda',val:picoI<0?'—':sm(meses[picoI]),c:'gold',sub:picoI<0?'sem lançamentos':BRLk(picoV)+' fechados'},
     {lab:'Colaboradores',val:String(cols.length),c:'',sub:cols.map(c=>c.nome).join(' · ')},
   ]);
-  // ---- origem das vendas: receita por vendedor (De Ferran / Anderlirio / Bruno / A definir) ----
-  const VORD=['De Ferran','Anderlirio','Bruno','A definir'];
-  const VCOL={'De Ferran':C.navy,'Anderlirio':C.gold,'Bruno':C.moss,'A definir':C.mut};
+  // ---- origem das vendas: receita por vendedor (De Ferran / Anderlírio / Bruno / A definir) ----
+  const VORD=['De Ferran','Anderlírio','Bruno','A definir'];
+  const VCOL={'De Ferran':C.navy,'Anderlírio':C.gold,'Bruno':C.moss,'A definir':C.mut};
   const vm={};
   (D.clientes||[]).forEach(c=>{ if(!c)return; const v=c.vendedor||'A definir';
     if(!vm[v])vm[v]={rec:0,n:0,ha:0}; vm[v].rec+=+c.receita||0; vm[v].n+=1; vm[v].ha+=+c.ha||0; });
@@ -4210,7 +4221,7 @@ function renderFunil(){
   let topServ=null; servK.forEach(k=>{ if(bs[k].pondAb>0 && (!topServ||bs[k].pondAb>topServ.v)) topServ={k:k,v:bs[k].pondAb}; });
   const be={}; FUNIL_ESTAGIOS.forEach(e=>be[e]=0); ops.forEach(o=>{ be[o.estagio]=(be[o.estagio]||0)+(+o.valor||0); });
   const estK=FUNIL_ESTAGIOS.filter(e=>be[e]>0);
-  const VCOL={'De Ferran':C.navy,'Anderlirio':C.gold,'Bruno':C.moss,'A definir':C.mut};
+  const VCOL={'De Ferran':C.navy,'Anderlírio':C.gold,'Bruno':C.moss,'A definir':C.mut};
   const bv={}; ops.forEach(o=>{ const k=o.vendedor||'A definir'; if(!bv[k])bv[k]={pond:0,fech:0,cheio:0}; const v=+o.valor||0; bv[k].pond+=v*funilProb(o); bv[k].cheio+=v; if(o.estagio==='Fechado')bv[k].fech+=v; });
   const vk=Object.keys(bv).sort((a,b)=>bv[b].pond-bv[a].pond);
   let topVend=null; vk.forEach(k=>{ if(k!=='A definir' && bv[k].pond>0 && (!topVend||bv[k].pond>topVend.v)) topVend={k:k,v:bv[k].pond}; });
@@ -4861,7 +4872,7 @@ function renderCliEditor(){
     cols:[{k:'nome',label:'Cliente',type:'text'},
       {k:'grupo',label:'Grupo',type:'select',opts:[{v:'fert',t:'Fertilidade'},{v:'coleta',t:'Coleta AP+'},{v:'outros',t:'Outros'},{v:'pend',t:'Pendência'}]},
       {k:'servico',label:'Serviço',type:'select',opts:servOpts},
-      {k:'vendedor',label:'Vendedor',type:'select',opts:[{v:'A definir',t:'A definir'},{v:'De Ferran',t:'De Ferran'},{v:'Anderlirio',t:'Anderlirio'},{v:'Bruno',t:'Bruno'}]},
+      {k:'vendedor',label:'Vendedor',type:'select',opts:[{v:'A definir',t:'A definir'},{v:'De Ferran',t:'De Ferran'},{v:'Anderlírio',t:'Anderlírio'},{v:'Bruno',t:'Bruno'}]},
       {k:'fazenda',label:'Fazenda',type:'select',optsFor:r=>[{v:'',t:'— fazenda —'}].concat((D.fazendas||[]).filter(f=>f.clienteNome===r.nome).map(f=>({v:f.nome,t:f.nome}))),onset:(r,val)=>{ const f=(D.fazendas||[]).find(x=>x.clienteNome===r.nome&&x.nome===val); if(f&&f.municipioNome)r.municipio=f.municipioNome; }},
       {k:'municipio',label:'Município',type:'select',opts:[{v:'',t:'— município —'}].concat(nomesMunicipios().map(m=>({v:m,t:m})))},
       {k:'mes',label:'Mês do pedido',type:'select',opts:mesOpts},
@@ -5204,10 +5215,12 @@ let _colabForm=null;
 function novoColabForm(){ _colabForm={id:'',nome:'',cargo:'',centroCusto:'',ativo:true}; renderColaboradoresEditor(); }
 function editarColab(id){ const c=(D.colaboradores||[]).find(x=>x.id===id); if(c){ _colabForm=JSON.parse(JSON.stringify(c)); renderColaboradoresEditor(); } }
 function salvarColabForm(){ const F=_colabForm; if(!F)return; if(!(F.nome||'').trim()){ uiToast('Informe o nome do colaborador.','err'); return; }
-  if(!Array.isArray(D.colaboradores)) D.colaboradores=[];
-  if(F.id){ const i=D.colaboradores.findIndex(c=>c.id===F.id); if(i>=0)D.colaboradores[i]=F; }
+  if(!Array.isArray(D.colaboradores)) D.colaboradores=[]; F.nome=(F.nome||'').trim();
+  let casc=0;
+  if(F.id){ const prev=D.colaboradores.find(c=>c.id===F.id); casc=_cascadeColaborador(prev?prev.nome:'',F.nome);
+    const i=D.colaboradores.findIndex(c=>c.id===F.id); if(i>=0)D.colaboradores[i]=F; }
   else { F.id='col'+uidLanc(); D.colaboradores.push(F); }
-  _colabForm=null; commit(); renderColaboradoresEditor(); uiToast('✓ Colaborador salvo'); }
+  _colabForm=null; commit(); renderColaboradoresEditor(); uiToast(casc?('✓ Colaborador salvo · '+casc+' referência(s) atualizada(s)'):'✓ Colaborador salvo'); }
 function removerColab(id){ const c=(D.colaboradores||[]).find(x=>x.id===id); if(!c)return;
   if(!confirm('Remover o colaborador "'+(c.nome||'')+'" do cadastro? As referências por nome (lançamentos, vendas, veículos) continuam como estão.'))return;
   D.colaboradores=(D.colaboradores||[]).filter(x=>x.id!==id); commit(); renderColaboradoresEditor(); }
@@ -5249,9 +5262,11 @@ function salvarMuniForm(){ const F=_muniForm; if(!F)return; if(!(F.nome||'').tri
   const dup=D.municipios.find(m=>m.id!==F.id && (m.nome||'').trim().toLowerCase()===(F.nome||'').trim().toLowerCase() && (m.uf||'')===(F.uf||''));
   if(dup){ uiToast('Já existe um município com esse nome/UF.','err'); return; }
   F.nome=(F.nome||'').trim();
-  if(F.id){ const i=D.municipios.findIndex(m=>m.id===F.id); if(i>=0)D.municipios[i]=F; }
+  let casc=0;
+  if(F.id){ const prev=D.municipios.find(m=>m.id===F.id); casc=_cascadeMunicipio(prev?prev.nome:'',F.nome);
+    const i=D.municipios.findIndex(m=>m.id===F.id); if(i>=0)D.municipios[i]=F; }
   else { F.id='mun'+uidLanc(); D.municipios.push(F); }
-  _muniForm=null; commit(); renderMunicipiosEditor(); uiToast('✓ Município salvo'); }
+  _muniForm=null; commit(); renderMunicipiosEditor(); uiToast(casc?('✓ Município salvo · '+casc+' referência(s) atualizada(s)'):'✓ Município salvo'); }
 function removerMuni(id){ const m=(D.municipios||[]).find(x=>x.id===id); if(!m)return;
   if(!confirm('Remover o município "'+(m.nome||'')+'" do cadastro?'))return;
   D.municipios=(D.municipios||[]).filter(x=>x.id!==id); commit(); renderMunicipiosEditor(); }
@@ -5292,9 +5307,12 @@ function salvarFazForm(){ const F=_fazForm; if(!F)return;
   const dup=D.fazendas.find(f=>f.id!==F.id && (f.clienteNome||'')===(F.clienteNome||'') && (f.nome||'').trim().toLowerCase()===(F.nome||'').trim().toLowerCase());
   if(dup){ uiToast('Esse cliente já tem uma fazenda com esse nome.','err'); return; }
   F.nome=(F.nome||'').trim(); F.areaHa=+F.areaHa||0;
-  if(F.id){ const i=D.fazendas.findIndex(f=>f.id===F.id); if(i>=0)D.fazendas[i]=F; }
+  let casc=0;
+  if(F.id){ const prev=D.fazendas.find(f=>f.id===F.id);
+    if(prev && prev.clienteNome===F.clienteNome) casc=_cascadeFazenda(F.clienteNome,prev.nome,F.nome);
+    const i=D.fazendas.findIndex(f=>f.id===F.id); if(i>=0)D.fazendas[i]=F; }
   else { F.id='faz'+uidLanc(); D.fazendas.push(F); }
-  _fazForm=null; commit(); renderFazendasEditor(); uiToast('✓ Fazenda salva'); }
+  _fazForm=null; commit(); renderFazendasEditor(); uiToast(casc?('✓ Fazenda salva · '+casc+' venda(s) atualizada(s)'):'✓ Fazenda salva'); }
 function removerFaz(id){ const f=(D.fazendas||[]).find(x=>x.id===id); if(!f)return;
   if(!confirm('Remover a fazenda "'+(f.nome||'')+'" do cadastro?'))return;
   D.fazendas=(D.fazendas||[]).filter(x=>x.id!==id); commit(); renderFazendasEditor(); }
@@ -5385,6 +5403,75 @@ function renderEquipamentosEditor(){
   host.querySelectorAll('input.qcf,select.qcf').forEach(inp=>{ inp.onchange=()=>{ if(!_equipForm)return; const k=inp.dataset.k; _equipForm[k]=(k==='ativo')?(inp.value==='true'):inp.value; }; });
   host.querySelectorAll('button.qedit').forEach(b=>b.onclick=()=>editarEquip(b.dataset.id));
   host.querySelectorAll('button.qrem').forEach(b=>b.onclick=()=>removerEquip(b.dataset.id));
+}
+/* ===== Fase 6: assertividade — cascata de renome + painel de integridade ===== */
+function nomesServicos(){ return (D.servicos||[]).map(s=>s&&s.nome).filter(Boolean); }
+/* cascata: ao renomear um item de cadastro, atualiza todas as referências por nome */
+function _cascadeColaborador(oldN,newN){ let n=0; if(!oldN||oldN===newN)return 0;
+  (D.lancamentos||[]).forEach(l=>{ if(l&&l.colaborador===oldN){l.colaborador=newN;n++;} });
+  (D.clientes||[]).forEach(c=>{ if(c&&c.vendedor===oldN){c.vendedor=newN;n++;} });
+  (D.veiculos||[]).forEach(v=>{ if(v&&v.responsavel===oldN){v.responsavel=newN;n++;} });
+  (D.equipamentos||[]).forEach(e=>{ if(e&&e.responsavel===oldN){e.responsavel=newN;n++;} });
+  (D.funil||[]).forEach(o=>{ if(o&&o.vendedor===oldN){o.vendedor=newN;n++;} });
+  (((D.opColeta||{}).lancamentos)||[]).forEach(l=>{ (l.colaboradores||[]).forEach(cc=>{ if(cc&&cc.nome===oldN){cc.nome=newN;n++;} }); });
+  return n; }
+function _cascadeMunicipio(oldN,newN){ let n=0; if(!oldN||oldN===newN)return 0;
+  (D.clientes||[]).forEach(c=>{ if(c&&c.municipio===oldN){c.municipio=newN;n++;} });
+  (D.fazendas||[]).forEach(f=>{ if(f&&f.municipioNome===oldN){f.municipioNome=newN;n++;} });
+  return n; }
+function _cascadeFazenda(cliente,oldN,newN){ let n=0; if(!oldN||oldN===newN)return 0;
+  (D.clientes||[]).forEach(c=>{ if(c&&c.nome===cliente&&c.fazenda===oldN){c.fazenda=newN;n++;} });
+  return n; }
+let _integOpen=false;
+function toggleInteg(){ _integOpen=!_integOpen; renderIntegridade(); }
+function renderIntegridade(){
+  const host=document.getElementById('cadIntegridade'); if(!host)return;
+  const colabs=new Set(nomesColaboradores()), centros=new Set(nomesCentros()), cats=new Set(nomesCategorias());
+  const servs=new Set(nomesServicos()), munis=new Set(nomesMunicipios()), clis=new Set(nomesClientes());
+  const veicNomes=new Set((D.veiculos||[]).map(v=>v&&v.nome).filter(Boolean));
+  const fazByCli={}; (D.fazendas||[]).forEach(f=>{ if(f&&f.clienteNome){(fazByCli[f.clienteNome]=fazByCli[f.clienteNome]||new Set()).add(f.nome);} });
+  const bump=(m,v)=>{ m[v]=(m[v]||0)+1; };
+  const oVend={},oServ={},oMuni={},oFaz={},oLColab={},oLCentro={},oLCat={},oLServ={},oLVeic={},oLCli={},oResp={},oFazCli={},oFazMun={};
+  (D.clientes||[]).forEach(c=>{ if(!c)return;
+    if((c.vendedor||'')&&c.vendedor!=='A definir'&&!colabs.has(c.vendedor)) bump(oVend,c.vendedor);
+    if((c.servico||'')&&!servs.has(c.servico)) bump(oServ,c.servico);
+    if((c.municipio||'')&&!munis.has(c.municipio)) bump(oMuni,c.municipio);
+    if((c.fazenda||'')&&!(fazByCli[c.nome]&&fazByCli[c.nome].has(c.fazenda))) bump(oFaz,(c.nome||'?')+' › '+c.fazenda); });
+  (D.lancamentos||[]).forEach(l=>{ if(!l)return;
+    if((l.colaborador||'')&&!colabs.has(l.colaborador)) bump(oLColab,l.colaborador);
+    if((l.centroCusto||'')&&!centros.has(l.centroCusto)) bump(oLCentro,l.centroCusto);
+    if((l.categoria||'')&&!cats.has(l.categoria)) bump(oLCat,l.categoria);
+    if((l.servico||'')&&!servs.has(l.servico)) bump(oLServ,l.servico);
+    if((l.veiculo||'')&&!veicNomes.has(l.veiculo)) bump(oLVeic,l.veiculo);
+    if((l.cliente||'')&&!clis.has(l.cliente)) bump(oLCli,l.cliente); });
+  (D.veiculos||[]).forEach(v=>{ if(v&&(v.responsavel||'')&&!colabs.has(v.responsavel)) bump(oResp,v.responsavel); });
+  (D.equipamentos||[]).forEach(e=>{ if(e&&(e.responsavel||'')&&!colabs.has(e.responsavel)) bump(oResp,e.responsavel); });
+  (D.fazendas||[]).forEach(f=>{ if(!f)return;
+    if((f.clienteNome||'')&&!clis.has(f.clienteNome)) bump(oFazCli,f.clienteNome);
+    if((f.municipioNome||'')&&!munis.has(f.municipioNome)) bump(oFazMun,f.municipioNome); });
+  const mrg=(a,b)=>{ const o=Object.assign({},a); Object.keys(b).forEach(k=>o[k]=(o[k]||0)+b[k]); return o; };
+  const groups=[
+    ['Vendedor (vendas) fora do cadastro de Colaboradores',oVend],
+    ['Colaborador (despesas) fora do cadastro',oLColab],
+    ['Responsável (veículo/equipamento) fora do cadastro',oResp],
+    ['Serviço (vendas/despesas) fora do cadastro',mrg(oServ,oLServ)],
+    ['Centro de custo (despesas) fora do cadastro',oLCentro],
+    ['Categoria (despesas) fora do cadastro',oLCat],
+    ['Cliente (despesas) fora da carteira',oLCli],
+    ['Veículo (despesas) fora do cadastro',oLVeic],
+    ['Município (vendas) fora do cadastro',oMuni],
+    ['Fazenda (vendas) fora do cadastro do cliente',oFaz],
+    ['Fazenda → cliente inexistente',oFazCli],
+    ['Fazenda → município inexistente',oFazMun],
+  ].map(a=>({t:a[0],items:Object.keys(a[1]).map(k=>({v:k,n:a[1][k]})).sort((x,y)=>y.n-x.n)})).filter(g=>g.items.length);
+  const total=groups.reduce((a,g)=>a+g.items.length,0);
+  if(!total){ host.innerHTML='<div class="panel" style="border-left:3px solid var(--green);margin-bottom:16px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b style="color:var(--green)">✓ Cadastros íntegros</b><span class="cap">Nenhuma ligação quebrada — todos os nomes usados nas telas existem nos cadastros.</span></div></div>'; return; }
+  let h='<div class="panel" style="border-left:3px solid var(--gold);margin-bottom:16px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between"><div><b style="color:var(--gold)">⚠ '+total+' ligação(ões) a revisar</b> <span class="cap">nomes usados nas telas que não existem nos cadastros</span></div><button class="edbtn ghost" onclick="toggleInteg()">'+(_integOpen?'ocultar':'ver detalhes')+'</button></div>';
+  if(_integOpen){ h+='<div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">';
+    groups.forEach(g=>{ h+='<div><div style="font-weight:700;font-size:13px;margin-bottom:6px">'+esc(g.t)+' <span class="cap">('+g.items.length+')</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">'+g.items.slice(0,30).map(it=>'<span class="tag lo" style="font-weight:600">'+esc(it.v)+' · '+it.n+'×</span>').join('')+(g.items.length>30?'<span class="cap">e mais '+(g.items.length-30)+'…</span>':'')+'</div></div>'; });
+    h+='</div><div class="note" style="margin-top:12px">Como resolver: cadastre o nome que falta (aba correspondente) <b>ou</b> corrija o valor na tela de origem escolhendo pela lista. Renomear um item de cadastro já atualiza as referências (cascata).</div>';
+  }
+  h+='</div>'; host.innerHTML=h;
 }
 function renderCustoVeiculo(){
   const tel=document.getElementById('tVei'); if(!tel)return;
@@ -5512,7 +5599,7 @@ function renderEditors(){
       {k:'safra',label:'Safra',type:'select',opts:[{v:'26/27',t:'26/27'},{v:'27/28',t:'27/28'}]},
       {k:'servico',label:'Serviço',type:'select',opts:funilServicoOpts()},
       {k:'estagio',label:'Estágio',type:'select',opts:FUNIL_ESTAGIOS.map(e=>({v:e,t:e}))},
-      {k:'vendedor',label:'Vendedor',type:'select',opts:[{v:'A definir',t:'A definir'},{v:'De Ferran',t:'De Ferran'},{v:'Anderlirio',t:'Anderlirio'},{v:'Bruno',t:'Bruno'}]},
+      {k:'vendedor',label:'Vendedor',type:'select',opts:[{v:'A definir',t:'A definir'},{v:'De Ferran',t:'De Ferran'},{v:'Anderlírio',t:'Anderlírio'},{v:'Bruno',t:'Bruno'}]},
       {k:'mes',label:'Mês previsto',type:'text'},
       {k:'area',label:'Área (ha)',type:'num',num:true},
       {k:'precoHa',label:'Preço/ha (R$)',type:'money',num:true},
