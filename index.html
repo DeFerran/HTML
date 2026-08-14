@@ -4603,7 +4603,7 @@ const IAHUB_SUBS=[
   {k:'whatsapp',t:'WhatsApp',ic:'💬'},
   {k:'aprovacoes',t:'Aprovações',ic:'✅'},
   {k:'historico',t:'Histórico & Auditoria',ic:'🗂️'},
-  {k:'config',t:'Configurações',ic:'⚙',futuro:true}
+  {k:'config',t:'Configurações',ic:'⚙'}
 ];
 let _iahubSub='visao';
 /* regra de permissão (pura, testável): só admin acessa a Central de IA */
@@ -4626,6 +4626,7 @@ function iahubGo(k){ if(!ehAdmin)return; _iahubSub=k;
   if(k==='whatsapp') return iahubWhatsapp(body);
   if(k==='aprovacoes') return iahubAprovacoes(body);
   if(k==='alertas') return iahubAlertas(body);
+  if(k==='config') return iahubConfig(body);
   if(k==='copiloto'){ body.innerHTML='<div class="panel"><h3>Copiloto AP</h3><div class="cap">O Copiloto abre em um painel lateral.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="copOpen()">🤖 Abrir Copiloto</button></div></div>'; return; }
   if(k==='conhecimento'){ body.innerHTML='<div class="panel"><h3>Base de Conhecimento</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=ia]\').click()">📚 Abrir Conhecimento</button></div></div>'; return; }
   if(k==='memoria'){ body.innerHTML='<div class="panel"><h3>Memória</h3><div class="cap">Gerenciada na aba dedicada.</div><div style="margin-top:10px"><button class="edbtn primary" onclick="document.querySelector(\'#tabs button[data-v=iamem]\').click()">🧠 Abrir Memória</button></div></div>'; return; }
@@ -4967,6 +4968,34 @@ async function rdList(){ const h=document.getElementById('rdTab'); if(!h||!sb)re
     h.innerHTML='<thead><tr><th>Título</th><th>Prévia</th><th>Data</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.titulo)+'</td><td>'+esc(String(r.conteudo||'').slice(0,120))+'</td><td>'+esc(iahData(r.criado_em))+'</td><td><button class="edbtn" onclick="rdView(\''+r.id+'\')">ver</button></td></tr>').join('')+'</tbody>'; try{wrapTables();}catch(e){}
   }catch(e){ h.innerHTML='<tbody><tr><td class="cap">Erro: '+esc(e.message||String(e))+'</td></tr></tbody>'; } }
 async function rdView(id){ if(!sb)return; try{ const {data}=await sb.from('ai_report_drafts').select('titulo,conteudo').eq('id',id).maybeSingle(); if(data) alert((data.titulo||'Rascunho')+'\n\n'+(data.conteudo||'')); }catch(e){ alMsg('Erro: '+(e.message||e),'err'); } }
+/* ---------- Configurações / Saúde da IA (Central) — admin ---------- */
+function cfgLinha(nome,ok,detalhe){ const ic=ok?'<span style="color:#0A6A30;font-weight:800">● OK</span>':'<span style="color:#c0392b;font-weight:800">● pendente</span>'; return '<div class="ia-arow"><span>'+esc(nome)+'</span><b>'+ic+(detalhe?(' &nbsp; <span class="cap">'+esc(detalhe)+'</span>'):'')+'</b></div>'; }
+async function iahubConfig(body){
+  if(!ehAdmin){ iahEscRestrito(body); return; }
+  body.innerHTML='<div class="panel"><h3>Configuração & Saúde da IA</h3><div class="cap">Diagnóstico do que está pronto e do que ainda depende de configuração no backend. Os segredos ficam só no backend — aqui só vemos o status.</div><div id="cfgBox"><div class="cap">Verificando…</div></div><div style="margin-top:10px"><button class="edbtn" onclick="iahubConfig(document.getElementById(\'iahubBody\'))">↺ Reverificar</button></div></div>';
+  const box=document.getElementById('cfgBox');
+  // health do gateway (chave da IA + modelo)
+  let gw={ok:false}; try{ const {data,error}=await sb.functions.invoke('ai-gateway',{body:{action:'health'}}); if(!error&&data) gw={ok:true,...data}; }catch(e){}
+  // config do WhatsApp
+  let wa=null; try{ const {data}=await sb.from('whatsapp_config').select('numero,phone_number_id,ativo,ultimo_evento_em').maybeSingle(); wa=data; }catch(e){}
+  const anthropicOk=!!(gw&&gw.anthropic_configured);
+  const waOk=!!(wa&&wa.ativo&&wa.phone_number_id);
+  const pend=[];
+  if(!gw.ok) pend.push('O gateway da IA não respondeu ao health check (verifique se a função ai-gateway está ativa).');
+  if(!anthropicOk) pend.push('Configurar o secret ANTHROPIC_API_KEY no backend (necessário para o chat do Copiloto e a ação run_agent).');
+  if(!waOk) pend.push('WhatsApp: definir phone_number_id + marcar Conexão ativa (aba WhatsApp) e configurar os secrets WHATSAPP_* no backend.');
+  box.innerHTML=
+    '<div class="ia-agent" style="margin-top:8px">'
+    +cfgLinha('Gateway da IA (ai-gateway)',gw.ok,gw.ok?('online'+(gw.papel?(' · seu papel: '+gw.papel):'')):'sem resposta')
+    +cfgLinha('Chave da IA (Anthropic)',anthropicOk,anthropicOk?('modelo: '+(gw.model||'—')):'falta ANTHROPIC_API_KEY')
+    +cfgLinha('Base de Conhecimento (embeddings)',true,'gte-small nativo — sem chave, sem custo')
+    +cfgLinha('Memória validada',true,'operacional')
+    +cfgLinha('Automações (fila ai_jobs + worker)',true,'manual OK; agendamento autônomo é opcional (pg_cron)')
+    +cfgLinha('Aprovações (SENSITIVE_WRITE)',true,'operacional — decisão só admin')
+    +cfgLinha('WhatsApp (Cloud API)',waOk,waOk?('número '+(wa.numero||wa.phone_number_id)+(wa.ultimo_evento_em?(' · últ. evento '+iahData(wa.ultimo_evento_em)):'')):'não conectado')
+    +'</div>'
+    +(pend.length?('<div class="panel" style="margin-top:12px"><h3>Pendências do dono</h3><ul style="margin:6px 0 0 18px">'+pend.map(p=>'<li>'+esc(p)+'</li>').join('')+'</ul></div>'):'<div class="note" style="margin-top:12px">Tudo configurado. A IA está pronta para uso.</div>');
+}
 function admMsg(t,cls){ const e=document.getElementById('admMsg'); if(e){ e.textContent=t||''; e.className='authmsg'+(cls?(' '+cls):''); } }
 function renderAdminForm(){
   const el=document.getElementById('admForm'); if(!el)return;

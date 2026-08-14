@@ -148,12 +148,27 @@ Deno.serve(async (req: Request) => {
   } catch { /* mantém leitor por segurança */ }
   const podeEscrever = papel === "editor" || papel === "admin";
 
-  // (7) rate limiting simples por usuário (usa a infra já criada: ai_audit_log).
+  // ---- corpo ----
+  let body: { message?: unknown; conversation_id?: unknown; contexto?: unknown; action?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return json(400, errBody("bad_request", "Corpo JSON inválido."));
+  }
+
+  // health check (config/operabilidade) — não gera run, não consome rate limit.
+  if (typeof body.action === "string" && body.action === "health") {
+    return json(200, { ok: true, anthropic_configured: !!anthropicKey, model, papel });
+  }
+
+  // (7) rate limiting por usuário: conta só os TURNOS (tipo='run'), não os
+  // tool_calls — senão turnos com muitas ferramentas travariam o usuário.
   const since = new Date(Date.now() - 60_000).toISOString();
   const { count: recent } = await sb
     .from("ai_audit_log")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
+    .eq("tipo", "run")
     .gte("criado_em", since);
   if ((recent ?? 0) >= RATE_LIMIT_PER_MIN) {
     return json(
@@ -162,13 +177,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // ---- corpo ----
-  let body: { message?: unknown; conversation_id?: unknown; contexto?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return json(400, errBody("bad_request", "Corpo JSON inválido."));
-  }
   const message = typeof body.message === "string" ? body.message.trim() : "";
   const conversationIdIn = typeof body.conversation_id === "string"
     ? body.conversation_id
