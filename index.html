@@ -2102,7 +2102,6 @@ function opEnExportar(){ const linhas=OpEntregasCalc.filtra(D.opEntregas.linhas|
   opDownload('controle-de-entregas.csv',opToCsv(rows)); }
 /* importação CSV (formato do próprio Exportar): lê o arquivo e ADICIONA linhas. */
 function opReadFile(input,cb){ const f=input&&input.files&&input.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ cb(String(rd.result||'')); }catch(e){ alert('Falha ao importar: '+((e&&e.message)||e)); } }; rd.readAsText(f,'utf-8'); input.value=''; }
-function opNum(v){ const s=String(v==null?'':v).trim().replace(/\./g,'').replace(',','.'); return s===''?'':(+s||0); }
 function opColImportFile(input){ opReadFile(input,opColImport); }
 function opColImport(text){ const {rows}=opParseCsv(text); if(!rows.length){ alert('CSV vazio ou inválido.'); return; }
   const st={'Planejada':'planejada','Em andamento':'andamento','Finalizada':'finalizada','Não trabalhado':'nao_trabalhado'};
