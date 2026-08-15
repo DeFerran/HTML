@@ -396,7 +396,16 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 .imp-ta{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;padding:10px}
 .imp-rowmotivo{font-size:11.5px;color:var(--muted)}
 .imp-actbar{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-top:16px;position:sticky;bottom:0;background:var(--card);padding-top:12px}
-@media(max-width:640px){ .imp-modal{padding:14px} .imp-tile{min-width:calc(33% - 8px)} }
+@media(max-width:640px){
+  .imp-overlay{padding:8px 6px;align-items:stretch}
+  .imp-modal{padding:14px;border-radius:14px}
+  .imp-modal .lpf{min-width:100%}                 /* formulários dos wizards em UMA coluna */
+  .imp-modal .orc-field{max-width:100%!important}
+  .imp-tile{min-width:calc(50% - 6px);flex:1 1 calc(50% - 6px)}  /* 2 KPIs por linha */
+  .imp-actbar{gap:8px;padding-bottom:2px}
+  .imp-actbar .edbtn.primary{min-height:48px}     /* ação primária confortável ao toque */
+  .imp-modal .orc-chip{min-height:44px}
+}
 /* Fase 4 — mobile: passo-a-passo foco total + barra inferior fixa */
 .orc-mobstep{display:none}
 .orc-bottombar{display:none}
