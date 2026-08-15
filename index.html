@@ -8100,6 +8100,16 @@ async function cloudSave(silent){ if(!sb||!sbUser)return;
     if(!silent){ setStatus('● Sincronizado com a nuvem · '+t,'ok'); }
   }catch(e){ syncStamp('pend','Sincronização: pendente (sem conexão)'); setStatus('● Sem sincronizar (erro nuvem): '+(e.message||e),'saving'); } }
 function scheduleCloud(){ if(!sb||!sbUser)return; _pend=true; syncStamp('pend','Sincronização: pendente…'); clearTimeout(_cloudT); _cloudT=setTimeout(()=>{ cloudSave(false); },900); }
+/* Flush ao sair/minimizar: elimina a janela de ~1s do debounce. saveLocal é
+   síncrono (garante o local); cloudSave é best-effort (na troca de aba/minimizar
+   a rede completa; ao fechar de vez, ao menos o local fica atual + sincroniza no
+   próximo acesso). */
+function flushSave(){ try{ clearTimeout(_persistT); }catch(e){} try{ saveLocal(); }catch(e){}
+  try{ if(sb && sbUser){ clearTimeout(_cloudT); cloudSave(false); } }catch(e){} }
+if(typeof document!=='undefined'){
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') flushSave(); });
+  window.addEventListener('pagehide', flushSave);
+}
 function authInit(){ if(!sb){ cloudSet('Nuvem: offline'); document.body.classList.remove('pre-login'); return; } // sem nuvem: libera offline
   cloudSet('Nuvem: entrar');
   sb.auth.getSession().then(({data})=>{ if(data && data.session && data.session.user){ onLogin(data.session.user); } else { showAuth(true); } });
