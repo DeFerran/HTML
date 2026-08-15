@@ -212,6 +212,7 @@ main{max-width:1240px;margin:0 auto;padding:26px 22px 60px}
 .panel h3{font-family:var(--serif);font-size:16px;color:var(--head);font-weight:600;margin-bottom:3px;letter-spacing:.1px}
 .panel .cap{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.45}
 .chartbox{position:relative;height:300px}
+.chart-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.5;padding:18px;border:1px dashed var(--line);border-radius:12px;background:var(--soft)}
 .chartbox canvas,canvas{max-width:100%}
 .chartbox.sm{height:240px}.chartbox.tall{height:360px}
 /* toggle */
@@ -1277,12 +1278,15 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Fator padrão (ha/ponto)</label>
           <input type="number" id="opFator" min="0" step="0.5" style="width:150px" list="opFatorList" placeholder="ex.: 3" onchange="opColetaSetFator()" title="Fator sugerido para novos lançamentos (ha por ponto). Varia por cliente/grade: 1, 2, 3, 5, 10… O valor real fica em cada lançamento."></div>
-        <button class="btn" style="align-self:end" onclick="importLoteAbrir('coleta')" title="Importar em lote (.xlsx/CSV) com conferência antes — nada é apagado">📥 Importar em lote</button>
-        <button class="btn" style="align-self:end" onclick="baixarModelo('coleta')" title="Baixar modelo Excel premium de Coleta">📄 Baixar modelo</button>
-        <button class="btn" style="align-self:end" onclick="abrirImportHist()" title="Histórico de importações e desfazer lote">🕘 Histórico</button>
-        <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV simples no formato do Exportar (adiciona linhas)">⬆ Importar CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="opColImportFile(this)"></label>
-        <button class="btn" style="align-self:end" onclick="opColetaExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
+        <button class="btn" style="align-self:end" onclick="importLoteAbrir('coleta')" title="Importar .xlsx ou CSV com conferência antes — nada é apagado">📥 Importar em lote</button>
+        <button class="btn" style="align-self:end" onclick="var m=document.getElementById('opColMais');var v=(m.style.display==='none'||!m.style.display);m.style.display=v?'flex':'none';this.textContent=v?'⋯ Mais ações ▲':'⋯ Mais ações ▾'">⋯ Mais ações ▾</button>
+      </div>
+      <div id="opColMais" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:var(--soft)">
+        <button class="btn" onclick="baixarModelo('coleta')" title="Baixar modelo Excel premium de Coleta">📄 Baixar modelo</button>
+        <button class="btn" onclick="abrirImportHist()" title="Histórico de importações e desfazer lote">🕘 Histórico</button>
+        <button class="btn" onclick="opColetaExportar()">⬇ Exportar CSV</button>
+        <label class="btn" style="cursor:pointer" title="Importação CSV legada no formato do Exportar — prefira o &quot;Importar em lote&quot; acima, que confere e evita duplicidade">⬆ Importar CSV (formato Exportar)<input type="file" accept=".csv,text/csv" style="display:none" onchange="opColImportFile(this)"></label>
       </div>
     </div>
     <div class="op-cards" id="opColCards"></div>
@@ -2999,6 +3003,9 @@ function kpi(el,items){document.getElementById(el).innerHTML=items.map(i=>
 function call(el,items){document.getElementById(el).innerHTML=items.map(i=>
   `<div class="call ${i.c}"><div class="big">${i.big}</div><div class="t">${i.t}</div></div>`).join('')}
 function mk(id,cfg){const el=document.getElementById(id);if(!el)return;
+  const _box=el.closest&&el.closest('.chartbox');
+  if(typeof Chart==='undefined'){ if(_box && !_box.querySelector('.chart-ph')){ const p=document.createElement('div'); p.className='chart-ph'; p.textContent='📊 O gráfico aparece quando houver conexão e dados lançados.'; _box.appendChild(p); } return; }
+  if(_box){ const p=_box.querySelector('.chart-ph'); if(p)p.remove(); }
   if(charts[id]){try{charts[id].destroy();}catch(e){}charts[id]=null;}
   try{if(typeof Chart!=='undefined'&&Chart.getChart){const ex=Chart.getChart(el);if(ex)ex.destroy();}}catch(e){}
   try{charts[id]=new Chart(el,cfg);}
@@ -5645,7 +5652,7 @@ function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function natDaCategoria(cat){ const c=(D.categorias||[]).find(x=>x.nome===cat); return c?c.natureza:'Outros'; }
-let _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''}, _despFiltOpen=false;
+let _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''}, _despFiltOpen=false, _despMaisOpen=false;
 let _despForm=null; // objeto do lançamento em edição (null = form fechado)
 function lancFiltradas(){ const f=_despFiltro;
   return (D.lancamentos||[]).filter(l=>l&&(!f.comp||(l.competencia||'').indexOf(f.comp)===0)&&(!f.centro||l.centroCusto===f.centro)&&(!f.nat||l.natureza===f.nat)&&(!f.cat||l.categoria===f.cat)&&(!f.colab||l.colaborador===f.colab)); }
@@ -6073,12 +6080,14 @@ function renderDespesas(){
       '<span style="color:var(--muted)">projeção do ano: '+BRLk(custoAtual)+(proj>1?(' · faltam <b style="color:var(--gold)">'+BRL(proj)+'</b> de meses projetados (ago–dez) a lançar'):(Math.abs(proj)<=1?' · <b style="color:var(--green)">concilia ✓</b>':'')) +'</span></div>';
   }
   h+='</div>';
-  h+='<div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despNovo">+ Nova despesa</button>'
+  h+='<div style="margin-bottom:'+(_despMaisOpen?'8px':'12px')+';display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despNovo">+ Nova despesa</button>'
+    +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button>'
+    +'<button class="edbtn ghost" id="despMais">⋯ Mais ações'+(_despMaisOpen?' ▲':' ▾')+'</button></div>';
+  if(_despMaisOpen) h+='<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:var(--soft)">'
     +'<button class="edbtn" onclick="replicarAbrir(\'despesa\')">⧉ Replicar em lote</button>'
     +'<button class="edbtn" onclick="ratearAbrir(\'despesa\')">➗ Ratear em lote</button>'
-    +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button>'
     +'<button class="edbtn" onclick="baixarModelo(\'despesa\')">📄 Baixar modelo</button>'
-    +'<button class="edbtn ghost" onclick="abrirImportHist()">🕘 Histórico</button></div>';
+    +'<button class="edbtn" onclick="abrirImportHist()">🕘 Histórico</button></div>';
   // formulário
   if(_despForm){ const F=_despForm;
     const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
@@ -6124,6 +6133,7 @@ function renderDespesas(){
   // handlers
   const mg=document.getElementById('despMigrar'); if(mg)mg.onclick=()=>{ const r=migrarCustos(); if(r.ja)alert('Os custos já foram importados.'); else { setStatus('● '+r.n+' custos importados para a base ('+BRL(r.total)+')','ok'); } renderDespesas(); };
   const nv=document.getElementById('despNovo'); if(nv)nv.onclick=novoLancForm;
+  const dm=document.getElementById('despMais'); if(dm)dm.onclick=()=>{ _despMaisOpen=!_despMaisOpen; renderDespesas(); };
   const sv=document.getElementById('despSalvar'); if(sv)sv.onclick=salvarLancForm;
   const svn=document.getElementById('despSalvarNovo'); if(svn)svn.onclick=salvarLancFormNovo;
   const cc=document.getElementById('despCancelar'); if(cc)cc.onclick=()=>{ _despForm=null; renderDespesas(); };
