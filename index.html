@@ -5578,17 +5578,40 @@ function importLoteAbrir(tipo){ tipo=tipo||'despesa';
   _impState={aberto:true, tipo:tipo, etapa:'ingest', arquivo:'', texto:'', resultado:null, filtro:'todas', decisao:{}};
   renderImportLote(); }
 function importLoteFechar(){ _impState=null; const h=document.getElementById('impHost'); if(h)h.remove(); }
-function impCsvFile(input){ const f=input&&input.files&&input.files[0]; if(!f){return;} if(_impState){_impState.arquivo=f.name;}
-  const rd=new FileReader(); rd.onload=()=>{ try{ impConferir(String(rd.result||'')); }catch(e){ alert('Falha ao ler o arquivo: '+((e&&e.message)||e)); } }; rd.readAsText(f,'utf-8'); input.value=''; }
-function impConferir(textoOpt){ if(!_impState)return; const tipo=_impState.tipo; const T=LancService.TIPOS[tipo];
-  const texto=(textoOpt!=null)?textoOpt:((document.getElementById('impTexto')||{}).value||'');
-  _impState.texto=texto;
+function impArquivo(input){ const f=input&&input.files&&input.files[0]; if(!f)return; if(_impState)_impState.arquivo=f.name;
+  const nome=(f.name||'').toLowerCase();
+  if(/\.xlsx$|\.xls$/.test(nome)){ impLerXlsx(f); }
+  else { const rd=new FileReader(); rd.onload=()=>{ try{ impConferir(String(rd.result||'')); }catch(e){ alert('Falha ao ler o arquivo: '+((e&&e.message)||e)); } }; rd.readAsText(f,'utf-8'); }
+  input.value=''; }
+function impLerVersao(wb){ try{ const nm=(wb.SheetNames||[]).find(n=>/instru/i.test(n)); const ws=nm?wb.Sheets[nm]:null; if(!ws)return '';
+    const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    for(let i=0;i<aoa.length;i++){ const a=String((aoa[i]||[])[0]||'').toLowerCase(); if(a.indexOf('vers')>=0 && a.indexOf('modelo')>=0) return String((aoa[i]||[])[1]||'').trim(); } return ''; }catch(e){ return ''; } }
+function impLerXlsx(f){ if(typeof XLSX==='undefined'){ alert('A biblioteca de planilhas não carregou (verifique a internet). Você pode colar os dados ou usar CSV.'); return; }
+  const rd=new FileReader(); rd.onload=e=>{ try{ const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    const nm=(wb.SheetNames||[]).find(n=>/lan[çc]amento/i.test(n))||(wb.SheetNames||[]).find(n=>!/instru|refer|exemplo/i.test(n))||(wb.SheetNames||[])[0];
+    const ws=nm?wb.Sheets[nm]:null; if(!ws){ alert('Não encontrei a aba de lançamentos no arquivo.'); return; }
+    const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+    if(!aoa.length){ alert('A aba de lançamentos está vazia.'); return; }
+    const headers=(aoa[0]||[]).map(x=>String(x==null?'':x).trim());
+    const rows=aoa.slice(1).map(r=>(r||[]).map(x=>String(x==null?'':x)));
+    impConferirTabela(headers, rows, impLerVersao(wb));
+  }catch(err){ alert('Não foi possível ler o Excel: '+((err&&err.message)||err)); } };
+  rd.readAsArrayBuffer(f); }
+function impConferir(textoOpt){ if(!_impState)return;
+  const texto=(textoOpt!=null)?textoOpt:((document.getElementById('impTexto')||{}).value||''); _impState.texto=texto;
   const {headers,rows}=ImportStaging.parseTabular(texto);
-  if(!rows.length){ alert('Cole os dados (com uma linha de cabeçalho) ou selecione um arquivo CSV.'); return; }
+  if(!rows.length){ alert('Cole os dados (com uma linha de cabeçalho) ou selecione um arquivo .xlsx/CSV.'); return; }
+  impConferirTabela(headers, rows, ''); }
+function impConferirTabela(headers, rows, versao){ if(!_impState)return; const tipo=_impState.tipo; const T=LancService.TIPOS[tipo];
+  const atual=(typeof TEMPLATE_VERSAO!=='undefined'&&TEMPLATE_VERSAO[tipo])||'';
+  if(versao && atual && versao!==atual){ _impState.versaoArquivo=versao; _impState.pendente={headers:headers, rows:rows}; _impState.etapa='versao'; renderImportLote(); return; }
   const map=ImportStaging.mapearColunas(headers,T.campos);
-  if(map.valor==null && map.data==null){ alert('Não reconheci as colunas. Use o cabeçalho com nomes como Data, Valor, Cliente, Categoria… (baixe o modelo na Fase 3).'); return; }
-  const recs=rows.map(cells=>ImportStaging.linhaParaRec(cells,map));
+  if(map.valor==null && map.data==null){ alert('Não reconheci as colunas. Use o cabeçalho do modelo (Data, Valor, Cliente, Categoria…) — clique em "Baixar modelo".'); return; }
+  const faltam=T.campos.filter(c=>c.obrigatorio && map[c.key]==null).map(c=>c.label);
+  const rkIdx=headers.findIndex(hh=>/import_row_key/i.test(String(hh||'')));
+  const recs=rows.map(cells=>{ const rec=ImportStaging.linhaParaRec(cells,map); if(rkIdx>=0){ const k=String(cells[rkIdx]==null?'':cells[rkIdx]).trim(); if(k)rec.__rowKey=k; } return rec; });
   const ex=impExistentes(tipo);
+  _impState.faltamObrig=faltam;
   _impState.resultado=ImportStaging.classificar(recs,{tipo:tipo, campos:T.campos, hojeYM:impHojeYM(),
     existentesKeys:ex.keys, existentesFp:ex.fps, validos:impValidos()});
   _impState.etapa='preview'; _impState.filtro='todas'; _impState.decisao={}; renderImportLote(); }
@@ -5617,16 +5640,25 @@ function renderImportLote(){ if(!_impState)return;
   let h='<div class="imp-modal"><div class="imp-head"><h3>📥 Importação em lote — '+esc(T.label)+'s</h3><button class="edbtn ghost" onclick="importLoteFechar()">Fechar</button></div>';
   if(_impState.etapa==='ingest'){
     const cols=T.campos.map(c=>esc(c.label)+(c.obrigatorio?' *':'')).join(' · ');
-    h+='<div class="cap" style="margin:6px 0 10px">Cole os dados de uma planilha (Excel/Google Sheets) <b>com a primeira linha de cabeçalho</b>, ou selecione um arquivo <b>CSV</b>. '
-      +'<b>Nada é apagado</b> — só serão adicionados registros novos, após a sua conferência.</div>';
+    h+='<div class="cap" style="margin:6px 0 10px">Selecione o <b>.xlsx</b> preenchido (baixe o modelo primeiro) ou <b>cole</b> os dados de uma planilha <b>com a primeira linha de cabeçalho</b> (também aceita CSV). '
+      +'<b>Nada é apagado</b> — só entram registros novos, após a sua conferência.</div>';
+    h+='<div class="imp-actbar" style="position:static;margin:0 0 10px;justify-content:flex-start"><label class="edbtn primary" style="background:#0A6A30">📎 Selecionar arquivo (.xlsx / CSV)<input type="file" accept=".xlsx,.xls,.csv,text/csv" style="display:none" onchange="impArquivo(this)"></label>'
+      +'<button class="edbtn" onclick="baixarModelo(\''+_impState.tipo+'\')">📄 Baixar modelo</button></div>';
     h+='<div class="note" style="margin-bottom:10px"><b>Colunas reconhecidas:</b> '+cols+' <span class="cap">(* obrigatório)</span></div>';
-    h+='<textarea id="impTexto" class="imp-ta" placeholder="Data\tDescrição\tValor\tCategoria\tCliente&#10;2026-08-15\tDiesel\t1234,56\tCombustível\tDanilo Ferrarezi">'+esc(_impState.texto||'')+'</textarea>';
-    h+='<div class="imp-actbar"><label class="edbtn">📄 Selecionar CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="impCsvFile(this)"></label>'
-      +'<button class="edbtn primary" style="background:#0A6A30" onclick="impConferir()">Conferir →</button></div>';
+    h+='<div class="cap" style="margin-bottom:4px">…ou cole aqui:</div><textarea id="impTexto" class="imp-ta" placeholder="Data\tDescrição\tValor\tCategoria\tCliente&#10;2026-08-15\tDiesel\t1234,56\tCombustível\tDanilo Ferrarezi">'+esc(_impState.texto||'')+'</textarea>';
+    h+='<div class="imp-actbar"><span></span><button class="edbtn primary" style="background:#0A6A30" onclick="impConferir()">Conferir dados colados →</button></div>';
+  } else if(_impState.etapa==='versao'){
+    h+='<div class="note" style="border-left:3px solid var(--gold);margin:10px 0"><b>⚠ Este modelo está desatualizado.</b><br>'
+      +'Versão do arquivo: <b>'+esc(_impState.versaoArquivo||'?')+'</b> · versão atual: <b>'+esc((TEMPLATE_VERSAO&&TEMPLATE_VERSAO[_impState.tipo])||'?')+'</b>.<br>'
+      +'Baixe o modelo atual para garantir as colunas corretas, ou confira assim mesmo (a plataforma revalida tudo de qualquer forma).</div>';
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="_impState.etapa=\'ingest\';renderImportLote()">‹ Voltar</button>'
+      +'<span style="display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" style="background:#0A6A30" onclick="baixarModelo(\''+_impState.tipo+'\')">📄 Baixar modelo atual</button>'
+      +'<button class="edbtn" onclick="var p=_impState.pendente||{};impConferirTabela(p.headers||[],p.rows||[],\'\')">Conferir assim mesmo</button></span></div>';
   } else {
     const rz=R.resumo; const fl=_impState.filtro;
     const tile=(k,lab,cls)=>'<div class="imp-tile'+(fl===k?' on':'')+'" onclick="impSetFiltro(\''+k+'\')"><div class="tv '+cls+'" style="color:inherit">'+(k==='todas'?rz.total:(rz[k]||0))+'</div><div class="tl">'+lab+'</div></div>';
     h+='<div class="cap" style="margin-top:6px"><b>'+esc(_impState.arquivo||'(colado)')+'</b> · '+rz.total+' linha(s) conferida(s)</div>';
+    if((_impState.faltamObrig||[]).length)h+='<div class="note" style="border-left:3px solid var(--red);margin:6px 0">⚠ Coluna obrigatória ausente no arquivo: <b>'+_impState.faltamObrig.map(esc).join(', ')+'</b>. Essas linhas ficarão como erro até você incluir a coluna.</div>';
     h+='<div class="imp-tiles">'+tile('todas','Todas')+tile('nova','🟢 Novas')+tile('existente','🔵 Já existem')+tile('possivel','🟡 Possível dup.')+tile('atencao','🟠 Atenção')+tile('erro','🔴 Erro')+'</div>';
     const mostrar=R.linhas.filter(l=> fl==='todas' || l.status===fl);
     const badge=s=>({nova:'imp-nova',existente:'imp-existente',possivel:'imp-possivel',erro:'imp-erro',atencao:'imp-atencao'})[s]||'';
