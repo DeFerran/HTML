@@ -5547,6 +5547,30 @@ const Replicacao=(function(){
   return { planejar, total, round2:r2 };
 })();
 // </replicacao>
+// <rateio>
+/* RATEIO — núcleo puro. Distribui UM custo real entre destinos. Σpartes === total
+   ORIGINAL (nunca multiplica). Modos: igual · percentual · valor · hectare.
+   Reconciliação obrigatória: percentual Σ=100%, valor Σ=total (sem diferença). */
+const Rateio=(function(){
+  const r2=v=>Math.round((+v||0)*100)/100;
+  function distribuir(total, destinos, modo){ total=r2(total); const ds=destinos||[]; const n=ds.length;
+    if(!n) return {partes:[], soma:0, ok:false, motivo:'Selecione ao menos um destino.', somaPct:null};
+    let partes;
+    if(modo==='valor'){ partes=ds.map(d=>({nome:d.nome, valor:r2(+d.valor||0)})); }
+    else if(modo==='percentual'){ partes=ds.map(d=>({nome:d.nome, valor:r2(total*(+d.pct||0)/100)})); }
+    else { const pesos = modo==='hectare' ? ds.map(d=>+d.ha||0) : ds.map(()=>1);
+      const sp=pesos.reduce((a,b)=>a+b,0);
+      if(sp<=0) return {partes:ds.map(d=>({nome:d.nome,valor:0})), soma:0, ok:false, motivo:(modo==='hectare'?'Informe hectares (>0) por destino.':'Sem destinos.'), somaPct:null};
+      let acc=0; partes=ds.map((d,i)=>{ let v; if(i<n-1){ v=r2(total*pesos[i]/sp); acc=r2(acc+v); } else v=r2(total-acc); return {nome:d.nome, valor:v}; }); }
+    let soma=r2(partes.reduce((a,p)=>a+p.valor,0)); let ok=true, motivo='', somaPct=null;
+    if(modo==='percentual'){ somaPct=r2(ds.reduce((a,d)=>a+(+d.pct||0),0));
+      if(Math.abs(somaPct-100)>0.01){ ok=false; motivo='A soma dos percentuais é '+somaPct+'% — deve ser exatamente 100%.'; }
+      else { const dif=r2(total-soma); if(Math.abs(dif)>=0.005 && partes.length){ partes[partes.length-1].valor=r2(partes[partes.length-1].valor+dif); soma=total; } } }
+    else if(modo==='valor'){ const dif=r2(soma-total); if(Math.abs(dif)>0.005){ ok=false; motivo='A soma dos valores é '+soma+' — deve ser '+total+' (diferença '+dif+').'; } }
+    return {partes, soma, ok, motivo, somaPct}; }
+  return { distribuir, round2:r2 };
+})();
+// </rateio>
 function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
@@ -5853,6 +5877,92 @@ function renderReplicar(){ if(!_repState)return; let host=document.getElementByI
   }
   h+='</div>'; host.innerHTML=h;
 }
+/* ===== Rateio em lote (Fase 6) — distribui UM custo; Σpartes = valor original ===== */
+let _ratState=null, _ratBusy=false;
+const RAT_STEPS=['Custo & campos','Destinos','Distribuição','Revisão'];
+const RAT_MODOS=[['igual','Dividir igual'],['percentual','Por percentual'],['valor','Por valor'],['hectare','Por hectare']];
+function ratHaDoCliente(nome){ return (D.fazendas||[]).filter(f=>f&&f.clienteNome===nome).reduce((a,f)=>a+(+f.areaHa||0),0); }
+function ratearAbrir(tipo, baseId){ tipo=tipo||'despesa'; const T=LancService.TIPOS[tipo]; const base={};
+  if(baseId){ const l=(D[T.array]||[]).find(x=>x&&x.id===baseId); if(l){ T.campos.forEach(c=>{ base[c.key]=l[c.key]; }); } }
+  const copiar={}; T.campos.forEach(c=>{ if(c.key!=='cliente'&&c.key!=='valor') copiar[c.key]=(base[c.key]!=null&&base[c.key]!==''?true:(c.key==='data'||c.key==='descricao'||c.key==='categoria')); });
+  _ratState={tipo:tipo, etapa:0, base:base, copiar:copiar, destinos:[], busca:'', modo:'igual', dist:{}, fromId:baseId||''}; renderRatear(); }
+function ratearFechar(){ _ratState=null; const h=document.getElementById('ratHost'); if(h)h.remove(); }
+function ratStep(n){ if(!_ratState)return; _ratState.etapa=Math.max(0,Math.min(RAT_STEPS.length-1,n)); renderRatear(); }
+function ratSetBase(k,v){ if(_ratState)_ratState.base[k]=(k==='valor'?pnum(v):v); }
+function ratToggleCampo(k){ if(_ratState){ _ratState.copiar[k]=!_ratState.copiar[k]; renderRatear(); } }
+function ratToggleDestino(nome){ if(!_ratState)return; const i=_ratState.destinos.indexOf(nome); if(i>=0)_ratState.destinos.splice(i,1); else { _ratState.destinos.push(nome); if(!_ratState.dist[nome])_ratState.dist[nome]={ha:ratHaDoCliente(nome)||''}; } renderRatear(); }
+function ratTodosDestinos(){ if(!_ratState)return; const all=ratDestinosLista(); const allSel=all.length&&all.every(n=>_ratState.destinos.indexOf(n)>=0);
+  if(allSel)_ratState.destinos=_ratState.destinos.filter(n=>all.indexOf(n)<0); else all.forEach(n=>{ if(_ratState.destinos.indexOf(n)<0){ _ratState.destinos.push(n); if(!_ratState.dist[n])_ratState.dist[n]={ha:ratHaDoCliente(n)||''}; } }); renderRatear(); }
+function ratBusca(v){ if(_ratState){ _ratState.busca=v||''; renderRatear(); } }
+function ratSetModo(m){ if(_ratState){ _ratState.modo=m; renderRatear(); } }
+function ratSetDist(nome,campo,v){ if(!_ratState)return; _ratState.dist[nome]=_ratState.dist[nome]||{}; _ratState.dist[nome][campo]=pnum(v); if(_ratState.etapa===2)renderRatear(); }
+function ratDestinosLista(){ const q=((_ratState&&_ratState.busca)||'').trim().toLowerCase(); const all=nomesClientes(); return q? all.filter(n=>n.toLowerCase().indexOf(q)>=0):all; }
+function ratDestinosArr(){ if(!_ratState)return []; return _ratState.destinos.map(nome=>{ const d=_ratState.dist[nome]||{}; return {nome:nome, pct:+d.pct||0, valor:+d.valor||0, ha:+d.ha||0}; }); }
+function ratDist(){ if(!_ratState)return {partes:[],soma:0,ok:false}; return Rateio.distribuir(+_ratState.base.valor||0, ratDestinosArr(), _ratState.modo); }
+function ratConfirmar(){ if(!_ratState||_ratBusy)return; const tipo=_ratState.tipo; const R=ratDist();
+  if(!R.ok){ alert(R.motivo||'Reconciliação inválida.'); return; }
+  if(!R.partes.length){ alert('Selecione ao menos um destino.'); return; }
+  _ratBusy=true; const grupo='rat'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); let ok=0, falhas=0;
+  R.partes.forEach(p=>{ const rec={}; LancService.TIPOS[tipo].campos.forEach(c=>{ if(c.key!=='cliente'&&c.key!=='valor'&&_ratState.copiar[c.key]) rec[c.key]=_ratState.base[c.key]; });
+    rec.cliente=p.nome; rec.valor=p.valor; rec.source='rateio'; rec.rateioGroupId=grupo; if(_ratState.fromId)rec.replicatedFromId=_ratState.fromId;
+    const res=LancStore.salvar(rec,tipo); if(res.ok&&res.modo==='criar')ok++; else falhas++; });
+  D.importHistory=D.importHistory||[]; D.importHistory.push({ id:grupo, tipo:tipo, origem:'rateio', arquivo:'(rateio)', quando:nowISO(),
+    quem:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local', total:R.partes.length, valorTotal:R.soma, importados:ok, erros:falhas });
+  commit(); _ratBusy=false; ratearFechar();
+  try{ uiToast('✓ Rateio: '+ok+' lançamento(s) · total '+BRL(R.soma)+(falhas?(' · '+falhas+' com erro'):'')); }catch(_){}
+  try{ renderDespesas(); }catch(_){}
+}
+function renderRatear(){ if(!_ratState)return; let host=document.getElementById('ratHost'); if(!host){ host=document.createElement('div'); host.id='ratHost'; host.className='imp-overlay'; document.body.appendChild(host); }
+  const T=LancService.TIPOS[_ratState.tipo]; const st=_ratState.etapa; const V=impValidos();
+  const sel=(val,opts)=>'<option value="">—</option>'+(opts||[]).map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  let h='<div class="imp-modal"><div class="imp-head"><h3>➗ Ratear em lote — '+esc(T.label)+'s</h3><button class="edbtn ghost" onclick="ratearFechar()">Fechar</button></div>';
+  h+='<div class="cap" style="margin:2px 0 8px">Distribui <b>um único custo</b> entre os destinos — a soma das partes é igual ao valor original (não multiplica). Ex.: R$ 1.000 entre 3 clientes = 3 lançamentos que somam R$ 1.000.</div>';
+  h+='<div class="orc-steps">'+RAT_STEPS.map((s,i)=>'<div class="orc-step'+(i===st?' on':(i<st?' done':''))+'" onclick="ratStep('+i+')"><span class="num">'+(i<st?'✓':(i+1))+'</span>'+esc(s)+'</div>').join('')+'</div>';
+  if(st===0){
+    h+='<label class="orc-field" style="max-width:260px"><span>Valor total a ratear (R$) *</span><input inputmode="decimal" value="'+esc(_ratState.base.valor!=null&&_ratState.base.valor!==''?_ratState.base.valor:'')+'" placeholder="0,00" onchange="ratSetBase(\'valor\',this.value)"></label>';
+    h+='<div class="cap" style="margin:8px 0">Campos comuns a todos os lançamentos do rateio (o <b>cliente</b> é o destino; o <b>valor</b> é a parte de cada um):</div>';
+    h+='<div class="labprec" style="gap:10px 14px">';
+    T.campos.forEach(c=>{ if(c.key==='cliente'||c.key==='valor')return; const on=!!_ratState.copiar[c.key]; const val=_ratState.base[c.key];
+      let input; if(c.tipo==='lista'&&c.fonte){ input='<select class="edinp" onchange="ratSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'+sel(val,V[c.fonte])+'</select>'; }
+        else if(c.tipo==='data'){ input='<input type="date" class="edinp" value="'+esc(val||'')+'" onchange="ratSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'; }
+        else { input='<input class="edinp" value="'+esc(val||'')+'" onchange="ratSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'; }
+      h+='<label class="lpf" style="min-width:150px"><span><input type="checkbox"'+(on?' checked':'')+' onchange="ratToggleCampo(\''+c.key+'\')" style="margin-right:6px">'+esc(c.label)+'</span>'+input+'</label>'; });
+    h+='</div>';
+    h+='<div class="imp-actbar"><span></span><button class="edbtn primary" style="background:#0A6A30" onclick="ratStep(1)">Continuar →</button></div>';
+  } else if(st===1){
+    const lista=ratDestinosLista(); const nsel=_ratState.destinos.length; const allSel=lista.length&&lista.every(n=>_ratState.destinos.indexOf(n)>=0);
+    h+='<div class="cap" style="margin:8px 0">Entre quais clientes distribuir? <b>'+nsel+'</b> selecionado(s).</div>';
+    h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"><input class="edinp" style="max-width:260px" placeholder="🔎 Buscar cliente…" value="'+esc(_ratState.busca||'')+'" oninput="ratBusca(this.value)"><button class="edbtn" onclick="ratTodosDestinos()">'+(allSel?'Limpar seleção':'Selecionar todos')+'</button></div>';
+    if(!lista.length){ h+='<div class="op-empty">Nenhum cliente'+(_ratState.busca?' com esse termo':' cadastrado')+'.</div>'; }
+    else { h+='<div style="max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px">'; lista.forEach(n=>{ const on=_ratState.destinos.indexOf(n)>=0;
+      h+='<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox"'+(on?' checked':'')+' onchange="ratToggleDestino('+JSON.stringify(n).replace(/"/g,'&quot;')+')"><span>'+esc(n)+'</span></label>'; }); h+='</div>'; }
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="ratStep(0)">‹ Voltar</button><button class="edbtn primary" style="background:#0A6A30" onclick="ratStep(2)"'+(nsel?'':' disabled')+'>Continuar ('+nsel+') →</button></div>';
+  } else if(st===2){
+    const modo=_ratState.modo; const R=ratDist(); const totalBase=+_ratState.base.valor||0;
+    h+='<div class="orc-chiprow" style="margin:8px 0">'+RAT_MODOS.map(m=>'<button class="orc-chip'+(modo===m[0]?' on':'')+'" onclick="ratSetModo(\''+m[0]+'\')">'+esc(m[1])+'</button>').join('')+'</div>';
+    h+='<div class="cap" style="margin-bottom:6px">Total a ratear: <b>'+BRL(totalBase)+'</b>'+(modo==='igual'?' — dividido igualmente.':'')+'</div>';
+    h+='<div style="max-height:40vh;overflow:auto"><table class="resp-cards"><thead><tr><th>Cliente</th>'+(modo==='percentual'?'<th class="num">%</th>':'')+(modo==='valor'?'<th class="num">Valor</th>':'')+(modo==='hectare'?'<th class="num">Hectares</th>':'')+'<th class="num">Parte</th></tr></thead><tbody>';
+    _ratState.destinos.forEach((n,i)=>{ const d=_ratState.dist[n]||{}; const parte=(R.partes[i]||{}).valor||0;
+      let inp=''; if(modo==='percentual')inp='<td data-label="%" class="num"><input inputmode="decimal" class="edinp" style="max-width:90px;text-align:right" value="'+esc(d.pct!=null&&d.pct!==''?d.pct:'')+'" placeholder="0" onchange="ratSetDist('+JSON.stringify(n).replace(/"/g,'&quot;')+',\'pct\',this.value)"></td>';
+      else if(modo==='valor')inp='<td data-label="Valor" class="num"><input inputmode="decimal" class="edinp" style="max-width:120px;text-align:right" value="'+esc(d.valor!=null&&d.valor!==''?d.valor:'')+'" placeholder="0,00" onchange="ratSetDist('+JSON.stringify(n).replace(/"/g,'&quot;')+',\'valor\',this.value)"></td>';
+      else if(modo==='hectare')inp='<td data-label="Hectares" class="num"><input inputmode="decimal" class="edinp" style="max-width:100px;text-align:right" value="'+esc(d.ha!=null&&d.ha!==''?d.ha:'')+'" placeholder="0" onchange="ratSetDist('+JSON.stringify(n).replace(/"/g,'&quot;')+',\'ha\',this.value)"></td>';
+      h+='<tr><td data-label="Cliente" class="cardttl">'+esc(n)+'</td>'+inp+'<td data-label="Parte" class="num"><b>'+BRL(parte)+'</b></td></tr>'; });
+    h+='</tbody></table></div>';
+    const okCls=R.ok?'var(--green)':'var(--red)';
+    h+='<div class="orc-sumrow" style="max-width:420px;margin-top:8px"><span class="lbl">Soma das partes</span><span style="color:'+okCls+'"><b>'+BRL(R.soma)+'</b> / '+BRL(totalBase)+(modo==='percentual'&&R.somaPct!=null?(' · Σ '+R.somaPct+'%'):'')+'</span></div>';
+    if(!R.ok)h+='<div class="note" style="border-left:3px solid var(--red);margin:6px 0">⚠ '+esc(R.motivo||'Reconciliação inválida.')+'</div>';
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="ratStep(1)">‹ Voltar</button><button class="edbtn primary" style="background:#0A6A30" onclick="ratStep(3)"'+(R.ok?'':' disabled')+'>Revisar →</button></div>';
+  } else {
+    const R=ratDist();
+    h+='<div class="imp-tiles"><div class="imp-tile"><div class="tv">'+R.partes.length+'</div><div class="tl">Lançamentos</div></div><div class="imp-tile"><div class="tv">'+BRLk(R.soma)+'</div><div class="tl">Total (=original)</div></div></div>';
+    h+='<div class="note" style="margin:6px 0">Rateio de <b>'+BRL(+_ratState.base.valor||0)+'</b> em <b>'+R.partes.length+' lançamento(s)</b>. <b>Total econômico: '+BRL(R.soma)+'</b> — igual ao valor original (não multiplica).</div>';
+    h+='<div style="max-height:38vh;overflow:auto"><table class="resp-cards"><thead><tr><th>Cliente</th><th>Descrição</th><th class="num">Valor</th></tr></thead><tbody>';
+    R.partes.forEach(p=>{ h+='<tr><td data-label="Cliente" class="cardttl">'+esc(p.nome)+'</td><td data-label="Descrição">'+esc(_ratState.copiar.descricao?(_ratState.base.descricao||'—'):'—')+'</td><td data-label="Valor" class="num">'+BRL(p.valor)+'</td></tr>'; });
+    h+='</tbody></table></div>';
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="ratStep(2)">‹ Voltar</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="ratConfirmar()"'+(R.ok?'':' disabled')+'>Criar '+R.partes.length+' lançamentos (rateio)</button></div>';
+  }
+  h+='</div>'; host.innerHTML=h;
+}
 function renderDespesas(){
   const host=document.getElementById('edDespesas'); if(!host)return;
   try{ gerarRecorrencias(); }catch(e){ console.warn('gerarRec',e); }
@@ -5871,6 +5981,7 @@ function renderDespesas(){
   h+='</div>';
   h+='<div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despNovo">+ Nova despesa</button>'
     +'<button class="edbtn" onclick="replicarAbrir(\'despesa\')">⧉ Replicar em lote</button>'
+    +'<button class="edbtn" onclick="ratearAbrir(\'despesa\')">➗ Ratear em lote</button>'
     +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button>'
     +'<button class="edbtn" onclick="baixarModelo(\'despesa\')">📄 Baixar modelo</button></div>';
   // formulário
@@ -5912,7 +6023,7 @@ function renderDespesas(){
   rows.forEach(l=>{ h+='<tr><td data-label="Competência">'+esc(l.competencia||'—')+'</td><td data-label="Descrição" class="cardttl">'+esc(l.descricao||'—')+'</td><td data-label="Categoria">'+esc(l.categoria||'—')+'</td>'+
     '<td data-label="Natureza">'+(/CAPEX/.test(l.natureza||'')?'<span class="badge bnovo">CAPEX</span>':'<span class="badge">'+esc((l.natureza||'—').replace('Custo operacional ','OPEX ').replace('Despesa ','').replace('Custo com ',''))+'</span>')+'</td>'+
     '<td data-label="Centro">'+esc(l.centroCusto||'—')+'</td><td data-label="Colaborador">'+esc(l.colaborador||'—')+'</td><td class="num" data-label="Valor"><b>'+BRL(+l.valor||0)+'</b></td>'+
-    '<td class="acts" style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn drepl" data-id="'+l.id+'">⧉ replicar</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
+    '<td class="acts" style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn drepl" data-id="'+l.id+'">⧉ replicar</button> <button class="edbtn drat" data-id="'+l.id+'">➗ ratear</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
   h+='</tbody><tfoot><tr><td class="mxcat">Total filtrado</td><td></td><td></td><td></td><td></td><td></td><td class="num mxgrand">'+BRL(totFil)+'</td><td></td></tr></tfoot></table></div>';
   host.innerHTML=h;
   // handlers
@@ -5929,6 +6040,7 @@ function renderDespesas(){
   const fl=document.getElementById('despFiltLimpar'); if(fl)fl.onclick=()=>{ _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''}; renderDespesas(); };
   host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
   host.querySelectorAll('button.drepl').forEach(b=>b.onclick=()=>replicarAbrir('despesa',b.dataset.id));
+  host.querySelectorAll('button.drat').forEach(b=>b.onclick=()=>ratearAbrir('despesa',b.dataset.id));
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
   try{ renderRecorrencias(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
