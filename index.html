@@ -5529,6 +5529,24 @@ const XlsxPremium=(function(){
     S:{ HEADER:1, HEADER_REQ:2, IN_TEXT:3, IN_CUR:4, IN_DATE:5, ALT_TEXT:6, ALT_CUR:7, ALT_DATE:8, TITLE:9, LABEL:10, LEG_REQ:11, LEG_OPC:12, LEG_AUTO:13, REFH:14, SYS:15, BODY:16 } };
 })();
 // </xlsx-premium>
+// <replicacao>
+/* REPLICAÇÃO EM LOTE — núcleo puro (sem D/DOM). REPLICAR = criar UM lançamento
+   COMPLETO para cada destino (não é rateio). Total = soma dos valores de todos os
+   novos lançamentos (ex.: R$1.000 × 3 destinos = R$3.000). */
+const Replicacao=(function(){
+  const r2=v=>Math.round((+v||0)*100)/100;
+  // gera os registros a criar (sem id/auditoria — o LancStore cuida disso)
+  function planejar(base, campos, destinos, ajustes, destField){
+    base=base||{}; campos=campos||{}; ajustes=ajustes||{}; destField=destField||'cliente';
+    return (destinos||[]).map(dest=>{ const rec={};
+      Object.keys(campos).forEach(k=>{ if(campos[k]) rec[k]=base[k]; });
+      rec[destField]=dest;
+      const aj=ajustes[dest]; if(aj && aj.valor!=null && String(aj.valor)!=='') rec.valor=aj.valor;
+      return rec; }); }
+  function total(recs){ return r2((recs||[]).reduce((a,r)=>a+(+r.valor||0),0)); }
+  return { planejar, total, round2:r2 };
+})();
+// </replicacao>
 function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
@@ -5760,6 +5778,81 @@ function baixarModelo(tipo){ tipo=tipo||'despesa';
     document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },150);
     try{ uiToast('✓ Modelo de Despesas gerado'); }catch(_){}
   }catch(e){ alert('Não foi possível gerar o modelo: '+((e&&e.message)||e)); } }
+/* ===== Replicação em lote (Fase 5) — wizard: cria N lançamentos completos ===== */
+let _repState=null, _repBusy=false;
+const REP_STEPS=['Base & campos','Destinos','Ajustes','Revisão'];
+function repDestField(){ return 'cliente'; } // despesa: destino = cliente
+function replicarAbrir(tipo, baseId){ tipo=tipo||'despesa'; const T=LancService.TIPOS[tipo]; const base={};
+  if(baseId){ const l=(D[T.array]||[]).find(x=>x&&x.id===baseId); if(l){ T.campos.forEach(c=>{ base[c.key]=l[c.key]; }); } }
+  const copiar={}; T.campos.forEach(c=>{ if(c.key!==repDestField()) copiar[c.key]=(base[c.key]!=null&&base[c.key]!==''?true:(c.key==='valor'||c.key==='data'||c.key==='descricao'||c.key==='categoria')); });
+  _repState={tipo:tipo, etapa:0, base:base, copiar:copiar, destinos:[], busca:'', ajustes:{}, fromId:baseId||''}; renderReplicar(); }
+function replicarFechar(){ _repState=null; const h=document.getElementById('repHost'); if(h)h.remove(); }
+function repStep(n){ if(!_repState)return; _repState.etapa=Math.max(0,Math.min(REP_STEPS.length-1,n)); renderReplicar(); }
+function repSetBase(k,v){ if(_repState)_repState.base[k]=(k==='valor'?pnum(v):v); }
+function repToggleCampo(k){ if(_repState){ _repState.copiar[k]=!_repState.copiar[k]; renderReplicar(); } }
+function repToggleDestino(nome){ if(!_repState)return; const i=_repState.destinos.indexOf(nome); if(i>=0)_repState.destinos.splice(i,1); else _repState.destinos.push(nome); renderReplicar(); }
+function repTodosDestinos(){ if(!_repState)return; const all=repDestinosLista(); const allSel=all.length&&all.every(n=>_repState.destinos.indexOf(n)>=0);
+  _repState.destinos = allSel ? _repState.destinos.filter(n=>all.indexOf(n)<0) : Array.from(new Set(_repState.destinos.concat(all))); renderReplicar(); }
+function repBusca(v){ if(_repState){ _repState.busca=v||''; renderReplicar(); } }
+function repSetAjuste(dest,v){ if(!_repState)return; _repState.ajustes[dest]=_repState.ajustes[dest]||{}; _repState.ajustes[dest].valor=pnum(v); }
+function repDestinosLista(){ const q=((_repState&&_repState.busca)||'').trim().toLowerCase(); const all=nomesClientes();
+  return q? all.filter(n=>n.toLowerCase().indexOf(q)>=0) : all; }
+function repPlano(){ if(!_repState)return []; return Replicacao.planejar(_repState.base,_repState.copiar,_repState.destinos,_repState.ajustes,repDestField()); }
+function repConfirmar(){ if(!_repState||_repBusy)return; const tipo=_repState.tipo; const plano=repPlano();
+  if(!plano.length){ alert('Selecione ao menos um destino.'); return; }
+  _repBusy=true; const grupo='rep'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); let ok=0, falhas=0;
+  plano.forEach(p=>{ const rec=Object.assign({},p); rec.source='replicacao'; rec.replicationGroupId=grupo; if(_repState.fromId)rec.replicatedFromId=_repState.fromId;
+    const res=LancStore.salvar(rec,tipo); if(res.ok&&res.modo==='criar')ok++; else falhas++; });
+  D.importHistory=D.importHistory||[]; D.importHistory.push({ id:grupo, tipo:tipo, origem:'replicacao', arquivo:'(replicação)', quando:nowISO(),
+    quem:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local', total:plano.length, importados:ok, erros:falhas });
+  commit(); _repBusy=false; replicarFechar();
+  try{ uiToast('✓ '+ok+' lançamento(s) criado(s) por replicação'+(falhas?(' · '+falhas+' com erro (valor?)'):'')); }catch(_){}
+  try{ renderDespesas(); }catch(_){}
+}
+function renderReplicar(){ if(!_repState)return; let host=document.getElementById('repHost'); if(!host){ host=document.createElement('div'); host.id='repHost'; host.className='imp-overlay'; document.body.appendChild(host); }
+  const T=LancService.TIPOS[_repState.tipo]; const st=_repState.etapa; const V=impValidos();
+  const sel=(val,opts)=>'<option value="">—</option>'+(opts||[]).map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('');
+  let h='<div class="imp-modal"><div class="imp-head"><h3>⧉ Replicar em lote — '+esc(T.label)+'s</h3><button class="edbtn ghost" onclick="replicarFechar()">Fechar</button></div>';
+  h+='<div class="cap" style="margin:2px 0 8px">Cria <b>um lançamento completo para cada destino</b> (não é rateio). Ex.: R$ 1.000 para 3 clientes = 3 lançamentos, total R$ 3.000.</div>';
+  h+='<div class="orc-steps">'+REP_STEPS.map((s,i)=>'<div class="orc-step'+(i===st?' on':(i<st?' done':''))+'" onclick="repStep('+i+')"><span class="num">'+(i<st?'✓':(i+1))+'</span>'+esc(s)+'</div>').join('')+'</div>';
+  if(st===0){
+    h+='<div class="cap" style="margin:8px 0">Preencha os valores comuns e marque quais campos serão copiados para todos os destinos. O <b>cliente</b> é o destino (definido no próximo passo).</div>';
+    h+='<div class="labprec" style="gap:10px 14px">';
+    T.campos.forEach(c=>{ if(c.key===repDestField())return; const on=!!_repState.copiar[c.key]; const val=_repState.base[c.key];
+      let input; if(c.tipo==='lista'&&c.fonte){ input='<select class="edinp" onchange="repSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'+sel(val,V[c.fonte])+'</select>'; }
+        else if(c.tipo==='data'){ input='<input type="date" class="edinp" value="'+esc(val||'')+'" onchange="repSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'; }
+        else if(c.tipo==='moeda'){ input='<input inputmode="decimal" class="edinp" value="'+esc(val!=null&&val!==''?val:'')+'" placeholder="0,00" onchange="repSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'; }
+        else { input='<input class="edinp" value="'+esc(val||'')+'" onchange="repSetBase(\''+c.key+'\',this.value)"'+(on?'':' disabled')+'>'; }
+      h+='<label class="lpf" style="min-width:150px"><span><input type="checkbox"'+(on?' checked':'')+' onchange="repToggleCampo(\''+c.key+'\')" style="margin-right:6px">'+esc(c.label)+(c.obrigatorio?' *':'')+'</span>'+input+'</label>'; });
+    h+='</div>';
+    h+='<div class="imp-actbar"><span></span><button class="edbtn primary" style="background:#0A6A30" onclick="repStep(1)">Continuar →</button></div>';
+  } else if(st===1){
+    const lista=repDestinosLista(); const nsel=_repState.destinos.length; const allSel=lista.length&&lista.every(n=>_repState.destinos.indexOf(n)>=0);
+    h+='<div class="cap" style="margin:8px 0">Para quais clientes criar? <b>'+nsel+'</b> selecionado(s).</div>';
+    h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"><input class="edinp" style="max-width:260px" placeholder="🔎 Buscar cliente…" value="'+esc(_repState.busca||'')+'" oninput="repBusca(this.value)"><button class="edbtn" onclick="repTodosDestinos()">'+(allSel?'Limpar seleção':'Selecionar todos')+'</button></div>';
+    if(!lista.length){ h+='<div class="op-empty">Nenhum cliente'+(_repState.busca?' com esse termo':' cadastrado')+'.</div>'; }
+    else { h+='<div style="max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px">'; lista.forEach(n=>{ const on=_repState.destinos.indexOf(n)>=0;
+      h+='<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox"'+(on?' checked':'')+' onchange="repToggleDestino('+JSON.stringify(n).replace(/"/g,'&quot;')+')"><span>'+esc(n)+'</span></label>'; }); h+='</div>'; }
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="repStep(0)">‹ Voltar</button><button class="edbtn primary" style="background:#0A6A30" onclick="repStep(2)"'+(nsel?'':' disabled')+'>Continuar ('+nsel+') →</button></div>';
+  } else if(st===2){
+    const dests=_repState.destinos; const baseVal=(_repState.copiar.valor?(_repState.base.valor||0):0);
+    h+='<div class="cap" style="margin:8px 0">Ajuste o valor por destino, se quiser. Em branco = usa o valor base ('+BRL(baseVal)+').</div>';
+    if(!dests.length){ h+='<div class="op-empty">Nenhum destino selecionado.</div>'; }
+    else { h+='<div style="max-height:44vh;overflow:auto"><table class="resp-cards"><thead><tr><th>Cliente</th><th class="num">Valor</th></tr></thead><tbody>';
+      dests.forEach(n=>{ const aj=(_repState.ajustes[n]||{}).valor; h+='<tr><td data-label="Cliente" class="cardttl">'+esc(n)+'</td><td data-label="Valor" class="num"><input inputmode="decimal" class="edinp" style="max-width:140px;text-align:right" value="'+esc(aj!=null&&aj!==''?aj:'')+'" placeholder="'+esc(baseVal||'0')+'" onchange="repSetAjuste('+JSON.stringify(n).replace(/"/g,'&quot;')+',this.value)"></td></tr>'; });
+      h+='</tbody></table></div>'; }
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="repStep(1)">‹ Voltar</button><button class="edbtn primary" style="background:#0A6A30" onclick="repStep(3)">Revisar →</button></div>';
+  } else {
+    const plano=repPlano(); const tot=Replicacao.total(plano);
+    h+='<div class="imp-tiles"><div class="imp-tile"><div class="tv">'+plano.length+'</div><div class="tl">Novos lançamentos</div></div><div class="imp-tile"><div class="tv">'+BRLk(tot)+'</div><div class="tl">Valor total</div></div><div class="imp-tile"><div class="tv">'+plano.length+'</div><div class="tl">Clientes</div></div></div>';
+    h+='<div class="note" style="margin:6px 0">Esta operação criará <b>'+plano.length+' lançamento(s)</b> e totalizará <b>'+BRL(tot)+'</b> (replicação: cada destino é um lançamento completo).</div>';
+    h+='<div style="max-height:38vh;overflow:auto"><table class="resp-cards"><thead><tr><th>Cliente</th><th>Descrição</th><th class="num">Valor</th></tr></thead><tbody>';
+    plano.forEach(p=>{ h+='<tr><td data-label="Cliente" class="cardttl">'+esc(p.cliente||'—')+'</td><td data-label="Descrição">'+esc(p.descricao||'—')+'</td><td data-label="Valor" class="num">'+BRL(+p.valor||0)+'</td></tr>'; });
+    h+='</tbody></table></div>';
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="repStep(2)">‹ Voltar</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="repConfirmar()">Criar '+plano.length+' lançamentos</button></div>';
+  }
+  h+='</div>'; host.innerHTML=h;
+}
 function renderDespesas(){
   const host=document.getElementById('edDespesas'); if(!host)return;
   try{ gerarRecorrencias(); }catch(e){ console.warn('gerarRec',e); }
@@ -5777,6 +5870,7 @@ function renderDespesas(){
   }
   h+='</div>';
   h+='<div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despNovo">+ Nova despesa</button>'
+    +'<button class="edbtn" onclick="replicarAbrir(\'despesa\')">⧉ Replicar em lote</button>'
     +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button>'
     +'<button class="edbtn" onclick="baixarModelo(\'despesa\')">📄 Baixar modelo</button></div>';
   // formulário
@@ -5818,7 +5912,7 @@ function renderDespesas(){
   rows.forEach(l=>{ h+='<tr><td data-label="Competência">'+esc(l.competencia||'—')+'</td><td data-label="Descrição" class="cardttl">'+esc(l.descricao||'—')+'</td><td data-label="Categoria">'+esc(l.categoria||'—')+'</td>'+
     '<td data-label="Natureza">'+(/CAPEX/.test(l.natureza||'')?'<span class="badge bnovo">CAPEX</span>':'<span class="badge">'+esc((l.natureza||'—').replace('Custo operacional ','OPEX ').replace('Despesa ','').replace('Custo com ',''))+'</span>')+'</td>'+
     '<td data-label="Centro">'+esc(l.centroCusto||'—')+'</td><td data-label="Colaborador">'+esc(l.colaborador||'—')+'</td><td class="num" data-label="Valor"><b>'+BRL(+l.valor||0)+'</b></td>'+
-    '<td class="acts" style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
+    '<td class="acts" style="white-space:nowrap;text-align:right"><button class="edbtn dedit" data-id="'+l.id+'">editar</button> <button class="edbtn drepl" data-id="'+l.id+'">⧉ replicar</button> <button class="edbtn ghost drem" data-id="'+l.id+'">✕</button></td></tr>'; });
   h+='</tbody><tfoot><tr><td class="mxcat">Total filtrado</td><td></td><td></td><td></td><td></td><td></td><td class="num mxgrand">'+BRL(totFil)+'</td><td></td></tr></tfoot></table></div>';
   host.innerHTML=h;
   // handlers
@@ -5834,6 +5928,7 @@ function renderDespesas(){
   const fb=document.getElementById('despFiltBtn'); if(fb)fb.onclick=()=>{ _despFiltOpen=!_despFiltOpen; const w=document.getElementById('despFiltWrap'); if(w)w.classList.toggle('open',_despFiltOpen); };
   const fl=document.getElementById('despFiltLimpar'); if(fl)fl.onclick=()=>{ _despFiltro={comp:'',centro:'',nat:'',cat:'',colab:''}; renderDespesas(); };
   host.querySelectorAll('button.dedit').forEach(b=>b.onclick=()=>editarLanc(b.dataset.id));
+  host.querySelectorAll('button.drepl').forEach(b=>b.onclick=()=>replicarAbrir('despesa',b.dataset.id));
   host.querySelectorAll('button.drem').forEach(b=>b.onclick=()=>removerLanc(b.dataset.id));
   try{ renderRecorrencias(); }catch(e){}
   try{ renderVeiculos(); }catch(e){}
