@@ -101,6 +101,61 @@ test("reconcilia: detecta e aprova consistência ponta a ponta", () => {
   expect(rb.erros.length).toBeGreaterThan(0);
 });
 
+test("planParcelas: linha 'resto' fecha o total (entrada + soja + milho)", () => {
+  // total 128000: entrada à vista 30000 + soja 50000 + milho = resto
+  const plano = [
+    { rotulo: "À vista", base: "vista", data: "2026-08-15", valor: 30000, resto: false },
+    { rotulo: "Prazo Soja", base: "soja", data: "2027-03-30", valor: 50000, resto: false },
+    { rotulo: "Prazo Milho", base: "milho", data: "2027-08-30", valor: 0, resto: true },
+  ];
+  const ps = Q.planParcelas(128000, plano);
+  expect(ps.length).toBe(3);
+  expect(ps[0].valor).toBe(30000);
+  expect(ps[1].valor).toBe(50000);
+  expect(ps[2].valor).toBe(48000); // resto
+  expect(ps[2].venc).toBe("2027-08-30");
+  const soma = ps.reduce((a: number, p: { valor: number }) => a + p.valor, 0);
+  expect(Math.round(soma * 100) / 100).toBe(128000);
+});
+
+test("planParcelas: uma parcela à vista = total", () => {
+  const ps = Q.planParcelas(128000, [{ rotulo: "À vista", base: "vista", data: "2026-08-15", valor: 0, resto: true }]);
+  expect(ps.length).toBe(1);
+  expect(ps[0].valor).toBe(128000);
+  expect(ps[0].venc).toBe("2026-08-15");
+});
+
+test("planParcelas: sem 'resto', a última absorve o resíduo → Σ === total", () => {
+  const plano = [
+    { rotulo: "À vista", data: "2026-08-15", valor: 40000, resto: false },
+    { rotulo: "Prazo Milho", data: "2027-08-30", valor: 40000, resto: false },
+  ];
+  const ps = Q.planParcelas(128000, plano);
+  expect(ps[0].valor).toBe(40000);
+  expect(ps[1].valor).toBe(88000); // última absorve
+  const soma = ps.reduce((a: number, p: { valor: number }) => a + p.valor, 0);
+  expect(soma).toBe(128000);
+});
+
+test("planParcelas: reconcilia aprova o plano (Σparcelas === total)", () => {
+  const plano = [
+    { rotulo: "À vista", data: "2026-08-15", valor: 30000, resto: false },
+    { rotulo: "Prazo Soja", data: "2027-03-30", valor: 0, resto: true },
+  ];
+  const parc = Q.planParcelas(128000, plano);
+  const q = { itens: [{ total: 128000 }], subtotal: 128000, descontoValor: 0, total: 128000, pagamento: { parcelas: parc } };
+  expect(Q.reconcilia(q).ok).toBe(true);
+});
+
+test("proxSafra: próxima ocorrência da data de safra na base ou depois", () => {
+  // emissão 15/08/2026: soja 30/03 → 2027 (já passou em 2026); milho 30/08 → 2026 (ainda vem)
+  expect(Q.proxSafra("03-30", "2026-08-15")).toBe("2027-03-30");
+  expect(Q.proxSafra("08-30", "2026-08-15")).toBe("2026-08-30");
+  // exatamente na data → mesmo ano
+  expect(Q.proxSafra("08-15", "2026-08-15")).toBe("2026-08-15");
+  expect(Q.proxSafra("03-30", "")).toBe("");
+});
+
 test("caso área zero: subtotais zeram sem NaN", () => {
   expect(Q.itemSubtotal(30, Q.quantidade("ha", { areaHa: 0 }))).toBe(0);
   expect(Q.pontos(0, 3)).toBe(0);

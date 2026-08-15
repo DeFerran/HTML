@@ -368,6 +368,15 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 .orc-field input,.orc-field select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:15px;font-weight:600}
 .orc-qcard{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
 .orc-qtop{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.orc-plan{display:flex;flex-direction:column;gap:10px}
+.orc-planrow{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card)}
+.orc-planrow.resto{border-color:var(--leaf);background:var(--tintG)}
+.orc-planrow .pr-tag{font-weight:800;font-size:13px;color:var(--head);min-width:104px;align-self:center}
+.orc-planrow .pr-f{display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.orc-planrow .pr-f input{padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:14px;font-weight:600;min-height:44px;width:150px;max-width:44vw}
+.orc-planrow .pr-f input:disabled{opacity:.7}
+.orc-planrow .pr-act{display:flex;gap:10px;align-items:center;font-size:12px;align-self:center;margin-left:auto}
+.orc-planrow .pr-rtag{font-size:10px;font-weight:800;color:var(--leaf);text-transform:uppercase;letter-spacing:.4px;border:1px solid var(--leaf);border-radius:20px;padding:3px 10px;white-space:nowrap}
 /* Fase 4 — mobile: passo-a-passo foco total + barra inferior fixa */
 .orc-mobstep{display:none}
 .orc-bottombar{display:none}
@@ -1842,6 +1851,9 @@ function hydrate(d){
     if(!Array.isArray(co.pacotes)) co.pacotes=[];
     if(!co.alcadas||typeof co.alcadas!=='object') co.alcadas={vendedorMaxDescPct:5,gestorMaxDescPct:15,precoMinimoPct:null};
     if(co.validadePadraoDias==null) co.validadePadraoDias=15;
+    if(!co.datasSafra||typeof co.datasSafra!=='object') co.datasSafra={soja:'03-30',milho:'08-30'};
+    if(!/^\d{2}-\d{2}$/.test(String(co.datasSafra.soja||''))) co.datasSafra.soja='03-30';
+    if(!/^\d{2}-\d{2}$/.test(String(co.datasSafra.milho||''))) co.datasSafra.milho='08-30';
     if(!co.metodoPorServico||typeof co.metodoPorServico!=='object') co.metodoPorServico={};
     if(!co.descServico||typeof co.descServico!=='object') co.descServico={};
   }
@@ -2359,6 +2371,22 @@ const QuoteCalc=(function(){
   function parcelas(total,condParcelas,dataBaseISO){ const T=r2(total); const ps=condParcelas||[]; let acc=0;
     return ps.map((p,i)=>{ let v; if(i<ps.length-1){ v=r2(T*(+p.pct||0)); acc=r2(acc+v); } else { v=r2(T-acc); }
       return {n:i+1,pct:+p.pct||0,dias:+p.dias||0,valor:v,venc:venc(dataBaseISO,+p.dias||0)}; }); }
+  // plano de pagamento FLEXÍVEL por orçamento: cada linha tem valor em R$ + data de vencimento
+  // (à vista, safra soja, safra milho ou data livre). UMA linha pode ser "resto" e fecha o total.
+  // Garante Σparcelas === total: a linha 'resto' = total − Σ(demais); sem 'resto', a última absorve o resíduo.
+  function planParcelas(total,plano){ const T=r2(total); const rows=(plano||[]);
+    const restoIdx=rows.findIndex(p=>p&&p.resto);
+    const fixedSum=r2(rows.reduce((a,p,i)=>a+(i===restoIdx?0:(+p.valor||0)),0));
+    let acc=0;
+    return rows.map((p,i)=>{ let v;
+      if(restoIdx>=0){ v=(i===restoIdx)?r2(T-fixedSum):r2(+p.valor||0); }
+      else { v=(i===rows.length-1)?r2(T-acc):r2(+p.valor||0); }
+      acc=r2(acc+v);
+      return {n:i+1,rotulo:p.rotulo||'',base:p.base||'',resto:!!p.resto,valor:v,venc:(p.data||'')}; }); }
+  // próxima ocorrência de uma data de safra (MM-DD) na data-base ou depois dela (ISO YYYY-MM-DD)
+  function proxSafra(mmdd,baseISO){ const base=String(baseISO||'').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(base)||!/^\d{2}-\d{2}$/.test(String(mmdd||'')))return '';
+    const y=+base.slice(0,4); const c=y+'-'+mmdd; return (c>=base)?c:((y+1)+'-'+mmdd); }
   function reconcilia(q){ q=q||{}; const erros=[];
     const soma=somaItens(q.itens); if(Math.abs(soma-(+q.subtotal||0))>0.005) erros.push('subtotal≠Σitens');
     const totCalc=r2((+q.subtotal||0)-(+q.descontoValor||0)); if(Math.abs(totCalc-(+q.total||0))>0.005) erros.push('total≠subtotal−desconto');
@@ -2371,7 +2399,7 @@ const QuoteCalc=(function(){
     if((+descontoPct||0) > (+alcadaMaxPct||0)+1e-9) motivos.push('Desconto de '+r2(descontoPct)+'% acima da sua alçada ('+r2(alcadaMaxPct)+'%)');
     if((+precoMinimoPct||0)>0){ const min=r2((+totTab||0)*(+precoMinimoPct||0)/100); if((+total||0) < min-0.005) motivos.push('Total abaixo do preço mínimo ('+r2(precoMinimoPct)+'% da tabela)'); }
     return {exigida:motivos.length>0,motivos:motivos}; }
-  return {round2:r2,pontos,amostras,amostrasTotal,quantidade,itemSubtotal,itemTotal,somaItens,totais,totalTabela,desvioPct,descontoEfetivoPct,aprovacaoNecessaria,venc,parcelas,reconcilia};
+  return {round2:r2,pontos,amostras,amostrasTotal,quantidade,itemSubtotal,itemTotal,somaItens,totais,totalTabela,desvioPct,descontoEfetivoPct,aprovacaoNecessaria,venc,parcelas,planParcelas,proxSafra,reconcilia};
 })();
 // </quote-calc>
 // <pipeline-calc>
@@ -5843,6 +5871,9 @@ function renderComercialConfig(){
       {label:'Desconto máx. do gestor (%)',type:'num',get:()=>+A.gestorMaxDescPct||0,set:v=>A.gestorMaxDescPct=+v||0},
       {label:'Preço mínimo (% da tabela; 0 = sem mínimo)',type:'num',get:()=>+A.precoMinimoPct||0,set:v=>A.precoMinimoPct=+v||0},
       {label:'Validade padrão da proposta (dias)',type:'num',get:()=>+co.validadePadraoDias||0,set:v=>co.validadePadraoDias=Math.round(+v||0)},
+      {section:'Datas de safra (pagamento a prazo)',sub:'usadas como vencimento sugerido nas parcelas "Prazo Soja / Prazo Milho" — sempre editável em cada orçamento',accent:'var(--gold,#B8801F)'},
+      {label:'Prazo Soja (dia/mês)',get:()=>{ const s=((co.datasSafra&&co.datasSafra.soja)||'03-30'); return s.slice(3)+'/'+s.slice(0,2); },set:v=>{ const m=String(v||'').match(/(\d{1,2})\D+(\d{1,2})/); if(m){ co.datasSafra=co.datasSafra||{}; co.datasSafra.soja=('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2); } },hint:'Ex.: 30/03 (colheita da soja)'},
+      {label:'Prazo Milho (dia/mês)',get:()=>{ const s=((co.datasSafra&&co.datasSafra.milho)||'08-30'); return s.slice(3)+'/'+s.slice(0,2); },set:v=>{ const m=String(v||'').match(/(\d{1,2})\D+(\d{1,2})/); if(m){ co.datasSafra=co.datasSafra||{}; co.datasSafra.milho=('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2); } },hint:'Ex.: 30/08 (colheita do milho)'},
     ]});
 }
 /* condições de pagamento (parcelas "%/dias") */
@@ -5968,9 +5999,14 @@ function qzRecalc(){ if(!_qz)return; const area=+_qz.areaHa||0;
   const t=QuoteCalc.totais(incl,_qz.descontoGeralPct||0);
   _qz.subtotal=t.subtotal; _qz.descontoValor=t.descontoValor; _qz.total=t.total;
   _qz.totalTabela=QuoteCalc.totalTabela(incl); _qz.desvioPct=QuoteCalc.desvioPct(_qz.total,_qz.totalTabela);
-  const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
   const base=_qz.emitidoEm||'';
-  _qz.pagamento={condId:_qz.pagamentoCondId,parcelas:cond?QuoteCalc.parcelas(_qz.total,cond.parcelas,base):[]};
+  if(Array.isArray(_qz.planoPagamento)&&_qz.planoPagamento.length){
+    const plano=_qz.planoPagamento.map(p=>({rotulo:p.rotulo,base:p.base,data:p.data,valor:+p.valor||0,resto:!!p.resto}));
+    _qz.pagamento={plano:true,parcelas:QuoteCalc.planParcelas(_qz.total,plano)};
+  } else {
+    const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
+    _qz.pagamento={condId:_qz.pagamentoCondId,parcelas:cond?QuoteCalc.parcelas(_qz.total,cond.parcelas,base):[]};
+  }
   _qz.validoAte=QuoteCalc.venc(_qz.emitidoEm,+_qz.validadeDias||0); _qz.atualizadoEm=nowISO(); }
 function qzSalvarDraft(){ if(!_qz)return; qzRecalc(); if(!Array.isArray(D.quotes))D.quotes=[]; const i=D.quotes.findIndex(q=>q&&q.id===_qz.id); if(i>=0)D.quotes[i]=_qz; else D.quotes.push(_qz); commit(); }
 function qzLog(q,acao,detalhe){ if(!q)return; if(!Array.isArray(q.historico))q.historico=[]; q.historico.push({em:nowISO(),quem:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local',acao:acao,detalhe:detalhe||''}); }
@@ -6002,8 +6038,10 @@ function qzPropostaHTML(q){
     +(+q.descontoValor>0?('<tr><td>Desconto</td><td class="num">−'+BRL(+q.descontoValor||0)+'</td></tr>'):'')
     +'<tr class="g"><td>Total</td><td class="num">'+BRL(+q.total||0)+'</td></tr></table></div>';
   if(opc.length)h+='<div class="orc-prop-sec">Serviços opcionais (não inclusos no total)</div><table><thead><tr><th>Serviço / escopo</th><th class="num">Quantidade</th><th class="num">Valor</th></tr></thead><tbody>'+opc.map(linha).join('')+'</tbody></table>';
-  h+='<div class="orc-prop-sec">Condição de pagamento</div><div><b>'+esc(cond?cond.nome:'—')+'</b></div>';
-  if(q.pagamento&&q.pagamento.parcelas&&q.pagamento.parcelas.length>1)h+='<table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor</th></tr></thead><tbody>'+q.pagamento.parcelas.map(p=>'<tr><td>'+p.n+'ª ('+p.dias+' dias)</td><td>'+esc(qzDataBR(p.venc))+'</td><td class="num">'+BRL(p.valor)+'</td></tr>').join('')+'</tbody></table>';
+  const _parc=(q.pagamento&&q.pagamento.parcelas)||[];
+  const _pgLabel=_parc.length?((_parc.length===1)?((_parc[0].rotulo||'À vista')+(_parc[0].venc?(' · '+qzDataBR(_parc[0].venc)):'')):(_parc.length+' parcelas')):(cond?cond.nome:'—');
+  h+='<div class="orc-prop-sec">Condição de pagamento</div><div><b>'+esc(_pgLabel)+'</b></div>';
+  if(_parc.length>1)h+='<table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor</th></tr></thead><tbody>'+_parc.map(p=>'<tr><td>'+esc(p.rotulo||(p.n+'ª'))+'</td><td>'+esc(p.venc?qzDataBR(p.venc):'—')+'</td><td class="num">'+BRL(p.valor)+'</td></tr>').join('')+'</tbody></table>';
   if((q.obsCliente||'').trim())h+='<div class="orc-prop-sec">Observações</div><div>'+esc(q.obsCliente)+'</div>';
   h+='<div class="orc-prop-foot">Proposta emitida por <b>'+esc(q.vendedor||'DF AGRO')+'</b> · DF AGRO — Consultoria em Agricultura de Precisão.<br>Valores sujeitos à validade indicada acima.</div>';
   return h; }
@@ -6015,7 +6053,7 @@ function orcProposta(id){ const stored=(D.quotes||[]).find(x=>x&&x.id===id); con
 function orcPropostaFechar(){ document.body.classList.remove('prop-open'); const h=document.getElementById('orcPropostaHost'); if(h)h.innerHTML=''; }
 function qzEditavel(q){ return !q || q.status==='rascunho' || (q.aprovacao&&q.aprovacao.status==='devolvido'); }
 function orcNovo(){ const base=(function(){try{return new Date().toISOString().slice(0,10);}catch(e){return '';}})();
-  _qz={id:'q'+uidLanc(),numero:qtNumero(),versao:1,versaoDe:null,substituidoPor:null,status:'rascunho',clienteNome:'',fazenda:'',municipio:'',vendedor:'',safra:qtSafraAtual(),areaHa:0,itens:[],descontoGeralPct:0,subtotal:0,descontoValor:0,total:0,totalTabela:0,desvioPct:null,pagamentoCondId:((D.comercial.condicoesPgto||[])[0]||{}).id||'',pagamento:{parcelas:[]},validadeDias:+D.comercial.validadePadraoDias||15,emitidoEm:base,validoAte:'',obsCliente:'',obsInterna:'',historico:[],criadoEm:nowISO(),criadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||''};
+  _qz={id:'q'+uidLanc(),numero:qtNumero(),versao:1,versaoDe:null,substituidoPor:null,status:'rascunho',clienteNome:'',fazenda:'',municipio:'',vendedor:'',safra:qtSafraAtual(),areaHa:0,itens:[],descontoGeralPct:0,subtotal:0,descontoValor:0,total:0,totalTabela:0,desvioPct:null,pagamentoCondId:((D.comercial.condicoesPgto||[])[0]||{}).id||'',pagamento:{parcelas:[]},planoPagamento:[{id:'pp'+uidLanc(),base:'vista',rotulo:'À vista',data:base,valor:0,resto:true}],validadeDias:+D.comercial.validadePadraoDias||15,emitidoEm:base,validoAte:'',obsCliente:'',obsInterna:'',historico:[],criadoEm:nowISO(),criadoPor:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||''};
   qzLog(_qz,'criado','rascunho'); _qzStep=0; qzSalvarDraft(); renderOrcamentosView(); }
 function orcAbrir(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)return;
   if(!qzEditavel(q)){ // não sobrescreve versão já enviada/aprovada: cria nova versão para editar
@@ -6541,6 +6579,29 @@ function qzToggleServ(servico){ if(!_qz)return; if(_qz.itens.some(it=>it.servico
 function qzAddPacote(id){ const p=(D.comercial.pacotes||[]).find(x=>x.id===id); if(!p||!_qz)return; (p.servicos||[]).forEach(s=>qzAddItem(s,p.descontoPct||0)); qzSalvarDraft(); renderOrcamentosView(); }
 function qzItemMalha(servico,malhaId){ const it=_qz.itens.find(x=>x.servico===servico); if(it&&it.config){ it.config.malhaId=malhaId; qzSalvarDraft(); renderOrcamentosView(); } }
 function qzItemProf(servico,profId){ const it=_qz.itens.find(x=>x.servico===servico); if(it&&it.config){ const a=it.config.profundidades||(it.config.profundidades=[]); const i=a.indexOf(profId); if(i>=0)a.splice(i,1); else a.push(profId); qzSalvarDraft(); renderOrcamentosView(); } }
+/* ===== plano de pagamento flexível (à vista / soja / milho / data livre) ===== */
+function qzPlanoRotulo(base){ return base==='soja'?'Prazo Soja':base==='milho'?'Prazo Milho':base==='data'?'Data específica':'À vista'; }
+function qzPlanoDataPadrao(base){ const ds=(D.comercial&&D.comercial.datasSafra)||{}; const emit=_qz.emitidoEm||'';
+  if(base==='soja')return QuoteCalc.proxSafra(ds.soja||'03-30',emit)||emit;
+  if(base==='milho')return QuoteCalc.proxSafra(ds.milho||'08-30',emit)||emit;
+  return emit; }
+function qzPlanoLista(){ if(!Array.isArray(_qz.planoPagamento))_qz.planoPagamento=[]; return _qz.planoPagamento; }
+function qzPlanoGarantirResto(){ const ps=qzPlanoLista(); if(ps.length && !ps.some(p=>p.resto)) ps[ps.length-1].resto=true; }
+function qzPlanoAdd(base){ if(!_qz)return; const ps=qzPlanoLista();
+  ps.push({id:'pp'+uidLanc(),base:base,rotulo:qzPlanoRotulo(base),data:qzPlanoDataPadrao(base),valor:0,resto:false});
+  qzPlanoGarantirResto(); qzSetField('planoPagamento',ps); renderOrcamentosView(); }
+function qzPlanoRem(id){ if(!_qz)return; let ps=qzPlanoLista().filter(p=>p.id!==id); if(!ps.length){ ps=[{id:'pp'+uidLanc(),base:'vista',rotulo:'À vista',data:_qz.emitidoEm||'',valor:0,resto:true}]; } _qz.planoPagamento=ps; qzPlanoGarantirResto(); qzSetField('planoPagamento',_qz.planoPagamento); renderOrcamentosView(); }
+function qzPlanoSetValor(id,v){ if(!_qz)return; const p=qzPlanoLista().find(x=>x.id===id); if(p){ p.valor=Math.max(0,pnum(v)); if(p.resto)p.resto=false; qzPlanoGarantirResto(); qzSetField('planoPagamento',_qz.planoPagamento); renderOrcamentosView(); } }
+function qzPlanoSetData(id,v){ if(!_qz)return; const p=qzPlanoLista().find(x=>x.id===id); if(p){ p.data=String(v||'').slice(0,10); qzSetField('planoPagamento',_qz.planoPagamento); renderOrcamentosView(); } }
+function qzPlanoResto(id){ if(!_qz)return; qzPlanoLista().forEach(p=>{ p.resto=(p.id===id); }); qzSetField('planoPagamento',_qz.planoPagamento); renderOrcamentosView(); }
+function qzPlanoResumo(q){ q=q||_qz; const parc=(q&&q.pagamento&&q.pagamento.parcelas)||[];
+  if(!parc.length){ const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===(q&&q.pagamentoCondId)); return cond?cond.nome:'—'; }
+  if(parc.length===1)return (parc[0].rotulo||'À vista')+(parc[0].venc?(' · '+qzDataBR(parc[0].venc)):'');
+  return parc.length+' parcelas · '+parc.map(p=>p.rotulo||('P'+p.n)).join(' + '); }
+/* migra orçamentos antigos (condição %/dias) para o plano flexível, preservando as parcelas já calculadas */
+function qzPlanoMigrar(q){ const parc=(q&&q.pagamento&&q.pagamento.parcelas)||[]; const emit=(q&&q.emitidoEm)||'';
+  if(!parc.length)return [{id:'pp'+uidLanc(),base:'vista',rotulo:'À vista',data:emit,valor:0,resto:true}];
+  return parc.map((p,i)=>({id:'pp'+uidLanc(),base:((+p.dias||0)===0?'vista':'data'),rotulo:((+p.dias||0)===0?'À vista':(p.venc?('Vencimento '+qzDataBR(p.venc)):('Parcela '+(i+1)))),data:(p.venc||emit),valor:(+p.valor||0),resto:(i===parc.length-1)})); }
 let _qzGerando=false;
 function qzGerar(){ if(!_qz||_qzGerando)return; if(!_qz.clienteNome){uiToast('Selecione o cliente.','err');return qzStep(0);} if(!(+_qz.areaHa>0)){uiToast('Informe a área.','err');return qzStep(1);} if(!_qz.itens.length){uiToast('Adicione ao menos um serviço.','err');return qzStep(2);}
   _qzGerando=true;
@@ -6620,7 +6681,7 @@ function renderOrcLista(host){
     const stTag='<span class="tag '+(q.status==='aceito'||q.status==='convertido'||q.status==='aprovado'?'hi':(q.status==='recusado'||q.status==='expirado'?'lo':'md'))+'">'+esc(ORC_STATUS_LBL[q.status]||q.status||'—')+'</span>';
     const stSel='<select class="edinp" style="margin-top:5px;font-size:11px;padding:3px" onchange="orcSetStatus(\''+q.id+'\',this.value)"><option value="">marcar…</option>'+ORC_STATUS_MANUAL.map(k=>'<option value="'+k+'">'+esc(ORC_STATUS_LBL[k])+'</option>').join('')+'</select>';
     h+='<tr><td data-label="Número" class="cardttl"><b>'+esc(q.numero||'—')+'</b>'+vbadge+'</td><td data-label="Cliente">'+esc(q.clienteNome||'—')+'</td><td data-label="Fazenda">'+esc(q.fazenda||'—')+'</td><td data-label="Área" class="num">'+fnum(+q.areaHa||0)+' ha</td><td data-label="Serviços" class="num">'+((q.itens||[]).length)+'</td><td data-label="Total" class="num"><b>'+BRL(+q.total||0)+'</b></td><td data-label="Vendedor">'+esc(q.vendedor||'—')+'</td><td data-label="Emissão">'+esc(qzDataBR(q.emitidoEm))+'</td><td data-label="Validade">'+(q.validoAte?('<span'+(exp?' style="color:var(--gold);font-weight:700"':'')+'>'+esc(qzDataBR(q.validoAte))+(exp?' ⏳':'')+'</span>'):'—')+'</td><td data-label="Status">'+stTag+stSel+'</td>'
-      +'<td style="white-space:nowrap;text-align:right">'+((q.status==='aceito'&&!q.convertidoEm)?('<button class="edbtn primary" style="background:#0A6A30" onclick="orcConverter(\''+q.id+'\')">converter</button> '):(q.convertidoEm?'<span class="tag hi" title="convertido em projeto">✓ convertido</span> ':''))+'<button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
+      +'<td class="acts" data-label="" style="white-space:nowrap;text-align:right">'+((q.status==='aceito'&&!q.convertidoEm)?('<button class="edbtn primary" style="background:#0A6A30" onclick="orcConverter(\''+q.id+'\')">converter</button> '):(q.convertidoEm?'<span class="tag hi" title="convertido em projeto">✓ convertido</span> ':''))+'<button class="edbtn" onclick="orcAbrir(\''+q.id+'\')">'+(qzEditavel(q)?'abrir':'nova versão')+'</button> <button class="edbtn" onclick="orcProposta(\''+q.id+'\')">proposta</button> <button class="edbtn" onclick="orcDuplicar(\''+q.id+'\')">duplicar</button> <button class="edbtn ghost" onclick="orcToggleHist(\''+q.id+'\')">'+(histOn?'ocultar':'histórico')+'</button> <button class="edbtn ghost" onclick="orcRemover(\''+q.id+'\')">✕</button></td></tr>';
     if(histOn)h+='<tr><td colspan="11" style="background:var(--soft)"><div style="padding:6px 4px"><b style="font-size:12px">Histórico — '+esc(q.numero)+' v'+(q.versao||1)+'</b>'+(q.versaoDe?' <span class="cap">(derivado de versão anterior)</span>':'')+'<div style="margin-top:6px">'+qzHistHTML(q)+'</div></div></td></tr>'; });
   h+='</tbody></table></div></div>'; host.innerHTML=h;
 }
@@ -6681,8 +6742,7 @@ function qzSummaryHTML(){ if(!_qz)return '';
   h+='<div class="orc-sumrow"><span class="lbl">Subtotal</span><span>'+BRL(+_qz.subtotal||0)+'</span></div>';
   if(+_qz.descontoValor>0)h+='<div class="orc-sumrow"><span class="lbl">Desconto</span><span>−'+BRL(+_qz.descontoValor||0)+'</span></div>';
   h+='<div class="orc-sumrow tot"><span>Total</span><span>'+BRL(+_qz.total||0)+'</span></div>';
-  const cond=(D.comercial.condicoesPgto||[]).find(c=>c.id===_qz.pagamentoCondId);
-  if(cond)h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(cond.nome)+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(qzPlanoResumo(_qz))+'</span></div>';
   h+='<div style="margin-top:12px">'+(_qzStep<ORC_STEPS.length-1?('<button class="edbtn primary orc-big" style="width:100%" onclick="qzStep('+(_qzStep+1)+')">Continuar</button>'):('<button class="edbtn primary orc-big" style="width:100%;background:#0A6A30" onclick="qzGerar()">Gerar orçamento</button>'))+'</div>';
   h+='</div>'; return h;
 }
@@ -6748,13 +6808,35 @@ function qzStepHTML(){ const s=_qzStep;
       h+='</div></div>'; });
     return h;
   }
-  if(s===4){ // Pagamento
-    const conds=(D.comercial.condicoesPgto||[]);
-    let h='<h3>Condição de pagamento</h3><div class="cap">Escolha a condição e a validade da proposta.</div><div class="orc-chiprow" style="margin-top:12px">'
-      + conds.map(c=>'<button class="orc-chip'+(_qz.pagamentoCondId===c.id?' on':'')+'" onclick="qzSetField(\'pagamentoCondId\',\''+c.id+'\');renderOrcamentosView()">'+esc(c.nome)+'</button>').join('')+'</div>';
-    h+='<label class="orc-field" style="max-width:220px;margin-top:14px"><span>Validade (dias)</span><input id="qzValidade" inputmode="decimal" value="'+esc(_qz.validadeDias||'')+'"></label>';
-    if(_qz.pagamento&&_qz.pagamento.parcelas&&_qz.pagamento.parcelas.length){ h+='<div style="margin-top:10px"><div class="cap" style="margin-bottom:6px">Cronograma</div>';
-      _qz.pagamento.parcelas.forEach(p=>{ h+='<div class="orc-sumrow" style="max-width:340px"><span class="lbl">Parcela '+p.n+' · '+p.dias+' dias</span><span><b>'+BRL(p.valor)+'</b>'+(p.venc?(' · '+qzDataBR(p.venc)):'')+'</span></div>'; }); h+='</div>'; }
+  if(s===4){ // Pagamento — plano flexível
+    if(!Array.isArray(_qz.planoPagamento)||!_qz.planoPagamento.length){ _qz.planoPagamento=qzPlanoMigrar(_qz); qzRecalc(); qzSalvarDraft(); }
+    qzPlanoGarantirResto();
+    const ps=qzPlanoLista(); const total=+_qz.total||0;
+    const parc=(_qz.pagamento&&_qz.pagamento.parcelas)||[];
+    let h='<h3>Condição de pagamento</h3><div class="cap">Monte como o cliente vai pagar. Combine <b>à vista</b>, <b>prazo soja</b>, <b>prazo milho</b> e <b>datas específicas</b>. Digite o valor de cada parcela; uma delas é o <b>restante</b> e fecha o total automaticamente.</div>';
+    h+='<div class="orc-chiprow" style="margin-top:12px">'
+      +'<button class="orc-chip" onclick="qzPlanoAdd(\'vista\')">+ À vista</button>'
+      +'<button class="orc-chip" onclick="qzPlanoAdd(\'soja\')">+ Prazo Soja</button>'
+      +'<button class="orc-chip" onclick="qzPlanoAdd(\'milho\')">+ Prazo Milho</button>'
+      +'<button class="orc-chip" onclick="qzPlanoAdd(\'data\')">+ Data específica</button></div>';
+    h+='<div class="orc-plan" style="margin-top:12px">';
+    ps.forEach((p,i)=>{ const v=(parc[i]?+parc[i].valor||0:(+p.valor||0)); const isResto=!!p.resto;
+      h+='<div class="orc-planrow'+(isResto?' resto':'')+'">'
+        +'<div class="pr-tag">'+esc(p.rotulo||qzPlanoRotulo(p.base))+'</div>'
+        +'<label class="pr-f"><span>Vencimento</span><input type="date" value="'+esc(p.data||'')+'" onchange="qzPlanoSetData(\''+p.id+'\',this.value)"></label>'
+        +'<label class="pr-f"><span>Valor'+(isResto?' · restante':'')+'</span>'
+          +(isResto?'<input value="'+esc(BRL(v))+'" disabled>':'<input inputmode="decimal" value="'+(v?esc(String(v)):'')+'" placeholder="0" onchange="qzPlanoSetValor(\''+p.id+'\',this.value)">')
+        +'</label>'
+        +'<div class="pr-act">'
+          +(isResto?'<span class="pr-rtag" title="esta parcela fecha o total">restante</span>':'<button class="op-linkbtn" style="border:1px solid var(--line)" onclick="qzPlanoResto(\''+p.id+'\')" title="tornar esta o restante">restante</button>')
+          +'<button class="op-linkbtn" style="border:1px solid var(--line)" onclick="qzPlanoRem(\''+p.id+'\')" title="remover parcela">✕</button></div>'
+      +'</div>'; });
+    h+='</div>';
+    const soma=parc.reduce((a,x)=>a+(+x.valor||0),0);
+    const restoNeg=parc.some(x=>(+x.valor||0)<-0.005);
+    h+='<div class="orc-sumrow" style="max-width:360px;margin-top:10px"><span class="lbl">Soma das parcelas</span><span><b>'+BRL(soma)+'</b> / '+BRL(total)+'</span></div>';
+    if(restoNeg)h+='<div class="note" style="border-left:3px solid var(--red);margin-top:6px">⚠ As parcelas fixas ultrapassam o total. Reduza um valor ou escolha outra parcela como <b>restante</b>.</div>';
+    h+='<label class="orc-field" style="max-width:220px;margin-top:14px"><span>Validade da proposta (dias)</span><input id="qzValidade" inputmode="decimal" value="'+esc(_qz.validadeDias||'')+'"></label>';
     return h;
   }
   // s===5 Resumo
@@ -6774,7 +6856,8 @@ function qzStepHTML(){ const s=_qzStep;
   h+='<div class="orc-sumrow tot"><span>Total negociado</span><span>'+BRL(+_qz.total||0)+'</span></div>';
   const ap=qzAvisoAprovacao(); if(ap.exigida)h+='<div class="note" style="border-left:3px solid var(--gold);margin-top:8px">⚠ '+ap.motivos.map(esc).join(' · ')+'. Ao gerar, o orçamento vai para <b>Aguardando aprovação</b> do gestor.</div>';
   if(qzPodeVerMargem()){ const m=qzMargem(); h+='<div class="orc-sumrow" style="margin-top:10px"><span class="lbl">Custo previsto</span><span>'+BRL(m.custo)+'</span></div><div class="orc-sumrow"><span class="lbl">Margem de contribuição</span><span>'+BRL(m.mc)+' · '+PCT(m.mcPct)+'</span></div>'; }
-  h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(cond?cond.nome:'—')+'</span></div>';
+  h+='<div class="orc-sumrow"><span class="lbl">Pagamento</span><span>'+esc(qzPlanoResumo(_qz))+'</span></div>';
+  { const parc=(_qz.pagamento&&_qz.pagamento.parcelas)||[]; if(parc.length>1){ parc.forEach(p=>{ h+='<div class="orc-sumrow" style="font-size:12px"><span class="lbl">• '+esc(p.rotulo||('Parcela '+p.n))+(p.venc?(' · '+qzDataBR(p.venc)):'')+'</span><span>'+BRL(p.valor)+'</span></div>'; }); } }
   h+='<div class="orc-sumrow"><span class="lbl">Validade</span><span>'+(_qz.validadeDias||0)+' dias'+(_qz.validoAte?(' (até '+qzDataBR(_qz.validoAte)+')'):'')+'</span></div>';
   h+='<div class="orc-navbtns"><button class="edbtn" onclick="qzStep(0)">Editar</button><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="edbtn" onclick="orcProposta(\''+_qz.id+'\')">👁 Ver proposta</button><button class="edbtn primary orc-big" style="background:#0A6A30" onclick="qzGerar()">'+(ap.exigida?'Enviar para aprovação':'Gerar orçamento')+'</button></span></div>';
   return h;
