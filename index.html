@@ -5413,6 +5413,122 @@ const ImportStaging=(function(){
   return { parseTabular, mapearColunas, linhaParaRec, classificar, sugestao };
 })();
 // </import-staging>
+// <xlsx-premium>
+/* GERADOR DE XLSX PREMIUM — puro (sem D/DOM). Escreve OOXML + zip próprio (store),
+   pois o SheetJS comunitário não grava estilo/dropdown/congelamento. Suporta:
+   identidade visual (verde DF AGRO), cabeçalho premium, bandas, moeda/data,
+   congelamento, autofiltro, proteção de células de sistema e validação (dropdown)
+   por intervalo nomeado. Cada célula: {v,t:'s'|'n',s:styleIndex} ou {s} (vazia). */
+const XlsxPremium=(function(){
+  const enc=new TextEncoder();
+  // CRC32
+  let _crcT=null; function _mk(){ _crcT=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); _crcT[n]=c>>>0; } }
+  function crc32(u8){ if(!_crcT)_mk(); let c=0^(-1); for(let i=0;i<u8.length;i++)c=(c>>>8)^_crcT[(c^u8[i])&0xFF]; return (c^(-1))>>>0; }
+  function colName(n){ let s=''; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
+  function xmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+  const _u16=n=>[n&255,(n>>8)&255], _u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  function zipStore(files){ const parts=[], central=[]; let offset=0;
+    files.forEach(f=>{ const nameB=enc.encode(f.name), data=f.data, crc=crc32(data);
+      const lh=new Uint8Array([].concat(_u32(0x04034b50),_u16(20),_u16(0),_u16(0),_u16(0),_u16(0x21),_u32(crc),_u32(data.length),_u32(data.length),_u16(nameB.length),_u16(0)));
+      parts.push(lh,nameB,data);
+      central.push(new Uint8Array([].concat(_u32(0x02014b50),_u16(20),_u16(20),_u16(0),_u16(0),_u16(0),_u16(0x21),_u32(crc),_u32(data.length),_u32(data.length),_u16(nameB.length),_u16(0),_u16(0),_u16(0),_u16(0),_u32(0),_u32(offset))),nameB);
+      offset+=lh.length+nameB.length+data.length; });
+    let cenSize=0; central.forEach(c=>cenSize+=c.length);
+    const eocd=new Uint8Array([].concat(_u32(0x06054b50),_u16(0),_u16(0),_u16(files.length),_u16(files.length),_u32(cenSize),_u32(offset),_u16(0)));
+    const all=parts.concat(central,[eocd]); let tot=0; all.forEach(a=>tot+=a.length);
+    const out=new Uint8Array(tot); let p=0; all.forEach(a=>{ out.set(a,p); p+=a.length; }); return out; }
+  // ---- OOXML ----
+  const GREEN='0A6A30', GREEND='075124', ALT='F1F5F2', TINTG='E3F2E9', TING='EEF1EE', TINB='E8EEF6', REFH='DCE3DD', LINE='C9D3CB', SYS='6B7A70';
+  function stylesXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+     +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+     +'<numFmts count="2"><numFmt numFmtId="164" formatCode="&quot;R$&quot;\\ #,##0.00"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>'
+     +'<fonts count="6">'
+       +'<font><sz val="11"/><name val="Calibri"/></font>'
+       +'<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+       +'<font><b/><sz val="16"/><color rgb="FF'+GREEN+'"/><name val="Calibri"/></font>'
+       +'<font><b/><sz val="11"/><name val="Calibri"/></font>'
+       +'<font><sz val="9"/><color rgb="FF'+SYS+'"/><name val="Calibri"/></font>'
+       +'<font><sz val="11"/><color rgb="FF44524A"/><name val="Calibri"/></font>'
+     +'</fonts>'
+     +'<fills count="9">'
+       +'<fill><patternFill patternType="none"/></fill>'
+       +'<fill><patternFill patternType="gray125"/></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+GREEN+'"/></patternFill></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+ALT+'"/></patternFill></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+GREEND+'"/></patternFill></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+TINTG+'"/></patternFill></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+TING+'"/></patternFill></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+TINB+'"/></patternFill></fill>'
+       +'<fill><patternFill patternType="solid"><fgColor rgb="FF'+REFH+'"/></patternFill></fill>'
+     +'</fills>'
+     +'<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'
+       +'<border><left style="thin"><color rgb="FF'+LINE+'"/></left><right style="thin"><color rgb="FF'+LINE+'"/></right><top style="thin"><color rgb="FF'+LINE+'"/></top><bottom style="thin"><color rgb="FF'+LINE+'"/></bottom><diagonal/></border></borders>'
+     +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+     +'<cellXfs count="17">'
+       +'<xf xfId="0"/>'  // 0 default
+       +'<xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'  // 1 header
+       +'<xf fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'  // 2 header req
+       +'<xf borderId="1" applyBorder="1" applyProtection="1"><protection locked="0"/></xf>'  // 3 input text
+       +'<xf numFmtId="164" borderId="1" applyNumberFormat="1" applyBorder="1" applyProtection="1"><protection locked="0"/></xf>'  // 4 input cur
+       +'<xf numFmtId="165" borderId="1" applyNumberFormat="1" applyBorder="1" applyProtection="1"><protection locked="0"/></xf>'  // 5 input date
+       +'<xf fillId="3" borderId="1" applyFill="1" applyBorder="1" applyProtection="1"><protection locked="0"/></xf>'  // 6 alt text
+       +'<xf numFmtId="164" fillId="3" borderId="1" applyNumberFormat="1" applyFill="1" applyBorder="1" applyProtection="1"><protection locked="0"/></xf>'  // 7 alt cur
+       +'<xf numFmtId="165" fillId="3" borderId="1" applyNumberFormat="1" applyFill="1" applyBorder="1" applyProtection="1"><protection locked="0"/></xf>'  // 8 alt date
+       +'<xf fontId="2" applyFont="1"/>'  // 9 title
+       +'<xf fontId="3" applyFont="1"/>'  // 10 label bold
+       +'<xf fillId="5" borderId="1" applyFill="1" applyBorder="1"/>'  // 11 legend req
+       +'<xf fillId="6" borderId="1" applyFill="1" applyBorder="1"/>'  // 12 legend opc
+       +'<xf fillId="7" borderId="1" applyFill="1" applyBorder="1"/>'  // 13 legend auto
+       +'<xf fontId="3" fillId="8" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>'  // 14 ref header
+       +'<xf fontId="4" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>'  // 15 system
+       +'<xf fontId="5" applyFont="1"><alignment wrapText="1" vertical="top"/></xf>'  // 16 body
+     +'</cellXfs>'
+     +'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+     +'</styleSheet>'; }
+  function cellXml(ref,cell){ if(cell==null) return '';
+    const s=cell.s!=null?(' s="'+cell.s+'"'):'';
+    if(cell.v==null||cell.v==='') return '<c r="'+ref+'"'+s+'/>';
+    if(cell.t==='n') return '<c r="'+ref+'"'+s+'><v>'+cell.v+'</v></c>';
+    return '<c r="'+ref+'"'+s+' t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(cell.v)+'</t></is></c>'; }
+  function sheetXml(sp){ const rows=sp.rows||[]; let maxc=1; rows.forEach(r=>{ if(r&&r.length>maxc)maxc=r.length; });
+    const nrows=rows.length||1; const dim='A1:'+colName(maxc)+nrows;
+    let x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="'+dim+'"/>';
+    if(sp.freezeRow){ x+='<sheetViews><sheetView workbookViewId="0"><pane ySplit="'+sp.freezeRow+'" topLeftCell="A'+(sp.freezeRow+1)+'" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A'+(sp.freezeRow+1)+'" sqref="A'+(sp.freezeRow+1)+'"/></sheetView></sheetViews>'; }
+    else x+='<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
+    x+='<sheetFormatPr defaultRowHeight="15"/>';
+    if(sp.cols&&sp.cols.length){ x+='<cols>'; sp.cols.forEach((c,i)=>{ x+='<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+(c.w||12)+'" customWidth="1"'+(c.hidden?' hidden="1"':'')+'/>'; }); x+='</cols>'; }
+    x+='<sheetData>';
+    rows.forEach((r,ri)=>{ x+='<row r="'+(ri+1)+'"'+(sp.headerRow===ri?' ht="26" customHeight="1"':'')+'>'; (r||[]).forEach((cell,ci)=>{ x+=cellXml(colName(ci+1)+(ri+1),cell); }); x+='</row>'; });
+    x+='</sheetData>';
+    if(sp.protect) x+='<sheetProtection sheet="1" objects="1" scenarios="1" formatCells="0" formatColumns="0" insertRows="1" deleteRows="1" sort="1" autoFilter="1"/>';
+    if(sp.autofilter) x+='<autoFilter ref="'+sp.autofilter+'"/>';
+    if(sp.validations&&sp.validations.length){ x+='<dataValidations count="'+sp.validations.length+'">';
+      sp.validations.forEach(v=>{ x+='<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="0" sqref="'+v.sqref+'"><formula1>'+xmlEsc(v.formula1)+'</formula1></dataValidation>'; });
+      x+='</dataValidations>'; }
+    x+='</worksheet>'; return x; }
+  function contentTypes(n){ let o=''; for(let i=1;i<=n;i++)o+='<Override PartName="/xl/worksheets/sheet'+i+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+o+'</Types>'; }
+  function rootRels(){ return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'; }
+  function workbookXml(names,defined){ let sh=''; names.forEach((nm,i)=>{ sh+='<sheet name="'+xmlEsc(nm)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>'; });
+    let dn=''; if(defined&&defined.length){ dn='<definedNames>'; defined.forEach(d=>{ dn+='<definedName name="'+xmlEsc(d.name)+'">'+xmlEsc(d.ref)+'</definedName>'; }); dn+='</definedNames>'; }
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+sh+'</sheets>'+dn+'</workbook>'; }
+  function wbRels(n){ let r=''; for(let i=1;i<=n;i++)r+='<Relationship Id="rId'+i+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+i+'.xml"/>';
+    r+='<Relationship Id="rId'+(n+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+r+'</Relationships>'; }
+  function build(spec){ const sheets=spec.sheets||[]; const files=[];
+    files.push({name:'[Content_Types].xml',data:enc.encode(contentTypes(sheets.length))});
+    files.push({name:'_rels/.rels',data:enc.encode(rootRels())});
+    files.push({name:'xl/workbook.xml',data:enc.encode(workbookXml(sheets.map(s=>s.name),spec.definedNames))});
+    files.push({name:'xl/_rels/workbook.xml.rels',data:enc.encode(wbRels(sheets.length))});
+    files.push({name:'xl/styles.xml',data:enc.encode(stylesXml())});
+    sheets.forEach((s,i)=>{ files.push({name:'xl/worksheets/sheet'+(i+1)+'.xml',data:enc.encode(sheetXml(s))}); });
+    return zipStore(files); }
+  return { crc32, colName, xmlEsc, zipStore, stylesXml, sheetXml, workbookXml, build,
+    S:{ HEADER:1, HEADER_REQ:2, IN_TEXT:3, IN_CUR:4, IN_DATE:5, ALT_TEXT:6, ALT_CUR:7, ALT_DATE:8, TITLE:9, LABEL:10, LEG_REQ:11, LEG_OPC:12, LEG_AUTO:13, REFH:14, SYS:15, BODY:16 } };
+})();
+// </xlsx-premium>
 function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
@@ -5533,6 +5649,85 @@ function renderImportLote(){ if(!_impState)return;
   }
   h+='</div>'; host.innerHTML=h;
 }
+/* ===== Gerador de modelo Excel premium (Fase 3) ===== */
+const TEMPLATE_VERSAO={ despesa:'despesa-v1' };
+function _hojeBR(){ try{ const d=new Date(); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); }catch(e){ return ''; } }
+function modeloSpecDespesa(){ const S=XlsxPremium.S; const campos=LancService.TIPOS.despesa.campos; const V=impValidos();
+  const NROWS=200; const lastCol=XlsxPremium.colName(campos.length); const sysCol=campos.length+1;
+  // 03_REFERÊNCIAS — colunas de cadastros reais + intervalos nomeados
+  const refDefs=[
+    {nome:'Clientes',fonte:'clientes',range:'Lista_Clientes'},
+    {nome:'Categorias',fonte:'categorias',range:'Lista_Categorias'},
+    {nome:'Centros de custo',fonte:'centrosCusto',range:'Lista_Centros'},
+    {nome:'Colaboradores',fonte:'colaboradores',range:'Lista_Colaboradores'},
+    {nome:'Serviços',fonte:'servicos',range:'Lista_Servicos'},
+    {nome:'Veículos',fonte:'veiculos',range:'Lista_Veiculos'},
+    {nome:'Naturezas',fonte:'NATUREZAS',range:''},
+    {nome:'Formas de pgto',fonte:'FORMAS_PGTO',range:''},
+    {nome:'Status',fonte:'STATUS_LANC',range:''}
+  ];
+  const refMax=refDefs.reduce((m,r)=>Math.max(m,(V[r.fonte]||[]).length),0);
+  const refRows=[refDefs.map(r=>({v:r.nome,t:'s',s:S.REFH}))];
+  for(let i=0;i<refMax;i++){ refRows.push(refDefs.map(r=>{ const val=(V[r.fonte]||[])[i]; return val!=null?{v:val,t:'s',s:0}:{s:0}; })); }
+  const REF_SHEET="03_REFERÊNCIAS";
+  const definedNames=refDefs.filter(r=>r.range).map((r,idx)=>{ const col=XlsxPremium.colName(refDefs.indexOf(r)+1); const n=(V[r.fonte]||[]).length;
+    return {name:r.range, ref:"'"+REF_SHEET+"'!$"+col+"$2:$"+col+"$"+(n>0?(n+1):2)}; });
+  // 02_LANÇAMENTOS — cabeçalho + linhas vazias estilizadas + validações
+  const head=campos.map(c=>({v:c.label,t:'s',s:c.obrigatorio?S.HEADER_REQ:S.HEADER}));
+  head.push({v:'import_row_key',t:'s',s:S.SYS});
+  const lancRows=[head];
+  for(let r=0;r<NROWS;r++){ const alt=(r%2===1); const row=campos.map(c=>{
+      const st = c.tipo==='moeda'?(alt?S.ALT_CUR:S.IN_CUR) : c.tipo==='data'?(alt?S.ALT_DATE:S.IN_DATE) : (alt?S.ALT_TEXT:S.IN_TEXT);
+      return {s:st}; });
+    row.push({s:S.SYS}); lancRows.push(row); }
+  const cols=campos.map(c=>({w: c.key==='descricao'?30 : c.key==='obs'?28 : c.key==='valor'?14 : c.key==='data'?13 : 18}));
+  cols.push({w:16,hidden:true}); // import_row_key
+  const validations=[]; const inlineDe=fonte=>'"'+(V[fonte]||[]).map(s=>String(s).replace(/,/g,' ')).join(',')+'"';
+  campos.forEach((c,i)=>{ if(c.tipo!=='lista'||!c.fonte)return; const col=XlsxPremium.colName(i+1); const sqref=col+'2:'+col+(NROWS+1);
+    const rd=refDefs.find(r=>r.fonte===c.fonte);
+    if(rd&&rd.range){ validations.push({sqref:sqref, formula1:rd.range}); }
+    else if((V[c.fonte]||[]).length){ validations.push({sqref:sqref, formula1:inlineDe(c.fonte)}); } });
+  // 01_INSTRUÇÕES
+  const instr=[
+    [{v:'DF AGRO — Modelo de importação em lote',t:'s',s:S.TITLE}],
+    [{v:'Tipo',t:'s',s:S.LABEL},{v:'Despesas',t:'s',s:0}],
+    [{v:'Empresa',t:'s',s:S.LABEL},{v:'DF AGRO',t:'s',s:0}],
+    [{v:'Gerado em',t:'s',s:S.LABEL},{v:_hojeBR(),t:'s',s:0}],
+    [{v:'Versão do modelo',t:'s',s:S.LABEL},{v:TEMPLATE_VERSAO.despesa,t:'s',s:0}],
+    [{s:0}],
+    [{v:'Como usar',t:'s',s:S.LABEL}],
+    [{v:'1) Preencha somente a aba 02_LANÇAMENTOS.',t:'s',s:S.BODY}],
+    [{v:'2) Não altere os nomes das colunas.',t:'s',s:S.BODY}],
+    [{v:'3) Use as listas suspensas (dados vêm da aba 03_REFERÊNCIAS).',t:'s',s:S.BODY}],
+    [{v:'4) Campos obrigatórios estão marcados no cabeçalho (Valor).',t:'s',s:S.BODY}],
+    [{v:'5) Faça o upload deste arquivo na plataforma (Lançamentos → Importar em lote).',t:'s',s:S.BODY}],
+    [{v:'6) Nenhum lançamento antigo será apagado — só entram registros novos.',t:'s',s:S.BODY}],
+    [{v:'7) A plataforma mostra uma conferência antes de importar.',t:'s',s:S.BODY}],
+    [{s:0}],
+    [{v:'Legenda',t:'s',s:S.LABEL}],
+    [{v:'OBRIGATÓRIO',t:'s',s:S.LEG_REQ},{v:'OPCIONAL',t:'s',s:S.LEG_OPC},{v:'AUTOMÁTICO / NÃO EDITAR',t:'s',s:S.LEG_AUTO}]
+  ];
+  // 04_EXEMPLO — cabeçalho + linhas ilustrativas
+  const ex1c=(V.clientes||[])[0]||'Cliente Exemplo', ex1cat=(V.categorias||[])[0]||'Categoria';
+  const exHead=campos.map(c=>({v:c.label,t:'s',s:c.obrigatorio?S.HEADER_REQ:S.HEADER}));
+  const exRow=key=>campos.map(c=>{ let v=''; if(c.key==='data')v='15/08/2026'; else if(c.key==='descricao')v='Análise de solo'; else if(c.key==='valor')v='1234,56'; else if(c.key==='cliente')v=ex1c; else if(c.key==='categoria')v=ex1cat;
+    return v?{v:v,t:'s',s:S.IN_TEXT}:{s:S.IN_TEXT}; });
+  const exemplo=[exHead, exRow(), exRow()];
+  return { definedNames, sheets:[
+    { name:'01_INSTRUÇÕES', rows:instr, cols:[{w:22},{w:32},{w:26}] },
+    { name:'02_LANÇAMENTOS', rows:lancRows, cols:cols, headerRow:0, freezeRow:1, autofilter:'A1:'+lastCol+'1', protect:true, validations:validations },
+    { name:REF_SHEET, rows:refRows, cols:refDefs.map(()=>({w:22})), headerRow:0, freezeRow:1, protect:true },
+    { name:'04_EXEMPLO', rows:exemplo, cols:cols.slice(0,campos.length), headerRow:0, freezeRow:1 }
+  ] };
+}
+function baixarModelo(tipo){ tipo=tipo||'despesa';
+  if(tipo!=='despesa'){ alert('Modelo disponível: Despesas (os demais tipos entram nas próximas fases).'); return; }
+  try{ const bytes=XlsxPremium.build(modeloSpecDespesa());
+    const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Modelo - Despesas - DF AGRO.xlsx';
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },150);
+    try{ uiToast('✓ Modelo de Despesas gerado'); }catch(_){}
+  }catch(e){ alert('Não foi possível gerar o modelo: '+((e&&e.message)||e)); } }
 function renderDespesas(){
   const host=document.getElementById('edDespesas'); if(!host)return;
   try{ gerarRecorrencias(); }catch(e){ console.warn('gerarRec',e); }
@@ -5550,7 +5745,8 @@ function renderDespesas(){
   }
   h+='</div>';
   h+='<div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despNovo">+ Nova despesa</button>'
-    +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button></div>';
+    +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button>'
+    +'<button class="edbtn" onclick="baixarModelo(\'despesa\')">📄 Baixar modelo</button></div>';
   // formulário
   if(_despForm){ const F=_despForm;
     const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
