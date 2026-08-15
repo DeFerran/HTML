@@ -377,6 +377,26 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
 .orc-planrow .pr-f input:disabled{opacity:.7}
 .orc-planrow .pr-act{display:flex;gap:10px;align-items:center;font-size:12px;align-self:center;margin-left:auto}
 .orc-planrow .pr-rtag{font-size:10px;font-weight:800;color:var(--leaf);text-transform:uppercase;letter-spacing:.4px;border:1px solid var(--leaf);border-radius:20px;padding:3px 10px;white-space:nowrap}
+/* ===== Central de importação em lote ===== */
+.imp-overlay{position:fixed;inset:0;z-index:9000;background:rgba(6,20,12,.55);display:flex;justify-content:center;align-items:flex-start;padding:24px 12px;overflow:auto}
+.imp-modal{background:var(--card);border:1px solid var(--line);border-radius:16px;max-width:1000px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:20px}
+.imp-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.imp-head h3{margin:0;font-size:18px;color:var(--head)}
+.imp-tiles{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.imp-tile{border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:88px;cursor:pointer;background:var(--card)}
+.imp-tile.on{outline:2px solid var(--leaf);outline-offset:1px}
+.imp-tile .tv{font-size:22px;font-weight:800;line-height:1}
+.imp-tile .tl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:4px}
+.imp-badge{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:20px;padding:3px 9px;white-space:nowrap;display:inline-block}
+.imp-nova{background:rgba(20,140,70,.16);color:#159a4c;border:1px solid #159a4c}
+.imp-existente{background:rgba(40,110,220,.14);color:#2f6fe0;border:1px solid #2f6fe0}
+.imp-possivel{background:rgba(184,128,31,.16);color:#B8801F;border:1px solid #B8801F}
+.imp-erro{background:rgba(192,57,43,.14);color:#c0392b;border:1px solid #c0392b}
+.imp-atencao{background:rgba(230,140,30,.16);color:#d97a12;border:1px solid #d97a12}
+.imp-ta{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;padding:10px}
+.imp-rowmotivo{font-size:11.5px;color:var(--muted)}
+.imp-actbar{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-top:16px;position:sticky;bottom:0;background:var(--card);padding-top:12px}
+@media(max-width:640px){ .imp-modal{padding:14px} .imp-tile{min-width:calc(33% - 8px)} }
 /* Fase 4 — mobile: passo-a-passo foco total + barra inferior fixa */
 .orc-mobstep{display:none}
 .orc-bottombar{display:none}
@@ -1836,6 +1856,8 @@ function hydrate(d){
   if(!Array.isArray(d.equipamentos)) d.equipamentos=[];
   if(!Array.isArray(d.municipios)) d.municipios=[];
   if(!Array.isArray(d.fazendas)) d.fazendas=[];
+  // ===== Importação em lote (histórico de lotes, aditivo) =====
+  if(!Array.isArray(d.importHistory)) d.importHistory=[];
   // ===== Orçamentos comerciais (módulo novo, aditivo) =====
   if(!Array.isArray(d.quotes)) d.quotes=[];
   if(!d.comercial || typeof d.comercial!=='object') d.comercial={};
@@ -5275,8 +5297,25 @@ const LancService=(function(){
   // fingerprint canônico (camada 3 de dedupe): mesma despesa "parece igual"
   function fingerprintDespesa(rec){ rec=rec||{};
     return [String(rec.data||'').slice(0,10), r2(rec.valor), low(rec.cliente), low(rec.categoria), low(rec.descricao)].join('|'); }
+  // schema de campos: fonte única que dirige o formulário, o import e o Excel premium.
+  // fonte: nome do registro/const de referência (resolvido fora, no impuro). tipo: widget/parse.
+  const CAMPOS_DESPESA=[
+    {key:'data',          label:'Data',            tipo:'data'},
+    {key:'descricao',     label:'Descrição',       tipo:'texto'},
+    {key:'valor',         label:'Valor',           tipo:'moeda', obrigatorio:true},
+    {key:'natureza',      label:'Natureza',        tipo:'lista', fonte:'NATUREZAS'},
+    {key:'centroCusto',   label:'Centro de custo', tipo:'lista', fonte:'centrosCusto'},
+    {key:'categoria',     label:'Categoria',       tipo:'lista', fonte:'categorias'},
+    {key:'colaborador',   label:'Colaborador',     tipo:'lista', fonte:'colaboradores'},
+    {key:'cliente',       label:'Cliente',         tipo:'lista', fonte:'clientes'},
+    {key:'servico',       label:'Serviço',         tipo:'lista', fonte:'servicos'},
+    {key:'veiculo',       label:'Veículo',         tipo:'lista', fonte:'veiculos'},
+    {key:'formaPagamento',label:'Forma pgto',      tipo:'lista', fonte:'FORMAS_PGTO'},
+    {key:'status',        label:'Status',          tipo:'lista', fonte:'STATUS_LANC'},
+    {key:'obs',           label:'Observação',      tipo:'texto'}
+  ];
   const TIPOS={
-    despesa:{ array:'lancamentos', label:'Despesa', obrigatorios:['valor'],
+    despesa:{ array:'lancamentos', label:'Despesa', obrigatorios:['valor'], campos:CAMPOS_DESPESA,
       normalizar:normalizarDespesa, validar:validarDespesa, fingerprint:fingerprintDespesa }
   };
   function normalizar(rec,tipo,ctx){ const t=TIPOS[tipo]; return t?t.normalizar(rec,ctx):rec; }
@@ -5302,6 +5341,78 @@ const LancStore={
     if(!rec.source) rec.source='manual';
     arr.push(rec); return {ok:true, modo:'criar', rec}; }
 };
+// <import-staging>
+/* MOTOR DE STAGING DE IMPORTAÇÃO — puro e testável (sem D/DOM).
+   Recebe linhas cruas + contexto (existentes, cadastros válidos) e classifica cada
+   linha: 🟢 nova · 🔵 já existente · 🟡 possível duplicidade · 🔴 erro · 🟠 atenção.
+   NUNCA decide sozinho apagar/sobrescrever — só marca. Usa LancService para
+   normalizar/validar/fingerprint (mesma regra do lançamento manual). */
+const ImportStaging=(function(){
+  const _diac=new RegExp('[\\u0300-\\u036f]','g');
+  const acc=v=>String(v==null?'':v).trim().toLowerCase().normalize('NFD').replace(_diac,''); // p/ sugestão (acento-tolerante)
+  const low=v=>String(v==null?'':v).trim().toLowerCase(); // p/ correspondência exata (acento-sensível)
+  function lev(a,b){ a=a||''; b=b||''; const m=a.length,n=b.length; if(!m)return n; if(!n)return m;
+    const d=Array.from({length:m+1},(_,i)=>[i].concat(Array(n).fill(0)));
+    for(let j=0;j<=n;j++)d[0][j]=j;
+    for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){ const c=a[i-1]===b[j-1]?0:1;
+      d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c); } return d[m][n]; }
+  // melhor sugestão de nome parecido (typo) — só se muito próximo e não idêntico
+  function sugestao(valor,lista){ const nv=acc(valor); let best=null,bd=99;
+    (lista||[]).forEach(o=>{ const d=lev(acc(o),nv); if(d<bd){bd=d;best=o;} });
+    return (best!=null && bd<=2 && nv.length>=3)?best:null; }
+  // detecta delimitador e faz parse simples (TSV do Excel colado, ou CSV ; ,)
+  function parseTabular(text){ const raw=String(text||'').replace(/\r\n?/g,'\n').replace(/\n+$/,'');
+    if(!raw.trim())return {headers:[],rows:[]};
+    const linhas=raw.split('\n'); const first=linhas[0];
+    const delim=first.indexOf('\t')>=0?'\t':(first.indexOf(';')>=0?';':',');
+    const split=ln=>{ // respeita aspas simples de CSV
+      const out=[]; let cur='',q=false;
+      for(let i=0;i<ln.length;i++){ const ch=ln[i];
+        if(q){ if(ch==='"'){ if(ln[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+        else { if(ch==='"')q=true; else if(ch===delim){out.push(cur);cur='';} else cur+=ch; } }
+      out.push(cur); return out.map(s=>s.trim()); };
+    const headers=split(linhas[0]);
+    const rows=linhas.slice(1).map(split).filter(cells=>cells.some(c=>c!==''));
+    return {headers,rows}; }
+  // casa cabeçalhos (label OU key, acento/caixa-insensível) → índice da coluna por key
+  function mapearColunas(headers,campos){ const map={}; (headers||[]).forEach((h,i)=>{ const hh=acc(h);
+    const c=(campos||[]).find(c=>acc(c.label)===hh||acc(c.key)===hh||acc(c.key)===acc(h)); if(c && map[c.key]==null) map[c.key]=i; });
+    return map; }
+  function linhaParaRec(cells,map){ const rec={}; Object.keys(map).forEach(k=>{ rec[k]=(cells[map[k]]!=null?cells[map[k]]:''); });
+    // valor: aceita "1.234,56" ou "1234.56"
+    if(rec.valor!=null){ let v=String(rec.valor).replace(/[^\d,.-]/g,''); if(v.indexOf(',')>=0){v=v.replace(/\./g,'').replace(',','.');} rec.valor=v; }
+    return rec; }
+  // classifica todas as linhas contra os existentes e entre si
+  function classificar(recs,ctx){ ctx=ctx||{}; const tipo=ctx.tipo||'despesa';
+    const campos=(ctx.campos)||(LancService.TIPOS[tipo]&&LancService.TIPOS[tipo].campos)||[];
+    const exKeys=ctx.existentesKeys instanceof Set?ctx.existentesKeys:new Set(ctx.existentesKeys||[]);
+    const exFp=ctx.existentesFp instanceof Set?ctx.existentesFp:new Set(ctx.existentesFp||[]);
+    const validos=ctx.validos||{}; const hojeYM=ctx.hojeYM||'';
+    const vset={}; Object.keys(validos).forEach(f=>{ vset[f]=new Set((validos[f]||[]).map(low)); });
+    const seen=new Set(); const linhas=[]; const resumo={total:0,nova:0,existente:0,possivel:0,erro:0,atencao:0};
+    (recs||[]).forEach((raw,idx)=>{
+      const vals=campos.map(c=>raw[c.key]).filter(v=>String(v==null?'':v).trim()!=='');
+      if(!vals.length) return; // linha vazia → ignora
+      const rec=LancService.normalizar(Object.assign({},raw),tipo,{hojeYM});
+      const fp=LancService.fingerprint(rec,tipo);
+      const rowKey=(raw.__rowKey!=null&&String(raw.__rowKey).trim()!=='')?String(raw.__rowKey).trim():fp;
+      const motivos=[]; let status='';
+      const v=LancService.validar(rec,tipo); if(!v.ok){ status='erro'; v.erros.forEach(e=>motivos.push(e)); }
+      campos.forEach(c=>{ if(c.tipo!=='lista'||!c.fonte||!vset[c.fonte])return; const val=rec[c.key]; if(!val||String(val).trim()==='')return;
+        if(!vset[c.fonte].has(low(val))){ const sug=sugestao(val,validos[c.fonte]||[]);
+          motivos.push(c.label+' "'+val+'" não encontrado'+(sug?(' — você quis dizer "'+sug+'"?'):'')); status='erro'; } });
+      if(status!=='erro'){
+        if(exKeys.has(rowKey)){ status='existente'; motivos.push('Já importado anteriormente (mesma chave).'); }
+        else if(exFp.has(fp)){ status='possivel'; motivos.push('Já existe um lançamento igual (mesma data, valor, cliente e categoria).'); }
+        else status='nova'; }
+      if(seen.has(fp) && (status==='nova'||status==='possivel')){ status='atencao'; motivos.push('Linha repetida dentro do próprio arquivo.'); }
+      seen.add(fp);
+      resumo.total++; resumo[status]=(resumo[status]||0)+1;
+      linhas.push({i:idx, rec, status, motivos, fingerprint:fp, rowKey}); });
+    return {linhas,resumo}; }
+  return { parseTabular, mapearColunas, linhaParaRec, classificar, sugestao };
+})();
+// </import-staging>
 function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
@@ -5337,6 +5448,91 @@ function novoLancForm(){ const hoje=(function(){try{return new Date().toISOStrin
 let _ultLanc=null;
 function editarLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(l){ _despForm=JSON.parse(JSON.stringify(l)); renderDespesas(); } }
 function removerLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(!l)return; if(!confirm('Remover o lançamento "'+(l.descricao||'')+'" ('+BRL(+l.valor||0)+')?'))return; D.lancamentos=(D.lancamentos||[]).filter(x=>x.id!==id); commit(); renderDespesas(); }
+/* ===== Central de importação em lote (Fase 2 — Despesas; ingestão por colar/CSV) ===== */
+let _impState=null, _impBusy=false;
+function impValidos(){ return { clientes:nomesClientes(), categorias:nomesCategorias(), centrosCusto:nomesCentros(),
+    colaboradores:nomesColaboradores(), servicos:nomesServicos(), veiculos:(D.veiculos||[]).map(v=>v&&v.nome).filter(Boolean),
+    NATUREZAS:NATUREZAS, FORMAS_PGTO:FORMAS_PGTO, STATUS_LANC:STATUS_LANC }; }
+function impExistentes(tipo){ const T=LancService.TIPOS[tipo]; const arr=(D[T.array]||[]);
+  const keys=new Set(), fps=new Set();
+  arr.forEach(l=>{ if(!l)return; if(l.importRowKey)keys.add(String(l.importRowKey)); fps.add(LancService.fingerprint(l,tipo)); });
+  return {keys,fps}; }
+function impHojeYM(){ try{ return new Date().toISOString().slice(0,7); }catch(e){ return ''; } }
+function importLoteAbrir(tipo){ tipo=tipo||'despesa';
+  _impState={aberto:true, tipo:tipo, etapa:'ingest', arquivo:'', texto:'', resultado:null, filtro:'todas', decisao:{}};
+  renderImportLote(); }
+function importLoteFechar(){ _impState=null; const h=document.getElementById('impHost'); if(h)h.remove(); }
+function impCsvFile(input){ const f=input&&input.files&&input.files[0]; if(!f){return;} if(_impState){_impState.arquivo=f.name;}
+  const rd=new FileReader(); rd.onload=()=>{ try{ impConferir(String(rd.result||'')); }catch(e){ alert('Falha ao ler o arquivo: '+((e&&e.message)||e)); } }; rd.readAsText(f,'utf-8'); input.value=''; }
+function impConferir(textoOpt){ if(!_impState)return; const tipo=_impState.tipo; const T=LancService.TIPOS[tipo];
+  const texto=(textoOpt!=null)?textoOpt:((document.getElementById('impTexto')||{}).value||'');
+  _impState.texto=texto;
+  const {headers,rows}=ImportStaging.parseTabular(texto);
+  if(!rows.length){ alert('Cole os dados (com uma linha de cabeçalho) ou selecione um arquivo CSV.'); return; }
+  const map=ImportStaging.mapearColunas(headers,T.campos);
+  if(map.valor==null && map.data==null){ alert('Não reconheci as colunas. Use o cabeçalho com nomes como Data, Valor, Cliente, Categoria… (baixe o modelo na Fase 3).'); return; }
+  const recs=rows.map(cells=>ImportStaging.linhaParaRec(cells,map));
+  const ex=impExistentes(tipo);
+  _impState.resultado=ImportStaging.classificar(recs,{tipo:tipo, campos:T.campos, hojeYM:impHojeYM(),
+    existentesKeys:ex.keys, existentesFp:ex.fps, validos:impValidos()});
+  _impState.etapa='preview'; _impState.filtro='todas'; _impState.decisao={}; renderImportLote(); }
+function impSetFiltro(f){ if(_impState){ _impState.filtro=f; renderImportLote(); } }
+function impDecidir(i,dec){ if(!_impState)return; _impState.decisao[i]=(_impState.decisao[i]===dec?null:dec); renderImportLote(); }
+function impSelecionadasParaImportar(){ const R=_impState&&_impState.resultado; if(!R)return [];
+  return R.linhas.filter(l=> l.status==='nova' || ((l.status==='possivel'||l.status==='atencao') && _impState.decisao[l.i]==='novo')); }
+function impImportar(){ if(!_impState||_impBusy)return; const R=_impState.resultado; if(!R)return;
+  const alvo=impSelecionadasParaImportar(); if(!alvo.length){ alert('Nenhuma linha nova para importar.'); return; }
+  _impBusy=true; // guarda de duplo clique
+  const tipo=_impState.tipo; const batchId='imp'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  let ok=0; alvo.forEach(l=>{ const rec=Object.assign({},l.rec); delete rec.id;
+    rec.source='excel_import'; rec.importRowKey=l.rowKey; rec.importBatchId=batchId;
+    const res=LancStore.salvar(rec,tipo); if(res.ok && res.modo==='criar') ok++; });
+  const rz=R.resumo;
+  D.importHistory=D.importHistory||[]; D.importHistory.push({ id:batchId, tipo:tipo, arquivo:_impState.arquivo||'(colado)',
+    quando:nowISO(), quem:(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local',
+    total:rz.total, novas:rz.nova, existentes:rz.existente, possiveis:rz.possivel, erros:rz.erro, atencao:rz.atencao, importados:ok });
+  commit(); _impBusy=false; importLoteFechar();
+  try{ uiToast('✓ '+ok+' lançamento(s) importado(s)'); }catch(_){}
+  try{ renderDespesas(); }catch(_){}
+}
+function renderImportLote(){ if(!_impState)return;
+  let host=document.getElementById('impHost'); if(!host){ host=document.createElement('div'); host.id='impHost'; host.className='imp-overlay'; document.body.appendChild(host); }
+  const T=LancService.TIPOS[_impState.tipo]; const R=_impState.resultado;
+  let h='<div class="imp-modal"><div class="imp-head"><h3>📥 Importação em lote — '+esc(T.label)+'s</h3><button class="edbtn ghost" onclick="importLoteFechar()">Fechar</button></div>';
+  if(_impState.etapa==='ingest'){
+    const cols=T.campos.map(c=>esc(c.label)+(c.obrigatorio?' *':'')).join(' · ');
+    h+='<div class="cap" style="margin:6px 0 10px">Cole os dados de uma planilha (Excel/Google Sheets) <b>com a primeira linha de cabeçalho</b>, ou selecione um arquivo <b>CSV</b>. '
+      +'<b>Nada é apagado</b> — só serão adicionados registros novos, após a sua conferência.</div>';
+    h+='<div class="note" style="margin-bottom:10px"><b>Colunas reconhecidas:</b> '+cols+' <span class="cap">(* obrigatório)</span></div>';
+    h+='<textarea id="impTexto" class="imp-ta" placeholder="Data\tDescrição\tValor\tCategoria\tCliente&#10;2026-08-15\tDiesel\t1234,56\tCombustível\tDanilo Ferrarezi">'+esc(_impState.texto||'')+'</textarea>';
+    h+='<div class="imp-actbar"><label class="edbtn">📄 Selecionar CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="impCsvFile(this)"></label>'
+      +'<button class="edbtn primary" style="background:#0A6A30" onclick="impConferir()">Conferir →</button></div>';
+  } else {
+    const rz=R.resumo; const fl=_impState.filtro;
+    const tile=(k,lab,cls)=>'<div class="imp-tile'+(fl===k?' on':'')+'" onclick="impSetFiltro(\''+k+'\')"><div class="tv '+cls+'" style="color:inherit">'+(k==='todas'?rz.total:(rz[k]||0))+'</div><div class="tl">'+lab+'</div></div>';
+    h+='<div class="cap" style="margin-top:6px"><b>'+esc(_impState.arquivo||'(colado)')+'</b> · '+rz.total+' linha(s) conferida(s)</div>';
+    h+='<div class="imp-tiles">'+tile('todas','Todas')+tile('nova','🟢 Novas')+tile('existente','🔵 Já existem')+tile('possivel','🟡 Possível dup.')+tile('atencao','🟠 Atenção')+tile('erro','🔴 Erro')+'</div>';
+    const mostrar=R.linhas.filter(l=> fl==='todas' || l.status===fl);
+    const badge=s=>({nova:'imp-nova',existente:'imp-existente',possivel:'imp-possivel',erro:'imp-erro',atencao:'imp-atencao'})[s]||'';
+    const lbl=s=>({nova:'🟢 Nova',existente:'🔵 Já existe',possivel:'🟡 Possível dup.',erro:'🔴 Erro',atencao:'🟠 Atenção'})[s]||s;
+    h+='<div style="overflow-x:auto;max-height:52vh;overflow-y:auto"><table class="resp-cards"><thead><tr><th>Situação</th><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Cliente</th><th>Categoria</th><th>Detalhe</th></tr></thead><tbody>';
+    if(!mostrar.length){ h+='<tr><td colspan="7"><div class="op-empty">Nenhuma linha neste filtro.</div></td></tr>'; }
+    mostrar.forEach(l=>{ const r=l.rec; const podeNovo=(l.status==='possivel'||l.status==='atencao');
+      const dec=_impState.decisao[l.i];
+      h+='<tr><td data-label="Situação" class="cardttl"><span class="imp-badge '+badge(l.status)+'">'+lbl(l.status)+'</span></td>'
+        +'<td data-label="Data">'+esc(r.data||'—')+'</td><td data-label="Descrição">'+esc(r.descricao||'—')+'</td>'
+        +'<td data-label="Valor" class="num">'+BRL(+r.valor||0)+'</td><td data-label="Cliente">'+esc(r.cliente||'—')+'</td>'
+        +'<td data-label="Categoria">'+esc(r.categoria||'—')+'</td>'
+        +'<td data-label="Detalhe"><div class="imp-rowmotivo">'+(l.motivos.map(esc).join('<br>')||'—')+'</div>'
+        +(podeNovo?('<div style="margin-top:5px"><button class="op-linkbtn" style="border:1px solid var(--line)'+(dec==='novo'?';background:var(--tintG);border-color:var(--leaf)':'')+'" onclick="impDecidir('+l.i+',\'novo\')">'+(dec==='novo'?'✓ Importar como novo':'Importar como novo')+'</button></div>'):'')
+        +'</td></tr>'; });
+    h+='</tbody></table></div>';
+    const nSel=impSelecionadasParaImportar().length;
+    h+='<div class="imp-actbar"><button class="edbtn" onclick="_impState.etapa=\'ingest\';renderImportLote()">‹ Voltar</button>'
+      +'<button class="edbtn primary orc-big" style="background:#0A6A30" onclick="impImportar()"'+(nSel?'':' disabled style="opacity:.5;background:#0A6A30"')+'>Importar somente novas ('+nSel+')</button></div>';
+  }
+  h+='</div>'; host.innerHTML=h;
+}
 function renderDespesas(){
   const host=document.getElementById('edDespesas'); if(!host)return;
   try{ gerarRecorrencias(); }catch(e){ console.warn('gerarRec',e); }
@@ -5353,7 +5549,8 @@ function renderDespesas(){
       '<span style="color:var(--muted)">projeção do ano: '+BRLk(custoAtual)+(proj>1?(' · faltam <b style="color:var(--gold)">'+BRL(proj)+'</b> de meses projetados (ago–dez) a lançar'):(Math.abs(proj)<=1?' · <b style="color:var(--green)">concilia ✓</b>':'')) +'</span></div>';
   }
   h+='</div>';
-  h+='<div style="margin-bottom:12px"><button class="edbtn primary" id="despNovo">+ Nova despesa</button></div>';
+  h+='<div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="edbtn primary" id="despNovo">+ Nova despesa</button>'
+    +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button></div>';
   // formulário
   if(_despForm){ const F=_despForm;
     const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
