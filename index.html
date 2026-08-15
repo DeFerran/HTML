@@ -1268,7 +1268,9 @@ header .htxt h1{display:none}
       <div class="op-actions">
         <div class="op-campo" style="min-width:auto"><label>Fator padrão (ha/ponto)</label>
           <input type="number" id="opFator" min="0" step="0.5" style="width:150px" list="opFatorList" placeholder="ex.: 3" onchange="opColetaSetFator()" title="Fator sugerido para novos lançamentos (ha por ponto). Varia por cliente/grade: 1, 2, 3, 5, 10… O valor real fica em cada lançamento."></div>
-        <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV no formato do Exportar (adiciona linhas)">⬆ Importar<input type="file" accept=".csv,text/csv" style="display:none" onchange="opColImportFile(this)"></label>
+        <button class="btn" style="align-self:end" onclick="importLoteAbrir('coleta')" title="Importar em lote (.xlsx/CSV) com conferência antes — nada é apagado">📥 Importar em lote</button>
+        <button class="btn" style="align-self:end" onclick="baixarModelo('coleta')" title="Baixar modelo Excel premium de Coleta">📄 Baixar modelo</button>
+        <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV simples no formato do Exportar (adiciona linhas)">⬆ Importar CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="opColImportFile(this)"></label>
         <button class="btn" style="align-self:end" onclick="opColetaExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
       </div>
@@ -5273,6 +5275,7 @@ function renderCliEditor(){
 const NATUREZAS=['Custo operacional direto','Custo operacional indireto','Despesa administrativa','Despesa comercial','Despesa financeira','Investimento / CAPEX','Custo com pessoal','Tributos','Outros'];
 const FORMAS_PGTO=['Pix','Boleto','Cartão','Transferência','Dinheiro','Débito automático'];
 const STATUS_LANC=['Previsto','Aprovado','Pago','Pendente','Cancelado'];
+const COLETA_STATUS=['Planejada','Em andamento','Finalizada','Não trabalhado'];
 function uidLanc(){ return 'l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function nowISO(){ try{ return new Date().toISOString(); }catch(e){ return ''; } }
 // <lanc-service>
@@ -5314,9 +5317,38 @@ const LancService=(function(){
     {key:'status',        label:'Status',          tipo:'lista', fonte:'STATUS_LANC'},
     {key:'obs',           label:'Observação',      tipo:'texto'}
   ];
+  // ---- COLETA DE PONTOS (D.opColeta.lancamentos) — campo aninhado colaboradores ----
+  const _colMap={ 'planejada':'planejada','em andamento':'andamento','andamento':'andamento','finalizada':'finalizada','não trabalhado':'nao_trabalhado','nao trabalhado':'nao_trabalhado','nao_trabalhado':'nao_trabalhado' };
+  function parseColabs(v){ if(Array.isArray(v))return v;
+    return String(v||'').split('|').map(x=>{ const m=x.split(':'); const nome=(m[0]||'').trim(); const pts=parseInt(String(m[1]||'').replace(/[^\d-]/g,''),10)||0; return nome?{nome:nome,pontos:pts}:null; }).filter(Boolean); }
+  function normalizarColeta(rec,ctx){ rec=rec||{};
+    rec.colaboradores=parseColabs(rec.colaboradores);
+    rec.fator=(rec.fator!=null&&rec.fator!=='')?r2(rec.fator):'';
+    rec.status=rec.status?(_colMap[low(rec.status)]||'andamento'):'andamento';
+    return rec; }
+  function validarColeta(rec){ rec=rec||{}; const erros=[]; let campo='';
+    if(!s(rec.data)){ erros.push('Informe a data da coleta.'); campo='data'; }
+    return {ok:erros.length===0, erros, campo}; }
+  function fingerprintColeta(rec){ rec=rec||{}; const cl=(rec.colaboradores||[]).map(c=>low(c&&c.nome)+':'+(+(c&&c.pontos)||0)).sort().join('+');
+    return [String(rec.data||'').slice(0,10), low(rec.cliente), low(rec.fazenda), low(rec.talhao), cl].join('|'); }
+  const CAMPOS_COLETA=[
+    {key:'data',         label:'Data',                            tipo:'data', obrigatorio:true},
+    {key:'cliente',      label:'Cliente',                         tipo:'lista', fonte:'clientes'},
+    {key:'fazenda',      label:'Fazenda',                         tipo:'texto'},
+    {key:'talhao',       label:'Talhão',                          tipo:'texto'},
+    {key:'equipe',       label:'Equipe',                          tipo:'texto'},
+    {key:'fator',        label:'Fator (ha/ponto)',                tipo:'numero'},
+    {key:'colaboradores',label:'Colaboradores (Nome: pontos | …)',tipo:'texto'},
+    {key:'status',       label:'Status',                          tipo:'lista', fonte:'COLETA_STATUS', softLista:true},
+    {key:'obs',          label:'Observações',                     tipo:'texto'}
+  ];
   const TIPOS={
     despesa:{ array:'lancamentos', label:'Despesa', obrigatorios:['valor'], campos:CAMPOS_DESPESA,
-      normalizar:normalizarDespesa, validar:validarDespesa, fingerprint:fingerprintDespesa }
+      preview:['data','descricao','valor','cliente','categoria'],
+      normalizar:normalizarDespesa, validar:validarDespesa, fingerprint:fingerprintDespesa },
+    coleta:{ array:'opColeta.lancamentos', label:'Coleta', obrigatorios:['data'], campos:CAMPOS_COLETA,
+      preview:['data','cliente','fazenda','colaboradores','status'],
+      normalizar:normalizarColeta, validar:validarColeta, fingerprint:fingerprintColeta }
   };
   function normalizar(rec,tipo,ctx){ const t=TIPOS[tipo]; return t?t.normalizar(rec,ctx):rec; }
   function validar(rec,tipo){ const t=TIPOS[tipo]; return t?t.validar(rec):{ok:true,erros:[],campo:''}; }
@@ -5327,13 +5359,16 @@ const LancService=(function(){
 /* Orquestrador (IMPURO): único ponto de escrita em D. Aplica o serviço central
    e cuida de id/auditoria. NÃO faz commit (o chamador decide quando persistir). */
 function _hojeYM(){ try{ return new Date().toISOString().slice(0,7); }catch(e){ return ''; } }
+// resolve (criando se preciso) o array-alvo do tipo, aceitando caminho aninhado ('opColeta.lancamentos')
+function _lancArr(tipo){ const T=LancService.TIPOS[tipo]; const path=String(T.array).split('.'); let o=D;
+  for(let i=0;i<path.length-1;i++){ if(!o[path[i]]||typeof o[path[i]]!=='object')o[path[i]]={}; o=o[path[i]]; }
+  const last=path[path.length-1]; if(!Array.isArray(o[last]))o[last]=[]; return o[last]; }
 const LancStore={
   salvar:function(rec,tipo){ tipo=tipo||'despesa'; const T=LancService.TIPOS[tipo];
     if(!T) return {ok:false, erros:['Tipo de lançamento desconhecido: '+tipo], campo:''};
     LancService.normalizar(rec,tipo,{hojeYM:_hojeYM()});
     const v=LancService.validar(rec,tipo); if(!v.ok) return {ok:false, erros:v.erros, campo:v.campo};
-    if(!Array.isArray(D[T.array])) D[T.array]=[];
-    const arr=D[T.array];
+    const arr=_lancArr(tipo);
     if(rec.id){ const i=arr.findIndex(l=>l&&l.id===rec.id);
       if(i>=0){ rec.atualizadoEm=nowISO(); arr[i]=rec; return {ok:true, modo:'atualizar', rec}; }
       return {ok:true, modo:'noop', rec}; } // id informado mas inexistente → preserva comportamento antigo
@@ -5398,7 +5433,7 @@ const ImportStaging=(function(){
       const rowKey=(raw.__rowKey!=null&&String(raw.__rowKey).trim()!=='')?String(raw.__rowKey).trim():fp;
       const motivos=[]; let status='';
       const v=LancService.validar(rec,tipo); if(!v.ok){ status='erro'; v.erros.forEach(e=>motivos.push(e)); }
-      campos.forEach(c=>{ if(c.tipo!=='lista'||!c.fonte||!vset[c.fonte])return; const val=rec[c.key]; if(!val||String(val).trim()==='')return;
+      campos.forEach(c=>{ if(c.tipo!=='lista'||!c.fonte||c.softLista||!vset[c.fonte])return; const val=rec[c.key]; if(!val||String(val).trim()==='')return;
         if(!vset[c.fonte].has(low(val))){ const sug=sugestao(val,validos[c.fonte]||[]);
           motivos.push(c.label+' "'+val+'" não encontrado'+(sug?(' — você quis dizer "'+sug+'"?'):'')); status='erro'; } });
       if(status!=='erro'){
@@ -5610,8 +5645,8 @@ function removerLanc(id){ const l=(D.lancamentos||[]).find(x=>x.id===id); if(!l)
 let _impState=null, _impBusy=false;
 function impValidos(){ return { clientes:nomesClientes(), categorias:nomesCategorias(), centrosCusto:nomesCentros(),
     colaboradores:nomesColaboradores(), servicos:nomesServicos(), veiculos:(D.veiculos||[]).map(v=>v&&v.nome).filter(Boolean),
-    NATUREZAS:NATUREZAS, FORMAS_PGTO:FORMAS_PGTO, STATUS_LANC:STATUS_LANC }; }
-function impExistentes(tipo){ const T=LancService.TIPOS[tipo]; const arr=(D[T.array]||[]);
+    fazendas:nomesFazendas(), NATUREZAS:NATUREZAS, FORMAS_PGTO:FORMAS_PGTO, STATUS_LANC:STATUS_LANC, COLETA_STATUS:COLETA_STATUS }; }
+function impExistentes(tipo){ const arr=_lancArr(tipo);
   const keys=new Set(), fps=new Set();
   arr.forEach(l=>{ if(!l)return; if(l.importRowKey)keys.add(String(l.importRowKey)); fps.add(LancService.fingerprint(l,tipo)); });
   return {keys,fps}; }
@@ -5674,8 +5709,12 @@ function impImportar(){ if(!_impState||_impBusy)return; const R=_impState.result
     total:rz.total, novas:rz.nova, existentes:rz.existente, possiveis:rz.possivel, erros:rz.erro, atencao:rz.atencao, importados:ok });
   commit(); _impBusy=false; importLoteFechar();
   try{ uiToast('✓ '+ok+' lançamento(s) importado(s)'); }catch(_){}
-  try{ renderDespesas(); }catch(_){}
+  _lancReRender(tipo);
 }
+function _lancReRender(tipo){ try{ if(tipo==='coleta'){ if(typeof renderOpColeta==='function')renderOpColeta(); } else { if(typeof renderDespesas==='function')renderDespesas(); } }catch(_){} }
+function impFmtCol(key,rec){ const v=rec?rec[key]:''; if(key==='valor')return BRL(+v||0);
+  if(Array.isArray(v))return v.map(c=>(c&&c.nome?c.nome:'')+((c&&c.pontos!=null)?(': '+c.pontos):'')).filter(Boolean).join(', ')||'—';
+  return (v==null||v==='')?'—':String(v); }
 function renderImportLote(){ if(!_impState)return;
   let host=document.getElementById('impHost'); if(!host){ host=document.createElement('div'); host.id='impHost'; host.className='imp-overlay'; document.body.appendChild(host); }
   const T=LancService.TIPOS[_impState.tipo]; const R=_impState.resultado;
@@ -5705,14 +5744,12 @@ function renderImportLote(){ if(!_impState)return;
     const mostrar=R.linhas.filter(l=> fl==='todas' || l.status===fl);
     const badge=s=>({nova:'imp-nova',existente:'imp-existente',possivel:'imp-possivel',erro:'imp-erro',atencao:'imp-atencao'})[s]||'';
     const lbl=s=>({nova:'🟢 Nova',existente:'🔵 Já existe',possivel:'🟡 Possível dup.',erro:'🔴 Erro',atencao:'🟠 Atenção'})[s]||s;
-    h+='<div style="overflow-x:auto;max-height:52vh;overflow-y:auto"><table class="resp-cards"><thead><tr><th>Situação</th><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Cliente</th><th>Categoria</th><th>Detalhe</th></tr></thead><tbody>';
-    if(!mostrar.length){ h+='<tr><td colspan="7"><div class="op-empty">Nenhuma linha neste filtro.</div></td></tr>'; }
-    mostrar.forEach(l=>{ const r=l.rec; const podeNovo=(l.status==='possivel'||l.status==='atencao');
-      const dec=_impState.decisao[l.i];
+    const pcols=(T.preview||T.campos.slice(0,5).map(c=>c.key)).map(k=>(T.campos.find(c=>c.key===k)||{key:k,label:k}));
+    h+='<div style="overflow-x:auto;max-height:52vh;overflow-y:auto"><table class="resp-cards"><thead><tr><th>Situação</th>'+pcols.map(c=>'<th'+(c.key==='valor'?' class="num"':'')+'>'+esc(c.label)+'</th>').join('')+'<th>Detalhe</th></tr></thead><tbody>';
+    if(!mostrar.length){ h+='<tr><td colspan="'+(pcols.length+2)+'"><div class="op-empty">Nenhuma linha neste filtro.</div></td></tr>'; }
+    mostrar.forEach(l=>{ const r=l.rec; const podeNovo=(l.status==='possivel'||l.status==='atencao'); const dec=_impState.decisao[l.i];
       h+='<tr><td data-label="Situação" class="cardttl"><span class="imp-badge '+badge(l.status)+'">'+lbl(l.status)+'</span></td>'
-        +'<td data-label="Data">'+esc(r.data||'—')+'</td><td data-label="Descrição">'+esc(r.descricao||'—')+'</td>'
-        +'<td data-label="Valor" class="num">'+BRL(+r.valor||0)+'</td><td data-label="Cliente">'+esc(r.cliente||'—')+'</td>'
-        +'<td data-label="Categoria">'+esc(r.categoria||'—')+'</td>'
+        +pcols.map(c=>'<td data-label="'+esc(c.label)+'"'+(c.key==='valor'?' class="num"':'')+'>'+esc(impFmtCol(c.key,r))+'</td>').join('')
         +'<td data-label="Detalhe"><div class="imp-rowmotivo">'+(l.motivos.map(esc).join('<br>')||'—')+'</div>'
         +(podeNovo?('<div style="margin-top:5px"><button class="op-linkbtn" style="border:1px solid var(--line)'+(dec==='novo'?';background:var(--tintG);border-color:var(--leaf)':'')+'" onclick="impDecidir('+l.i+',\'novo\')">'+(dec==='novo'?'✓ Importar como novo':'Importar como novo')+'</button></div>'):'')
         +'</td></tr>'; });
@@ -5724,68 +5761,61 @@ function renderImportLote(){ if(!_impState)return;
   h+='</div>'; host.innerHTML=h;
 }
 /* ===== Gerador de modelo Excel premium (Fase 3) ===== */
-const TEMPLATE_VERSAO={ despesa:'despesa-v1' };
+const TEMPLATE_VERSAO={ despesa:'despesa-v1', coleta:'coleta-v1' };
+const FONTE_INLINE={NATUREZAS:1,FORMAS_PGTO:1,STATUS_LANC:1,COLETA_STATUS:1};
+const FONTE_LABEL={clientes:'Clientes',categorias:'Categorias',centrosCusto:'Centros de custo',colaboradores:'Colaboradores',servicos:'Serviços',veiculos:'Veículos',fazendas:'Fazendas',NATUREZAS:'Naturezas',FORMAS_PGTO:'Formas de pgto',STATUS_LANC:'Status',COLETA_STATUS:'Status da coleta'};
+const FONTE_RANGE={clientes:'Lista_Clientes',categorias:'Lista_Categorias',centrosCusto:'Lista_Centros',colaboradores:'Lista_Colaboradores',servicos:'Lista_Servicos',veiculos:'Lista_Veiculos',fazendas:'Lista_Fazendas'};
 function _hojeBR(){ try{ const d=new Date(); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); }catch(e){ return ''; } }
-function modeloSpecDespesa(){ const S=XlsxPremium.S; const campos=LancService.TIPOS.despesa.campos; const V=impValidos();
-  const NROWS=200; const lastCol=XlsxPremium.colName(campos.length); const sysCol=campos.length+1;
-  // 03_REFERÊNCIAS — colunas de cadastros reais + intervalos nomeados
-  const refDefs=[
-    {nome:'Clientes',fonte:'clientes',range:'Lista_Clientes'},
-    {nome:'Categorias',fonte:'categorias',range:'Lista_Categorias'},
-    {nome:'Centros de custo',fonte:'centrosCusto',range:'Lista_Centros'},
-    {nome:'Colaboradores',fonte:'colaboradores',range:'Lista_Colaboradores'},
-    {nome:'Serviços',fonte:'servicos',range:'Lista_Servicos'},
-    {nome:'Veículos',fonte:'veiculos',range:'Lista_Veiculos'},
-    {nome:'Naturezas',fonte:'NATUREZAS',range:''},
-    {nome:'Formas de pgto',fonte:'FORMAS_PGTO',range:''},
-    {nome:'Status',fonte:'STATUS_LANC',range:''}
-  ];
+function _modeloSample(c, V, tipo){ const k=c.key;
+  if(c.tipo==='data')return '15/08/2026'; if(c.tipo==='moeda')return '1234,56';
+  if(k==='descricao')return 'Análise de solo'; if(k==='cliente')return (V.clientes||[])[0]||'Cliente Exemplo';
+  if(k==='categoria')return (V.categorias||[])[0]||'Laboratório'; if(k==='fazenda')return (V.fazendas||[])[0]||'Fazenda 1';
+  if(k==='talhao')return 'T-01'; if(k==='equipe')return 'Equipe A'; if(k==='fator')return '3';
+  if(k==='colaboradores')return 'Fulano: 40 | Ciclano: 30'; if(k==='status')return (tipo==='coleta'?'Em andamento':'Pago'); return ''; }
+function modeloSpec(tipo){ const S=XlsxPremium.S; const T=LancService.TIPOS[tipo]; const campos=T.campos; const V=impValidos();
+  const NROWS=200; const lastCol=XlsxPremium.colName(campos.length);
+  // fontes distintas usadas pelos campos (na ordem) → aba de referências + intervalos nomeados
+  const fontes=[]; campos.forEach(c=>{ if(c.tipo==='lista'&&c.fonte&&fontes.indexOf(c.fonte)<0)fontes.push(c.fonte); });
+  const refDefs=fontes.map(f=>({fonte:f, nome:FONTE_LABEL[f]||f, range:FONTE_INLINE[f]?'':(FONTE_RANGE[f]||'')}));
+  const REF_SHEET="03_REFERÊNCIAS";
   const refMax=refDefs.reduce((m,r)=>Math.max(m,(V[r.fonte]||[]).length),0);
   const refRows=[refDefs.map(r=>({v:r.nome,t:'s',s:S.REFH}))];
   for(let i=0;i<refMax;i++){ refRows.push(refDefs.map(r=>{ const val=(V[r.fonte]||[])[i]; return val!=null?{v:val,t:'s',s:0}:{s:0}; })); }
-  const REF_SHEET="03_REFERÊNCIAS";
-  const definedNames=refDefs.filter(r=>r.range).map((r,idx)=>{ const col=XlsxPremium.colName(refDefs.indexOf(r)+1); const n=(V[r.fonte]||[]).length;
+  const definedNames=refDefs.filter(r=>r.range).map(r=>{ const col=XlsxPremium.colName(refDefs.indexOf(r)+1); const n=(V[r.fonte]||[]).length;
     return {name:r.range, ref:"'"+REF_SHEET+"'!$"+col+"$2:$"+col+"$"+(n>0?(n+1):2)}; });
-  // 02_LANÇAMENTOS — cabeçalho + linhas vazias estilizadas + validações
-  const head=campos.map(c=>({v:c.label,t:'s',s:c.obrigatorio?S.HEADER_REQ:S.HEADER}));
-  head.push({v:'import_row_key',t:'s',s:S.SYS});
+  // 02_LANÇAMENTOS
+  const head=campos.map(c=>({v:c.label,t:'s',s:c.obrigatorio?S.HEADER_REQ:S.HEADER})); head.push({v:'import_row_key',t:'s',s:S.SYS});
   const lancRows=[head];
-  for(let r=0;r<NROWS;r++){ const alt=(r%2===1); const row=campos.map(c=>{
-      const st = c.tipo==='moeda'?(alt?S.ALT_CUR:S.IN_CUR) : c.tipo==='data'?(alt?S.ALT_DATE:S.IN_DATE) : (alt?S.ALT_TEXT:S.IN_TEXT);
-      return {s:st}; });
+  for(let r=0;r<NROWS;r++){ const alt=(r%2===1); const row=campos.map(c=>({ s: c.tipo==='moeda'?(alt?S.ALT_CUR:S.IN_CUR) : c.tipo==='data'?(alt?S.ALT_DATE:S.IN_DATE) : (alt?S.ALT_TEXT:S.IN_TEXT) }));
     row.push({s:S.SYS}); lancRows.push(row); }
-  const cols=campos.map(c=>({w: c.key==='descricao'?30 : c.key==='obs'?28 : c.key==='valor'?14 : c.key==='data'?13 : 18}));
-  cols.push({w:16,hidden:true}); // import_row_key
+  const cols=campos.map(c=>({w: (c.key==='descricao'||c.key==='colaboradores')?30 : c.key==='obs'?28 : c.key==='valor'?14 : c.key==='data'?13 : 18})); cols.push({w:16,hidden:true});
   const validations=[]; const inlineDe=fonte=>'"'+(V[fonte]||[]).map(s=>String(s).replace(/,/g,' ')).join(',')+'"';
   campos.forEach((c,i)=>{ if(c.tipo!=='lista'||!c.fonte)return; const col=XlsxPremium.colName(i+1); const sqref=col+'2:'+col+(NROWS+1);
     const rd=refDefs.find(r=>r.fonte===c.fonte);
     if(rd&&rd.range){ validations.push({sqref:sqref, formula1:rd.range}); }
     else if((V[c.fonte]||[]).length){ validations.push({sqref:sqref, formula1:inlineDe(c.fonte)}); } });
-  // 01_INSTRUÇÕES
+  const oblig=campos.filter(c=>c.obrigatorio).map(c=>c.label).join(', ')||'—';
   const instr=[
     [{v:'DF AGRO — Modelo de importação em lote',t:'s',s:S.TITLE}],
-    [{v:'Tipo',t:'s',s:S.LABEL},{v:'Despesas',t:'s',s:0}],
+    [{v:'Tipo',t:'s',s:S.LABEL},{v:T.label+'s',t:'s',s:0}],
     [{v:'Empresa',t:'s',s:S.LABEL},{v:'DF AGRO',t:'s',s:0}],
     [{v:'Gerado em',t:'s',s:S.LABEL},{v:_hojeBR(),t:'s',s:0}],
-    [{v:'Versão do modelo',t:'s',s:S.LABEL},{v:TEMPLATE_VERSAO.despesa,t:'s',s:0}],
+    [{v:'Versão do modelo',t:'s',s:S.LABEL},{v:TEMPLATE_VERSAO[tipo]||'',t:'s',s:0}],
     [{s:0}],
     [{v:'Como usar',t:'s',s:S.LABEL}],
     [{v:'1) Preencha somente a aba 02_LANÇAMENTOS.',t:'s',s:S.BODY}],
     [{v:'2) Não altere os nomes das colunas.',t:'s',s:S.BODY}],
     [{v:'3) Use as listas suspensas (dados vêm da aba 03_REFERÊNCIAS).',t:'s',s:S.BODY}],
-    [{v:'4) Campos obrigatórios estão marcados no cabeçalho (Valor).',t:'s',s:S.BODY}],
-    [{v:'5) Faça o upload deste arquivo na plataforma (Lançamentos → Importar em lote).',t:'s',s:S.BODY}],
+    [{v:'4) Campos obrigatórios: '+oblig+'.',t:'s',s:S.BODY}],
+    [{v:'5) Faça o upload deste arquivo na plataforma (→ Importar em lote).',t:'s',s:S.BODY}],
     [{v:'6) Nenhum lançamento antigo será apagado — só entram registros novos.',t:'s',s:S.BODY}],
     [{v:'7) A plataforma mostra uma conferência antes de importar.',t:'s',s:S.BODY}],
     [{s:0}],
     [{v:'Legenda',t:'s',s:S.LABEL}],
     [{v:'OBRIGATÓRIO',t:'s',s:S.LEG_REQ},{v:'OPCIONAL',t:'s',s:S.LEG_OPC},{v:'AUTOMÁTICO / NÃO EDITAR',t:'s',s:S.LEG_AUTO}]
   ];
-  // 04_EXEMPLO — cabeçalho + linhas ilustrativas
-  const ex1c=(V.clientes||[])[0]||'Cliente Exemplo', ex1cat=(V.categorias||[])[0]||'Categoria';
   const exHead=campos.map(c=>({v:c.label,t:'s',s:c.obrigatorio?S.HEADER_REQ:S.HEADER}));
-  const exRow=key=>campos.map(c=>{ let v=''; if(c.key==='data')v='15/08/2026'; else if(c.key==='descricao')v='Análise de solo'; else if(c.key==='valor')v='1234,56'; else if(c.key==='cliente')v=ex1c; else if(c.key==='categoria')v=ex1cat;
-    return v?{v:v,t:'s',s:S.IN_TEXT}:{s:S.IN_TEXT}; });
+  const exRow=()=>campos.map(c=>{ const v=_modeloSample(c,V,tipo); return v?{v:v,t:'s',s:S.IN_TEXT}:{s:S.IN_TEXT}; });
   const exemplo=[exHead, exRow(), exRow()];
   return { definedNames, sheets:[
     { name:'01_INSTRUÇÕES', rows:instr, cols:[{w:22},{w:32},{w:26}] },
@@ -5794,13 +5824,13 @@ function modeloSpecDespesa(){ const S=XlsxPremium.S; const campos=LancService.TI
     { name:'04_EXEMPLO', rows:exemplo, cols:cols.slice(0,campos.length), headerRow:0, freezeRow:1 }
   ] };
 }
-function baixarModelo(tipo){ tipo=tipo||'despesa';
-  if(tipo!=='despesa'){ alert('Modelo disponível: Despesas (os demais tipos entram nas próximas fases).'); return; }
-  try{ const bytes=XlsxPremium.build(modeloSpecDespesa());
+function baixarModelo(tipo){ tipo=tipo||'despesa'; const T=LancService.TIPOS[tipo];
+  if(!T){ alert('Tipo de modelo indisponível.'); return; }
+  try{ const bytes=XlsxPremium.build(modeloSpec(tipo));
     const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Modelo - Despesas - DF AGRO.xlsx';
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Modelo - '+T.label+'s - DF AGRO.xlsx';
     document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },150);
-    try{ uiToast('✓ Modelo de Despesas gerado'); }catch(_){}
+    try{ uiToast('✓ Modelo de '+T.label+'s gerado'); }catch(_){}
   }catch(e){ alert('Não foi possível gerar o modelo: '+((e&&e.message)||e)); } }
 /* ===== Replicação em lote (Fase 5) — wizard: cria N lançamentos completos ===== */
 let _repState=null, _repBusy=false;
