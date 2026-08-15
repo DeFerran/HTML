@@ -5298,14 +5298,21 @@ const LancService=(function(){
   const r2=v=>Math.round((+v||0)*100)/100;
   const s=v=>String(v==null?'':v).trim();
   const low=v=>s(v).toLowerCase();
+  // converte data para ISO (YYYY-MM-DD) aceitando ISO, DD/MM/AAAA e DD-MM-AAAA; '' se inválida
+  function parseData(v){ v=s(v); if(!v)return '';
+    let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m){ const mo=+m[2],d=+m[3]; if(mo>=1&&mo<=12&&d>=1&&d<=31)return m[1]+'-'+('0'+mo).slice(-2)+'-'+('0'+d).slice(-2); return ''; }
+    m=v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if(m){ let y=m[3]; if(y.length===2)y='20'+y; const d=+m[1],mo=+m[2]; if(mo>=1&&mo<=12&&d>=1&&d<=31)return y+'-'+('0'+mo).slice(-2)+'-'+('0'+d).slice(-2); }
+    return ''; }
   // ---- DESPESA (D.lancamentos) ----
   function normalizarDespesa(rec,ctx){ ctx=ctx||{}; rec=rec||{};
     rec.valor=r2(rec.valor);
-    if(rec.data && !rec.competencia) rec.competencia=String(rec.data).slice(0,7);
+    if(rec.data){ const iso=parseData(rec.data); if(iso)rec.data=iso; }
+    if(rec.data && !rec.competencia){ const iso=parseData(rec.data); if(iso)rec.competencia=iso.slice(0,7); }
     if(!rec.competencia && ctx.hojeYM) rec.competencia=ctx.hojeYM;
     return rec; }
   function validarDespesa(rec){ rec=rec||{}; const erros=[]; let campo='';
     if(!((+rec.valor)>0)){ erros.push('Informe um valor maior que zero.'); campo='valor'; }
+    if(s(rec.data) && !parseData(rec.data)){ erros.push('Data inválida (use DD/MM/AAAA).'); if(!campo)campo='data'; }
     return {ok:erros.length===0, erros, campo}; }
   // fingerprint canônico (camada 3 de dedupe): mesma despesa "parece igual"
   function fingerprintDespesa(rec){ rec=rec||{};
@@ -5332,12 +5339,14 @@ const LancService=(function(){
   function parseColabs(v){ if(Array.isArray(v))return v;
     return String(v||'').split('|').map(x=>{ const m=x.split(':'); const nome=(m[0]||'').trim(); const pts=parseInt(String(m[1]||'').replace(/[^\d-]/g,''),10)||0; return nome?{nome:nome,pontos:pts}:null; }).filter(Boolean); }
   function normalizarColeta(rec,ctx){ rec=rec||{};
+    if(rec.data){ const iso=parseData(rec.data); if(iso)rec.data=iso; }
     rec.colaboradores=parseColabs(rec.colaboradores);
     rec.fator=(rec.fator!=null&&rec.fator!=='')?r2(rec.fator):'';
     rec.status=rec.status?(_colMap[low(rec.status)]||'andamento'):'andamento';
     return rec; }
   function validarColeta(rec){ rec=rec||{}; const erros=[]; let campo='';
     if(!s(rec.data)){ erros.push('Informe a data da coleta.'); campo='data'; }
+    else if(!parseData(rec.data)){ erros.push('Data inválida (use DD/MM/AAAA).'); campo='data'; }
     return {ok:erros.length===0, erros, campo}; }
   function fingerprintColeta(rec){ rec=rec||{}; const cl=(rec.colaboradores||[]).map(c=>low(c&&c.nome)+':'+(+(c&&c.pontos)||0)).sort().join('+');
     return [String(rec.data||'').slice(0,10), low(rec.cliente), low(rec.fazenda), low(rec.talhao), cl].join('|'); }
@@ -5363,7 +5372,7 @@ const LancService=(function(){
   function normalizar(rec,tipo,ctx){ const t=TIPOS[tipo]; return t?t.normalizar(rec,ctx):rec; }
   function validar(rec,tipo){ const t=TIPOS[tipo]; return t?t.validar(rec):{ok:true,erros:[],campo:''}; }
   function fingerprint(rec,tipo){ const t=TIPOS[tipo]; return t?t.fingerprint(rec):''; }
-  return { round2:r2, TIPOS, normalizar, validar, fingerprint };
+  return { round2:r2, parseData, TIPOS, normalizar, validar, fingerprint };
 })();
 // </lanc-service>
 /* Orquestrador (IMPURO): único ponto de escrita em D. Aplica o serviço central
