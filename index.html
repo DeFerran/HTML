@@ -6514,6 +6514,10 @@ function orcConverter(id){ const q=(D.quotes||[]).find(x=>x&&x.id===id); if(!q)r
       responsaveis:(q.vendedor?{PEDIDO:q.vendedor}:{}),refs:{coletaIds:[],remessaIds:[],entregaId:'',funil:false},eventos:[],criadoEm:nowISO()};
     projLog(proj,{tipo:'PEDIDO_CRIADO',etapaPara:'PEDIDO',em:(q.emitidoEm?q.emitidoEm+'T12:00:00.000Z':(q.criadoEm||nowISO())),responsavel:q.vendedor||'',obs:'Orçamento '+q.numero,origem:'orcamento'});
     if(!Array.isArray(D.projetos))D.projetos=[]; D.projetos.push(proj); q.projetoId=pid; criados.push('Projeto '+proj.numero); }
+  // garante refs íntegro (projeto pré-existente pode ter refs incompleto ao reconverter)
+  if(!proj.refs||typeof proj.refs!=='object')proj.refs={};
+  if(!Array.isArray(proj.refs.coletaIds))proj.refs.coletaIds=[];
+  if(!Array.isArray(proj.refs.remessaIds))proj.refs.remessaIds=[];
   if(samp.length){ if(!D.opColeta||typeof D.opColeta!=='object')D.opColeta={lancamentos:[],hectaresFator:null}; if(!Array.isArray(D.opColeta.lancamentos))D.opColeta.lancamentos=[];
     const coletaId='opc'+uidLanc();
     D.opColeta.lancamentos.push({id:coletaId,projetoId:proj.id,data:'',equipe:'',cliente:q.clienteNome||'',fazenda:q.fazenda||'',talhao:'',fator:(fator||''),status:'planejada',obs:'Orçamento '+q.numero,colaboradores:[]}); proj.refs.coletaIds.push(coletaId); criados.push('Coleta');
