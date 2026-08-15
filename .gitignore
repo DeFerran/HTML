@@ -1,0 +1,13 @@
+# Relatórios de auditoria de segurança: mantidos LOCAIS.
+# Este repositório é servido publicamente (GitHub Pages/PWA); publicar um mapa de
+# vulnerabilidades seria uma exposição. Remova esta linha só se decidir versioná-los
+# num local privado (ver docs/security-audit/00 · "Decisões").
+docs/security-audit/
+
+# Secrets / ambiente (nunca versionar)
+.env
+.env.*
+*.pem
+*.key
+*.p8
+secrets.*
