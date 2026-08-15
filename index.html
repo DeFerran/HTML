@@ -5253,6 +5253,55 @@ const FORMAS_PGTO=['Pix','Boleto','Cartão','Transferência','Dinheiro','Débito
 const STATUS_LANC=['Previsto','Aprovado','Pago','Pendente','Cancelado'];
 function uidLanc(){ return 'l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function nowISO(){ try{ return new Date().toISOString(); }catch(e){ return ''; } }
+// <lanc-service>
+/* SERVIÇO CENTRAL DE LANÇAMENTOS — núcleo PURO e testável (sem D/DOM).
+   Fonte única de VALIDAÇÃO, NORMALIZAÇÃO e FINGERPRINT para toda entrada
+   (manual, Excel, replicação). Registra os tipos reais de lançamento e as
+   suas regras. Cada tipo expõe: normalizar(rec,ctx), validar(rec), fingerprint(rec).
+   Fase 1 cobre 'despesa'; os demais tipos entram nas próximas fases. */
+const LancService=(function(){
+  const r2=v=>Math.round((+v||0)*100)/100;
+  const s=v=>String(v==null?'':v).trim();
+  const low=v=>s(v).toLowerCase();
+  // ---- DESPESA (D.lancamentos) ----
+  function normalizarDespesa(rec,ctx){ ctx=ctx||{}; rec=rec||{};
+    rec.valor=r2(rec.valor);
+    if(rec.data && !rec.competencia) rec.competencia=String(rec.data).slice(0,7);
+    if(!rec.competencia && ctx.hojeYM) rec.competencia=ctx.hojeYM;
+    return rec; }
+  function validarDespesa(rec){ rec=rec||{}; const erros=[]; let campo='';
+    if(!((+rec.valor)>0)){ erros.push('Informe um valor maior que zero.'); campo='valor'; }
+    return {ok:erros.length===0, erros, campo}; }
+  // fingerprint canônico (camada 3 de dedupe): mesma despesa "parece igual"
+  function fingerprintDespesa(rec){ rec=rec||{};
+    return [String(rec.data||'').slice(0,10), r2(rec.valor), low(rec.cliente), low(rec.categoria), low(rec.descricao)].join('|'); }
+  const TIPOS={
+    despesa:{ array:'lancamentos', label:'Despesa', obrigatorios:['valor'],
+      normalizar:normalizarDespesa, validar:validarDespesa, fingerprint:fingerprintDespesa }
+  };
+  function normalizar(rec,tipo,ctx){ const t=TIPOS[tipo]; return t?t.normalizar(rec,ctx):rec; }
+  function validar(rec,tipo){ const t=TIPOS[tipo]; return t?t.validar(rec):{ok:true,erros:[],campo:''}; }
+  function fingerprint(rec,tipo){ const t=TIPOS[tipo]; return t?t.fingerprint(rec):''; }
+  return { round2:r2, TIPOS, normalizar, validar, fingerprint };
+})();
+// </lanc-service>
+/* Orquestrador (IMPURO): único ponto de escrita em D. Aplica o serviço central
+   e cuida de id/auditoria. NÃO faz commit (o chamador decide quando persistir). */
+function _hojeYM(){ try{ return new Date().toISOString().slice(0,7); }catch(e){ return ''; } }
+const LancStore={
+  salvar:function(rec,tipo){ tipo=tipo||'despesa'; const T=LancService.TIPOS[tipo];
+    if(!T) return {ok:false, erros:['Tipo de lançamento desconhecido: '+tipo], campo:''};
+    LancService.normalizar(rec,tipo,{hojeYM:_hojeYM()});
+    const v=LancService.validar(rec,tipo); if(!v.ok) return {ok:false, erros:v.erros, campo:v.campo};
+    if(!Array.isArray(D[T.array])) D[T.array]=[];
+    const arr=D[T.array];
+    if(rec.id){ const i=arr.findIndex(l=>l&&l.id===rec.id);
+      if(i>=0){ rec.atualizadoEm=nowISO(); arr[i]=rec; return {ok:true, modo:'atualizar', rec}; }
+      return {ok:true, modo:'noop', rec}; } // id informado mas inexistente → preserva comportamento antigo
+    rec.id=uidLanc(); rec.criadoEm=nowISO(); rec.criadoPor=(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'';
+    if(!rec.source) rec.source='manual';
+    arr.push(rec); return {ok:true, modo:'criar', rec}; }
+};
 function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
@@ -5273,11 +5322,10 @@ function migrarCustos(){
   commit(); return {ja:false,n:n,total:total};
 }
 function salvarLancForm(){ const F=_despForm; if(!F)return false;
-  if(!(+F.valor>0)){ const inp=document.querySelector('input.dpf[data-k=valor]'); if(inp){inp.classList.add('err'); inp.focus();} uiToast('Informe um valor maior que zero.','err'); return false; }
-  F.valor=+F.valor||0; if(F.data&&!F.competencia) F.competencia=String(F.data).slice(0,7);
-  if(!F.competencia)F.competencia=(new Date().toISOString().slice(0,7));
-  if(F.id){ const i=(D.lancamentos||[]).findIndex(l=>l.id===F.id); if(i>=0){ F.atualizadoEm=nowISO(); D.lancamentos[i]=F; } }
-  else { F.id=uidLanc(); F.criadoEm=nowISO(); F.criadoPor=(sbUser&&sbUser.email)||''; D.lancamentos.push(F); }
+  // caminho único de escrita: serviço central (valida, normaliza, id, auditoria)
+  const res=LancStore.salvar(F,'despesa');
+  if(!res.ok){ if(res.campo==='valor'){ const inp=document.querySelector('input.dpf[data-k=valor]'); if(inp){inp.classList.add('err'); inp.focus();} }
+    uiToast(res.erros[0]||'Verifique os dados.','err'); return false; }
   _ultLanc={centroCusto:F.centroCusto,formaPagamento:F.formaPagamento,status:F.status}; // lembra p/ o próximo
   _despForm=null; commit(); renderDespesas(); uiToast('✓ Despesa salva'); return true;
 }
