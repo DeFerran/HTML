@@ -1270,6 +1270,7 @@ header .htxt h1{display:none}
           <input type="number" id="opFator" min="0" step="0.5" style="width:150px" list="opFatorList" placeholder="ex.: 3" onchange="opColetaSetFator()" title="Fator sugerido para novos lançamentos (ha por ponto). Varia por cliente/grade: 1, 2, 3, 5, 10… O valor real fica em cada lançamento."></div>
         <button class="btn" style="align-self:end" onclick="importLoteAbrir('coleta')" title="Importar em lote (.xlsx/CSV) com conferência antes — nada é apagado">📥 Importar em lote</button>
         <button class="btn" style="align-self:end" onclick="baixarModelo('coleta')" title="Baixar modelo Excel premium de Coleta">📄 Baixar modelo</button>
+        <button class="btn" style="align-self:end" onclick="abrirImportHist()" title="Histórico de importações e desfazer lote">🕘 Histórico</button>
         <label class="btn" style="align-self:end;cursor:pointer" title="Importar CSV simples no formato do Exportar (adiciona linhas)">⬆ Importar CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="opColImportFile(this)"></label>
         <button class="btn" style="align-self:end" onclick="opColetaExportar()">⬇ Exportar</button>
         <button class="btn" style="background:#0A6A30;align-self:end" onclick="opColetaNovo()">+ Novo lançamento</button>
@@ -5606,6 +5607,22 @@ const Rateio=(function(){
   return { distribuir, round2:r2 };
 })();
 // </rateio>
+// <import-hist>
+/* HISTÓRICO / ROLLBACK — núcleo puro. Rollback SEGURO: só remove registros que o
+   lote criou E que NÃO foram alterados depois (sem atualizadoEm). Nunca apaga o
+   que foi editado. Retorna a partição para o chamador decidir/auditar. */
+const ImportHist=(function(){
+  function pertence(rec, batchId){ return !!rec && (rec.importBatchId===batchId || rec.replicationGroupId===batchId || rec.rateioGroupId===batchId); }
+  function particionar(records, batchId){ const remover=[], manter=[];
+    (records||[]).forEach(r=>{ if(!pertence(r,batchId))return; if(r.atualizadoEm) manter.push(r); else remover.push(r); });
+    return {remover, manter}; }
+  function kpis(batches, hojeISO){ hojeISO=String(hojeISO||'').slice(0,10); let hoje=0, importados=0, evitadas=0, erros=0;
+    (batches||[]).forEach(b=>{ if(String(b.quando||'').slice(0,10)===hojeISO)hoje++; importados+=(+b.importados||0);
+      evitadas+=((+b.existentes||0)+(+b.possiveis||0)); erros+=(+b.erros||0); });
+    return {hoje, importados, evitadas, erros, total:(batches||[]).length}; }
+  return { pertence, particionar, kpis };
+})();
+// </import-hist>
 function nomesColaboradores(){ return ((D.colaboradores&&D.colaboradores.length)?D.colaboradores.map(c=>c.nome):((D.equipe&&D.equipe.colaboradores)||[]).map(c=>c.nome)).filter(Boolean); }
 function nomesCentros(){ return (D.centrosCusto||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
 function nomesCategorias(){ return (D.categorias||[]).filter(c=>c.ativo!==false).map(c=>c.nome); }
@@ -5715,6 +5732,35 @@ function _lancReRender(tipo){ try{ if(tipo==='coleta'){ if(typeof renderOpColeta
 function impFmtCol(key,rec){ const v=rec?rec[key]:''; if(key==='valor')return BRL(+v||0);
   if(Array.isArray(v))return v.map(c=>(c&&c.nome?c.nome:'')+((c&&c.pontos!=null)?(': '+c.pontos):'')).filter(Boolean).join(', ')||'—';
   return (v==null||v==='')?'—':String(v); }
+/* ===== Histórico de importações + rollback seguro (Fase 8) ===== */
+function abrirImportHist(){ renderImportHist(); }
+function fecharImportHist(){ const h=document.getElementById('histHost'); if(h)h.remove(); }
+function importHistDesfazer(batchId){ const b=(D.importHistory||[]).find(x=>x&&x.id===batchId); if(!b)return;
+  if(b.status==='desfeito'){ alert('Este lote já foi desfeito.'); return; }
+  const arr=_lancArr(b.tipo); const part=ImportHist.particionar(arr, batchId);
+  if(!part.remover.length){ alert('Nada a desfazer: os registros deste lote já foram alterados ou removidos.'); return; }
+  if(!confirm('Desfazer este lote de '+((LancService.TIPOS[b.tipo]||{label:b.tipo}).label)+'?\n\nSerão removidos '+part.remover.length+' registro(s) criados por ele e ainda não alterados.'+(part.manter.length?('\n'+part.manter.length+' registro(s) foram editados depois e serão MANTIDOS.'):'')+'\n\nA auditoria fica registrada.')) return;
+  const ids=new Set(part.remover.map(r=>r.id)); for(let i=arr.length-1;i>=0;i--){ if(arr[i]&&ids.has(arr[i].id))arr.splice(i,1); }
+  b.status='desfeito'; b.desfeitoEm=nowISO(); b.desfeitoPor=(typeof sbUser!=='undefined'&&sbUser&&sbUser.email)||'local'; b.removidos=part.remover.length; b.mantidos=part.manter.length;
+  commit(); _lancReRender(b.tipo); renderImportHist();
+  try{ uiToast('↩ Lote desfeito: '+part.remover.length+' removido(s)'+(part.manter.length?(' · '+part.manter.length+' mantido(s)'):'')); }catch(_){}
+}
+function renderImportHist(){ let host=document.getElementById('histHost'); if(!host){ host=document.createElement('div'); host.id='histHost'; host.className='imp-overlay'; document.body.appendChild(host); }
+  const batches=(D.importHistory||[]).slice().reverse();
+  const K=ImportHist.kpis(D.importHistory||[], (function(){try{return new Date().toISOString();}catch(e){return '';}})());
+  const origemLbl=o=>({excel_import:'Excel/CSV',replicacao:'Replicação',rateio:'Rateio'})[o]||'Importação';
+  let h='<div class="imp-modal"><div class="imp-head"><h3>🕘 Histórico de importações</h3><button class="edbtn ghost" onclick="fecharImportHist()">Fechar</button></div>';
+  h+='<div class="imp-tiles"><div class="imp-tile"><div class="tv">'+K.hoje+'</div><div class="tl">Lotes hoje</div></div><div class="imp-tile"><div class="tv">'+K.importados+'</div><div class="tl">Registros criados</div></div><div class="imp-tile"><div class="tv">'+K.evitadas+'</div><div class="tl">Duplicidades evitadas</div></div><div class="imp-tile"><div class="tv">'+K.erros+'</div><div class="tl">Linhas com erro</div></div></div>';
+  if(!batches.length){ h+='<div class="op-empty">Nenhuma importação, replicação ou rateio ainda.</div>'; }
+  else { h+='<div style="overflow-x:auto;max-height:50vh;overflow-y:auto"><table class="resp-cards"><thead><tr><th>Quando</th><th>Tipo</th><th>Origem</th><th>Arquivo</th><th class="num">Linhas</th><th class="num">Criados</th><th class="num">Dup.</th><th class="num">Erros</th><th>Status</th><th></th></tr></thead><tbody>';
+    batches.forEach(b=>{ const desfeito=b.status==='desfeito'; const T=LancService.TIPOS[b.tipo]||{label:b.tipo};
+      h+='<tr><td data-label="Quando" class="cardttl">'+esc((typeof qzDataHora==='function')?qzDataHora(b.quando):(b.quando||''))+'</td><td data-label="Tipo">'+esc(T.label)+'</td><td data-label="Origem">'+esc(origemLbl(b.origem||'excel_import'))+'</td><td data-label="Arquivo">'+esc(b.arquivo||'—')+'</td>'
+        +'<td data-label="Linhas" class="num">'+(b.total!=null?b.total:'—')+'</td><td data-label="Criados" class="num">'+(b.importados!=null?b.importados:'—')+'</td><td data-label="Dup." class="num">'+(((+b.existentes||0)+(+b.possiveis||0))||'—')+'</td><td data-label="Erros" class="num">'+(b.erros||0)+'</td>'
+        +'<td data-label="Status">'+(desfeito?('<span class="tag lo">desfeito</span> <span class="cap">'+esc((b.removidos||0)+' rem.'+(b.mantidos?(' · '+b.mantidos+' mant.'):''))+'</span>'):'<span class="tag hi">ativo</span>')+'</td>'
+        +'<td class="acts" style="text-align:right;white-space:nowrap">'+(desfeito?'':'<button class="edbtn ghost" onclick="importHistDesfazer('+JSON.stringify(b.id).replace(/"/g,'&quot;')+')">↩ Desfazer</button>')+'</td></tr>'; });
+    h+='</tbody></table></div><div class="cap" style="margin-top:8px">Desfazer remove apenas os registros que o lote criou e que <b>ainda não foram editados</b>. Nada mais é tocado.</div>'; }
+  h+='</div>'; host.innerHTML=h;
+}
 function renderImportLote(){ if(!_impState)return;
   let host=document.getElementById('impHost'); if(!host){ host=document.createElement('div'); host.id='impHost'; host.className='imp-overlay'; document.body.appendChild(host); }
   const T=LancService.TIPOS[_impState.tipo]; const R=_impState.resultado;
@@ -6013,7 +6059,8 @@ function renderDespesas(){
     +'<button class="edbtn" onclick="replicarAbrir(\'despesa\')">⧉ Replicar em lote</button>'
     +'<button class="edbtn" onclick="ratearAbrir(\'despesa\')">➗ Ratear em lote</button>'
     +'<button class="edbtn" onclick="importLoteAbrir(\'despesa\')">📥 Importar em lote</button>'
-    +'<button class="edbtn" onclick="baixarModelo(\'despesa\')">📄 Baixar modelo</button></div>';
+    +'<button class="edbtn" onclick="baixarModelo(\'despesa\')">📄 Baixar modelo</button>'
+    +'<button class="edbtn ghost" onclick="abrirImportHist()">🕘 Histórico</button></div>';
   // formulário
   if(_despForm){ const F=_despForm;
     const field=(lab,inner)=>'<label class="lpf" style="min-width:150px"><span>'+lab+'</span>'+inner+'</label>';
