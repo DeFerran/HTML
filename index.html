@@ -8077,8 +8077,9 @@ document.addEventListener('beforeinput',function(e){
 },true);
 function onLogin(user){ if(!user)return; sbUser=user; document.body.classList.remove('pre-login'); showAuth(false); cloudSet('Nuvem: '+(user.email||'conectado')); setStatus('● Conectado à nuvem','ok'); cloudLoad(); try{ carregarPermissoes(); }catch(e){} }
 async function cloudLoad(){ if(!sb||!sbUser)return;
-  try{ const {data,error}=await sb.from('painel_estado').select('dados,atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle();
+  try{ const {data:rows,error}=await sb.from('painel_estado').select('dados,atualizado_em').eq('empresa','DF AGRO').order('atualizado_em',{ascending:false}).limit(1);
     if(error) throw error;
+    const data=(rows&&rows.length)?rows[0]:null;
     if(data && data.dados && Object.keys(data.dados).length){
       // se há edições locais ainda não enviadas, não as descarta em silêncio
       if(_pend){
@@ -8093,8 +8094,10 @@ async function cloudLoad(){ if(!sb||!sbUser)return;
     } else { await cloudSave(true); setStatus('● Nuvem iniciada com os dados deste computador','ok'); }
   }catch(e){ setStatus('● Falha ao ler nuvem: '+(e.message||e),'saving'); } }
 async function cloudSave(silent){ if(!sb||!sbUser)return;
-  try{ const {error}=await sb.from('painel_estado').upsert({user_id:sbUser.id,empresa:'DF AGRO',dados:D},{onConflict:'user_id,empresa'});
-    if(error) throw error; _lastSync=new Date(); _pend=false;
+  try{ const {data:upd,error}=await sb.from('painel_estado').update({dados:D}).eq('empresa','DF AGRO').select('user_id');
+    if(error) throw error;
+    if(!upd || !upd.length){ const {error:eIns}=await sb.from('painel_estado').insert({user_id:sbUser.id,empresa:'DF AGRO',dados:D}); if(eIns) throw eIns; }
+    _lastSync=new Date(); _pend=false;
     const t=_lastSync.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     syncStamp('done','Sincronizado às '+t);
     if(!silent){ setStatus('● Sincronizado com a nuvem · '+t,'ok'); }
@@ -9007,7 +9010,7 @@ window.addEventListener('online',async ()=>{
     setStatus('● Conexão de volta · verificando a nuvem…','saving');
     // a nuvem pode ter sido alterada em OUTRO dispositivo enquanto estávamos offline
     let nuvemStamp=null;
-    try{ const {data}=await sb.from('painel_estado').select('atualizado_em').eq('user_id',sbUser.id).eq('empresa','DF AGRO').maybeSingle(); if(data&&data.atualizado_em) nuvemStamp=new Date(data.atualizado_em); }catch(e){}
+    try{ const {data}=await sb.from('painel_estado').select('atualizado_em').eq('empresa','DF AGRO').order('atualizado_em',{ascending:false}).limit(1); if(data&&data.length&&data[0].atualizado_em) nuvemStamp=new Date(data[0].atualizado_em); }catch(e){}
     const nuvemMudou = nuvemStamp && _lastSync && (nuvemStamp.getTime() > _lastSync.getTime()+1000);
     if(nuvemMudou){
       const manter=confirm('A nuvem foi atualizada em OUTRO dispositivo enquanto você estava offline, e você também tem alterações feitas aqui.\n\n• OK = manter as alterações DESTE aparelho (sobrescreve a nuvem)\n• Cancelar = baixar a versão da nuvem (descarta as alterações feitas offline aqui)');
